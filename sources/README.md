@@ -1,6 +1,6 @@
 # RA source registry
 
-Checked: **31 October 2026**. Start with [Brazil](brazil.md) for the Heringer pilot, then use [global and cross-border sources](global.md). [registry.tsv](registry.tsv) is the machine-readable inventory for future database import.
+Checked: **31 October 2026**. Start with [Brazil](brazil.md) for the Heringer pilot, then use [global and cross-border sources](global.md). [Free news sources](free-news.md) separates machine-readable feeds from free-to-read websites and records commercial-use restrictions. [registry.tsv](registry.tsv) is the machine-readable inventory for future database import.
 
 **Access terms used here**
 
