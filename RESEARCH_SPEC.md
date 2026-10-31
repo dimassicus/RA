@@ -1,6 +1,6 @@
 # Corporate credit monitoring — research specification
 
-Status: research specification, 31 October 2026. This is a design and a historical test case, not a live monitoring result.
+Status: research specification, 31 October 2026. The local pilot app now supports watchlist management, manual searches, and unverified lead exports. Daily scheduling, email, translation, and full credit-event assessment remain implementation work. The historical test case below is not a live monitoring result.
 
 ## Goal and scope
 
@@ -32,6 +32,8 @@ The workbook currently has one test row: Fertilizantes Heringer, Brazil, Euroche
 Signals include debt service stress, restructuring, creditor action, litigation, regulatory sanctions, fraud allegations, major management or ownership changes, plant shutdowns, losses, liquidity deterioration, payment delays, supply constraints, and material country or sector shocks. Country and sector items must state the specific exposure path to the company.
 
 ## Brazil source registry — first country pack
+
+The maintained access and pricing inventory is in [sources](sources/README.md); the table below records the initial research shortlist.
 
 Sources should be registered with language, URL pattern/API, update frequency, access method, license/terms, cost, and coverage. The following are starting points; availability and commercial reuse terms require checking during implementation.
 

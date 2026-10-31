@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}RA · Credit Monitor{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <a href="{{ url_for('dashboard') }}" class="brand" aria-label="RA home"><span class="brand-mark">RA</span><span>Credit Monitor</span></a>
+    <span class="header-note">Local research workspace</span>
+  </header>
+  <main class="container">
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+      <div class="notice notice-{{ category }}" role="status">{{ message }}</div>
+    {% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="site-footer">News search results are leads for analyst review. Verify the entity and source before treating a result as a credit event.</footer>
+</body>
+</html>
