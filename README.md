@@ -19,10 +19,10 @@ PostgreSQL must be running and the database name must be exactly `RA` (uppercase
 .venv/bin/python scripts/install_pt_en_model.py
 .venv/bin/python -m ra.bootstrap
 .venv/bin/python -m ra.translation
-.venv/bin/python -m ra.app
+.venv/bin/python scripts/serve_local.py start
 ```
 
-Open <http://127.0.0.1:8765/>. The app binds to the local machine only. To use a different connection or port, set `RA_DATABASE_URL` (libpq connection URI) or `RA_PORT` in the shell. Keep any database password out of Git. The development server is for local testing; production hosting will need a WSGI server, authentication, backups, and a scheduled worker.
+Open <http://127.0.0.1:8765/>. `scripts/serve_local.py status` checks the server and `scripts/serve_local.py stop` stops it. The script keeps the development server running after the shell closes; it does not configure login startup. The app binds to the local machine only. To use a different connection or port, set `RA_DATABASE_URL` (libpq connection URI) or `RA_PORT` in the shell. Keep any database password out of Git. Production hosting will need a WSGI server, authentication, backups, and a scheduled worker.
 
 The app can import `companies.xlsx` or a newer uploaded workbook, add/edit/remove/restore watchlist companies, search the whole active list, search a selected company from a dropdown, or search a new company once without saving it. Completed searches have Excel and PDF **lead reports**. Removal archives the watchlist entry while preserving search history.
 

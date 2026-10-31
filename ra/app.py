@@ -161,7 +161,7 @@ def create_app() -> Flask:
             return redirect(url_for("dashboard"))
         return begin_search("one_off", [subject])
 
-    @app.get("/runs/<int:run_id>")
+    @app.get("/runs/<int:run_id>", strict_slashes=False)
     def run_detail(run_id: int):
         run = db.get_run(run_id)
         if not run:
