@@ -62,8 +62,12 @@ CREATE TABLE IF NOT EXISTS search_results (
     published_at TIMESTAMPTZ,
     query TEXT NOT NULL,
     language TEXT NOT NULL,
+    title_en TEXT NOT NULL DEFAULT '',
+    publisher_en TEXT NOT NULL DEFAULT '',
+    translation_provider TEXT NOT NULL DEFAULT '',
     signal_terms TEXT[] NOT NULL DEFAULT '{}',
     seen_before BOOLEAN NOT NULL DEFAULT FALSE,
+    report_selected BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (run_id, subject_key, url)
 );
@@ -74,6 +78,10 @@ CREATE INDEX IF NOT EXISTS search_results_history_idx
     ON search_results (subject_key, url);
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS source_kind TEXT NOT NULL DEFAULT 'news';
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS seen_before BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS title_en TEXT NOT NULL DEFAULT '';
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS publisher_en TEXT NOT NULL DEFAULT '';
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS translation_provider TEXT NOT NULL DEFAULT '';
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS report_selected BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS search_errors (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

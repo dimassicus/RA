@@ -8,6 +8,7 @@ import time
 
 from . import db
 from .search import search_company
+from .translation import translate_text
 
 
 _queue: queue.Queue[int] = queue.Queue()
@@ -70,6 +71,10 @@ def process_run(run_id: int, searcher=search_company):
             articles, errors = [], [f"{type(exc).__name__}: {exc}"]
         with db.connect() as conn:
             for article in articles:
+                title_en, provider = translate_text(
+                    article["title"], article["language"], name, article["publisher"]
+                )
+                publisher_en = article["publisher"]
                 seen_before = conn.execute(
                     "SELECT EXISTS (SELECT 1 FROM search_results WHERE subject_key = %s AND url = %s "
                     "AND run_id <> %s)", (subject_key, article["url"], run_id)
@@ -77,12 +82,14 @@ def process_run(run_id: int, searcher=search_company):
                 conn.execute(
                     "INSERT INTO search_results "
                     "(run_id, company_id, subject_key, subject_name, title, url, publisher, source_kind, "
-                    "published_at, query, language, signal_terms, seen_before) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "published_at, query, language, title_en, publisher_en, translation_provider, "
+                    "signal_terms, seen_before) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT (run_id, subject_key, url) DO NOTHING",
                     (run_id, subject.get("id"), subject_key, name, article["title"],
                      article["url"], article["publisher"], article.get("source_kind", "news"), article["published_at"],
-                     article["query"], article["language"], article["signal_terms"], seen_before),
+                     article["query"], article["language"], title_en, publisher_en, provider,
+                     article["signal_terms"], seen_before),
                 )
             for message in errors:
                 conn.execute(

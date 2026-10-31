@@ -194,6 +194,44 @@ def create_app() -> Flask:
             abort(404)
         return send_file(content, mimetype=mime, as_attachment=True, download_name=f"ra-search-{run_id}.{format}")
 
+    @app.post("/runs/<int:run_id>/review")
+    def review_run(run_id: int):
+        if not db.get_run(run_id):
+            abort(404)
+        try:
+            selected_ids = [int(value) for value in request.form.getlist("selected_ids")]
+            edits = {}
+            for result in db.get_results(run_id):
+                title_key, publisher_key = f"title_en_{result['id']}", f"publisher_en_{result['id']}"
+                if title_key in request.form and publisher_key in request.form:
+                    edits[result["id"]] = (
+                        request.form[title_key].strip(), request.form[publisher_key].strip()
+                    )
+            db.set_report_selection(run_id, selected_ids, edits)
+            flash(f"Saved {len(set(selected_ids))} leads and any English corrections for the selected report.", "success")
+        except ValueError as exc:
+            flash(str(exc), "error")
+        return redirect(url_for("run_detail", run_id=run_id))
+
+    @app.get("/runs/<int:run_id>/report.<format>")
+    def download_selected_report(run_id: int, format: str):
+        run = db.get_run(run_id)
+        if not run:
+            abort(404)
+        if run["status"] in ("queued", "running"):
+            abort(409, "The search is still running")
+        results = [item for item in db.get_results(run_id) if item["report_selected"]]
+        if not results:
+            abort(409, "Select and save at least one article before building a report")
+        errors = db.get_errors(run_id)
+        if format == "xlsx":
+            content, mime = make_xlsx(run, results, errors, selected=True), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        elif format == "pdf":
+            content, mime = make_pdf(run, results, errors, selected=True), "application/pdf"
+        else:
+            abort(404)
+        return send_file(content, mimetype=mime, as_attachment=True, download_name=f"ra-selected-report-{run_id}.{format}")
+
     @app.post("/runs/<int:run_id>/save-company")
     def save_one_off(run_id: int):
         run = db.get_run(run_id)

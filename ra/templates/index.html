@@ -60,7 +60,7 @@
 
 <section class="panel runs-panel">
   <div class="section-heading"><div><span class="step">Activity</span><h2>Recent searches</h2></div></div>
-  {% if runs %}<div class="table-scroll"><table><thead><tr><th>Run</th><th>Started</th><th>Scope</th><th>Progress</th><th>Leads</th><th>Status</th></tr></thead><tbody>{% for run in runs %}<tr><td><a href="{{ url_for('run_detail', run_id=run.id) }}">#{{ run.id }}</a></td><td>{{ run.created_at.strftime('%d %b %Y %H:%M %Z') }}</td><td>{{ run.scope|replace('_', ' ')|title }}</td><td>{{ run.completed_companies }}/{{ run.total_companies }}</td><td>{{ run.result_count }}</td><td><span class="status status-{{ run.status }}">{{ run.status }}</span></td></tr>{% endfor %}</tbody></table></div>
+  {% if runs %}<div class="table-scroll"><table><thead><tr><th>Run</th><th>Started</th><th>Scope</th><th>Progress</th><th>Leads</th><th>Status</th></tr></thead><tbody>{% for run in runs %}<tr><td><a href="{{ url_for('run_detail', run_id=run.id) }}">#{{ run.id }}</a></td><td>{{ run.created_at.strftime('%d %b %Y %H:%M %Z') }}</td><td>{{ run.scope|replace('_', ' ')|title }}</td><td>{{ run.completed_companies }}/{{ run.total_companies }}</td><td>{{ run.result_count }}</td><td><span class="status status-{{ run.status }}">{{ run.status }}</span></td></tr>{% endfor %}</tbody></table></div><p class="activity-note">Run numbers are permanent database IDs. Gaps can occur when development test records are removed; IDs are never reused.</p>
   {% else %}<p class="empty">No searches yet. Start with one company to check the source feed.</p>{% endif %}
 </section>
 {% endblock %}

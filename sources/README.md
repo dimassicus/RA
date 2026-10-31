@@ -1,6 +1,6 @@
 # RA source registry
 
-Checked: **31 October 2026**. Start with [Brazil](brazil.md) for the Heringer pilot, then use [global and cross-border sources](global.md). [Free news sources](free-news.md) separates machine-readable feeds from free-to-read websites and records commercial-use restrictions. [registry.tsv](registry.tsv) is the machine-readable inventory for future database import.
+Checked: **31 October 2026**. Start with [Brazil](brazil.md) for the Heringer pilot, then use [global and cross-border sources](global.md). [Free news sources](free-news.md) separates machine-readable feeds from free-to-read websites and records commercial-use restrictions. The [parallel AI search and review proposal](ai-provider-options.md) compares Perplexity, Gemini and Kimi. [registry.tsv](registry.tsv) is the machine-readable inventory for future database import.
 
 **Access terms used here**
 
@@ -15,3 +15,7 @@ No **source-specific MCP server** was verified for these providers. The actionab
 The pilot app currently uses a public Heringer investor-relations JSON endpoint and Google News RSS. Both returned data in a local test on 31 October 2026. The Heringer endpoint is used by its website but is not presented as a contracted public API; Google News RSS is a discovery feed without a verified service-level commitment. The CVM publishes open CSV/ZIP datasets, but a direct CSV request from this development environment returned HTTP 403; ingestion needs an access check before it is treated as operational.
 
 Source pricing is recorded for **entry access only** and is not a quote for storing full articles or emailing their contents. Check licences, quotas, and current offers before purchasing. For the monitoring system, store links, metadata, and short internal analysis; preserve original filings as permitted by their source terms.
+
+## Adding another country
+
+When a new registration country appears in the watchlist, add a country pack and registry rows covering its official company register, financial filing portal, courts, insolvency gazette, sector regulators, government data, local-language business publishers and relevant global feeds. Record access method, price, language, update frequency and a tested company identifier. A separate advance list of countries can speed this research; it is not required to add companies. The pilot app does not yet automatically discover or connect a country's sources from its watchlist entry.

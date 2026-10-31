@@ -1,6 +1,7 @@
 # Local network configuration is unrelated to this project and may contain credentials.
 new-vps-sing-box.json
 .venv/
+.local/
 .env
 __pycache__/
 .pytest_cache/

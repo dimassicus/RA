@@ -113,6 +113,35 @@ def get_results(run_id: int):
         ).fetchall()
 
 
+def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, tuple[str, str]] | None = None) -> int:
+    """Replace the selected lead set for one completed run atomically."""
+    with connect() as conn:
+        run = conn.execute("SELECT status FROM search_runs WHERE id = %s FOR UPDATE", (run_id,)).fetchone()
+        if run is None or run["status"] in ("queued", "running"):
+            raise ValueError("The search must finish before selecting report leads")
+        current = {row["id"]: row for row in conn.execute(
+            "SELECT id, title_en, publisher_en FROM search_results WHERE run_id = %s", (run_id,)
+        )}
+        valid = set(current)
+        if not set(selected_ids) <= valid:
+            raise ValueError("A selected lead does not belong to this run")
+        for result_id, (title_en, publisher_en) in (edits or {}).items():
+            if result_id not in valid:
+                raise ValueError("A translation edit does not belong to this run")
+            if len(title_en) > 1000 or len(publisher_en) > 250:
+                raise ValueError("English text is too long")
+            if (title_en, publisher_en) != (current[result_id]["title_en"], current[result_id]["publisher_en"]):
+                conn.execute(
+                    "UPDATE search_results SET title_en = %s, publisher_en = %s, "
+                    "translation_provider = 'analyst edited' WHERE id = %s",
+                    (title_en, publisher_en, result_id),
+                )
+        return conn.execute(
+            "UPDATE search_results SET report_selected = (id = ANY(%s)) WHERE run_id = %s",
+            (selected_ids, run_id),
+        ).rowcount
+
+
 def get_errors(run_id: int):
     with connect() as conn:
         return conn.execute(
