@@ -21,6 +21,14 @@ LOCALES = {
     "france": ("fr-FR", "FR", "FR:fr"),
     "indonesia": ("id-ID", "ID", "ID:id"),
     "thailand": ("th-TH", "TH", "TH:th"),
+    "egypt": ("ar-EG", "EG", "EG:ar"),
+    "greece": ("el-GR", "GR", "GR:el"),
+    "vietnam": ("vi-VN", "VN", "VN:vi"),
+    "viet nam": ("vi-VN", "VN", "VN:vi"),
+    "azerbaijan": ("az-AZ", "AZ", "AZ:az"),
+    "uzbekistan": ("uz-UZ", "UZ", "UZ:uz"),
+    "turkey": ("tr-TR", "TR", "TR:tr"),
+    "turkiye": ("tr-TR", "TR", "TR:tr"),
 }
 
 SIGNALS = {
@@ -54,6 +62,9 @@ def signal_terms(title: str) -> list[str]:
 def search_queries(subject: dict) -> list[str]:
     name = subject["name"].strip().replace('"', "")
     queries = [f'"{name}"']
+    alias = subject.get("short_name", "").strip().replace('"', "")
+    if len(alias) >= 4 and normalized(alias) != normalized(name):
+        queries.append(f'"{alias}" "{subject["country_registration"]}"')
     short_name = re.sub(r"\s+(S\.?A\.?|S/A|A\.?S\.?|LTDA\.?)$", "", name, flags=re.I)
     if short_name != name and len(short_name) >= 4:
         queries.append(f'"{short_name}"')
@@ -124,9 +135,9 @@ def is_heringer(subject: dict) -> bool:
     if normalized(subject.get("country_registration", "")) not in ("brazil", "brasil"):
         return False
     registration = re.sub(r"\D", "", subject.get("registration_number", ""))
-    return registration == "22266175000188" or normalized(subject["name"]).strip() in (
+    return "22266175000188" in registration or normalized(subject["name"]).strip() in (
         "fertilizantes heringer", "fertilizantes heringer s.a.", "fertilizantes heringer s/a",
-    )
+    ) or normalized(subject["name"]).startswith("fertilizantes heringer sociedade")
 
 
 def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None) -> list[dict]:

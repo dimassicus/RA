@@ -10,14 +10,14 @@ from pathlib import Path
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from psycopg.errors import UniqueViolation
 
-from . import db, worker
-from .importer import import_workbook
+from . import db, intake_worker, worker
+from .importer import stage_workbook
 from .reports import make_pdf, make_xlsx
 
 
 ROOT = Path(__file__).resolve().parent.parent
-MAX_FIELD = {"name": 300, "country_registration": 150, "registration_number": 100,
-             "comment": 5000}
+MAX_FIELD = {"name": 300, "short_name": 300, "country_registration": 150,
+             "registration_number": 150, "legal_address": 1500, "comment": 5000}
 
 
 def form_company(form) -> dict:
@@ -55,7 +55,7 @@ def create_app() -> Flask:
     def dashboard():
         return render_template(
             "index.html", companies=db.list_companies(True),
-            archived=db.list_companies(False), runs=db.list_runs(),
+            archived=db.list_companies(False), runs=db.list_runs(), intake=db.list_intake(),
         )
 
     @app.post("/companies")
@@ -66,8 +66,12 @@ def create_app() -> Flask:
             if existing:
                 flash("This company is already in the database. Edit or restore its existing record.", "warning")
                 return redirect(url_for("dashboard"))
-            db.save_company(data)
-            flash(f"Added {data['name']} to the watchlist.", "success")
+            intake_id = db.stage_company(data, source="manual")
+            if intake_id:
+                intake_worker.enqueue(intake_id)
+                flash(f"Preliminary research started for {data['name']}. Review the draft before saving.", "success")
+                return redirect(url_for("review_intake", intake_id=intake_id))
+            flash("This exact draft has already been submitted. Review it in the intake queue.", "warning")
         except (ValueError, UniqueViolation) as exc:
             flash(str(exc), "error")
         return redirect(url_for("dashboard"))
@@ -79,7 +83,7 @@ def create_app() -> Flask:
             abort(404)
         return render_template(
             "edit.html", company=company,
-            identity_evidence=db.get_identity_evidence(company_id, company["registration_number"]),
+            identity_evidence=db.get_identity_evidence(company_id, company["registration_number"], company["country_registration"]),
         )
 
     @app.post("/companies/<int:company_id>/edit")
@@ -122,8 +126,9 @@ def create_app() -> Flask:
                 source = uploaded.stream
             else:
                 source = ROOT / "companies.xlsx"
-            added, skipped = import_workbook(source)
-            flash(f"Workbook import: {added} added, {skipped} already present. Existing records were kept.", "success")
+            added, skipped = stage_workbook(source)
+            intake_worker.start()
+            flash(f"Workbook intake: {added} drafts staged for research and review, {skipped} identical rows already staged. No watchlist records were saved.", "success")
         except (ValueError, OSError, UniqueViolation) as exc:
             flash(f"Workbook import failed: {exc}", "error")
         return redirect(url_for("dashboard"))
@@ -238,22 +243,62 @@ def create_app() -> Flask:
         if not run or run["scope"] != "one_off":
             abort(404)
         data = run["subjects"][0]
-        existing = db.find_company(data["name"], data["country_registration"])
-        if existing:
-            flash("This company is already in the database. Edit or restore its existing record.", "warning")
-        else:
-            try:
-                db.save_company(data)
-                flash(f"Added {data['name']} to the watchlist.", "success")
-            except UniqueViolation as exc:
-                flash(str(exc), "error")
+        intake_id = db.stage_company(data, source="one_off")
+        if intake_id:
+            intake_worker.enqueue(intake_id)
+            flash("The one-time subject is staged for identity review.", "success")
+            return redirect(url_for("review_intake", intake_id=intake_id))
+        flash("This exact draft is already in the intake history.", "warning")
         return redirect(url_for("dashboard"))
+
+    @app.get("/intake/<int:intake_id>", strict_slashes=False)
+    def review_intake(intake_id: int):
+        draft = db.get_intake(intake_id)
+        if not draft:
+            abort(404)
+        matched = db.get_company(draft["matched_company_id"]) if draft["matched_company_id"] else None
+        return render_template("intake.html", draft=draft, company=draft["draft_data"], matched=matched)
+
+    @app.get("/api/intake/<int:intake_id>/status")
+    def intake_status(intake_id: int):
+        draft = db.get_intake(intake_id)
+        if not draft:
+            abort(404)
+        return jsonify({"status": draft["status"]})
+
+    @app.post("/intake/<int:intake_id>/confirm")
+    def confirm_intake(intake_id: int):
+        try:
+            if request.form.get("identity_checked") != "yes":
+                raise ValueError("Double-check the legal name, country and identifier, then tick the review box")
+            data = form_company(request.form)
+            company_id, updated = db.confirm_intake(intake_id, data)
+            flash(f"{'Updated' if updated else 'Added'} {data['name']} after review. It is now available for searches.", "success")
+            return redirect(url_for("edit_company", company_id=company_id))
+        except (ValueError, UniqueViolation) as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("review_intake", intake_id=intake_id))
+
+    @app.post("/intake/<int:intake_id>/dismiss")
+    def dismiss_intake(intake_id: int):
+        if not db.dismiss_intake(intake_id):
+            abort(409, "Wait for research to finish before dismissing")
+        flash("Draft dismissed; no company was saved.", "success")
+        return redirect(url_for("dashboard"))
+
+    @app.post("/intake/<int:intake_id>/research")
+    def retry_intake(intake_id: int):
+        if not db.retry_intake(intake_id):
+            abort(409, "This draft cannot be researched again")
+        intake_worker.enqueue(intake_id)
+        return redirect(url_for("review_intake", intake_id=intake_id))
 
     return app
 
 
 def main():
     db.init_schema()
+    intake_worker.start()
     worker.start_worker()
     app = create_app()
     port = int(os.environ.get("RA_PORT", "8765"))

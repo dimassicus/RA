@@ -1,11 +1,13 @@
 <div class="form-grid">
-  <label>Company name <span class="required">*</span><input name="name" required maxlength="300" value="{{ company.name if company else '' }}" placeholder="e.g. Fertilizantes Heringer"></label>
+  <label>Company name (full legal name) <span class="required">*</span><input name="name" required maxlength="300" value="{{ company.name if company else '' }}" placeholder="e.g. Fertilizantes Heringer S.A."></label>
+  <label>Company name (short)<input name="short_name" maxlength="300" value="{{ company.short_name if company else '' }}" placeholder="e.g. Heringer"></label>
   <label>Country of registration <span class="required">*</span><input name="country_registration" required maxlength="150" value="{{ company.country_registration if company else '' }}" placeholder="e.g. Brazil"></label>
-  <label>Registration number<input name="registration_number" maxlength="100" value="{{ company.registration_number if company else '' }}" placeholder="CNPJ, company number, etc."></label>
+  <label>Registration number / tax ID<input name="registration_number" maxlength="150" value="{{ company.registration_number if company else '' }}" placeholder="Keep all IDs supplied in the workbook"></label>
   <label>Key owners / shareholders<input name="key_owners" maxlength="1500" value="{{ company.key_owners if company else '' }}" placeholder="Names separated by commas"></label>
   <label>Top management<input name="top_management" maxlength="1500" value="{{ company.top_management if company else '' }}" placeholder="Names and roles"></label>
   <label>Primary countries of presence<input name="primary_countries" maxlength="1500" value="{{ company.primary_countries if company else '' }}" placeholder="Countries separated by commas"></label>
   <label>Affiliated / parent / subsidiary companies<input name="affiliates" maxlength="1500" value="{{ company.affiliates if company else '' }}" placeholder="Names separated by commas"></label>
   <label>Primary industries<input name="primary_industries" maxlength="1500" value="{{ company.primary_industries if company else '' }}" placeholder="Industries separated by commas"></label>
+  <label class="full">Legal address<textarea name="legal_address" maxlength="1500" rows="2" placeholder="Registered legal address">{{ company.legal_address if company else '' }}</textarea></label>
   <label class="full">Comment<textarea name="comment" maxlength="5000" rows="3" placeholder="Other identifiers, context, or search hints">{{ company.comment if company else '' }}</textarea></label>
 </div>

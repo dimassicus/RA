@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS companies (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name TEXT NOT NULL,
+    short_name TEXT NOT NULL DEFAULT '',
     country_registration TEXT NOT NULL,
     registration_number TEXT NOT NULL DEFAULT '',
     key_owners TEXT NOT NULL DEFAULT '',
@@ -9,6 +10,7 @@ CREATE TABLE IF NOT EXISTS companies (
     affiliates TEXT NOT NULL DEFAULT '',
     primary_industries TEXT NOT NULL DEFAULT '',
     comment TEXT NOT NULL DEFAULT '',
+    legal_address TEXT NOT NULL DEFAULT '',
     active BOOLEAN NOT NULL DEFAULT TRUE,
     workbook_row INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -22,6 +24,26 @@ CREATE INDEX IF NOT EXISTS companies_active_name_idx
 CREATE UNIQUE INDEX IF NOT EXISTS companies_registration_idx
     ON companies (lower(country_registration), registration_number)
     WHERE registration_number <> '';
+
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS short_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS legal_address TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS company_intake (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    source TEXT NOT NULL,
+    source_key TEXT NOT NULL UNIQUE,
+    workbook_row INTEGER,
+    draft_data JSONB NOT NULL,
+    findings JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status TEXT NOT NULL DEFAULT 'queued'
+        CHECK (status IN ('queued', 'researching', 'ready', 'error', 'saved', 'dismissed')),
+    matched_company_id BIGINT REFERENCES companies(id) ON DELETE SET NULL,
+    company_id BIGINT REFERENCES companies(id) ON DELETE SET NULL,
+    research_error TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS company_intake_pending_idx ON company_intake (status, id DESC);
 
 CREATE TABLE IF NOT EXISTS company_identity_evidence (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
