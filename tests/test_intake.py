@@ -69,7 +69,6 @@ def test_add_route_stages_before_saving(monkeypatch):
     monkeypatch.setattr("ra.app.intake_worker.enqueue", lambda intake_id: None)
     app = create_app()
     with app.test_client() as client:
-        client.get("/") if False else None
         with client.session_transaction() as session:
             session["csrf_token"] = "test-token"
         response = client.post("/companies", data={"csrf_token": "test-token", "name": "Acme",

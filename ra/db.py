@@ -50,7 +50,7 @@ def get_identity_evidence(company_id: int, registration_number: str, country: st
             "SELECT * FROM company_identity_evidence WHERE company_id = %s ORDER BY checked_at DESC",
             (company_id,),
         ).fetchall()
-    return [row for row in rows if _ids_overlap({row["identifier_value"]},
+    return [row for row in rows if _ids_overlap(identifier_tokens(row["identifier_value"], country),
                                                 identifier_tokens(registration_number, country))]
 
 
@@ -112,7 +112,10 @@ def stage_company(data: dict, source: str, workbook_row: int | None = None) -> i
     with connect() as conn:
         row = conn.execute(
             "INSERT INTO company_intake (source, source_key, workbook_row, draft_data, matched_company_id) "
-            "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (source_key) DO NOTHING RETURNING id",
+            "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (source_key) DO UPDATE SET "
+            "status = 'queued', findings = '{}'::jsonb, research_error = '', "
+            "matched_company_id = EXCLUDED.matched_company_id, updated_at = now() "
+            "WHERE company_intake.status = 'dismissed' RETURNING id",
             (source, digest, workbook_row, Jsonb(clean), match["id"] if match else None),
         ).fetchone()
     return row["id"] if row else None

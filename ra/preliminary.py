@@ -18,6 +18,16 @@ COUNTRY_CODES = {
     "uzbekistan": "UZ", "turkey": "TR", "türkiye": "TR",
 }
 
+MANUAL_REGISTRIES = {
+    "BR": ("Receita Federal CNPJ", "https://www.gov.br/pt-br/servicos/consultar-cadastro-nacional-de-pessoas-juridicas"),
+    "EG": ("ITDA Commercial Registry", "https://www.itda.gov.eg/en/registry-inquiry-en.html"),
+    "GR": ("GEMI public search", "https://publicity.businessportal.gr/"),
+    "VN": ("National Business Registration Portal", "https://dangkykinhdoanh.gov.vn/"),
+    "AZ": ("State Tax Service legal-entity register", "https://taxes.gov.az/en/page/kommersiya-qurumlarinin-dovlet-reyestri-melumatlarinin-verilmesi"),
+    "UZ": ("my.gov.uz enterprise register", "https://my.gov.uz/ru/service/662"),
+    "TR": ("TOBB Trade Registry Gazette", "https://www.tobb.org.tr/TurkiyeTicaretSicilGazetesi/Sayfalar/Eng/AnaSayfa.php/Sorgulama.php"),
+}
+
 
 def country_code(value: str) -> str:
     try:

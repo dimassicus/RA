@@ -10,7 +10,7 @@ from pathlib import Path
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from psycopg.errors import UniqueViolation
 
-from . import db, intake_worker, worker
+from . import db, intake_worker, preliminary, worker
 from .importer import stage_workbook
 from .reports import make_pdf, make_xlsx
 
@@ -256,8 +256,14 @@ def create_app() -> Flask:
         draft = db.get_intake(intake_id)
         if not draft:
             abort(404)
+        if draft["status"] == "saved" and draft["company_id"]:
+            return redirect(url_for("edit_company", company_id=draft["company_id"]))
+        if draft["status"] == "dismissed":
+            return redirect(url_for("dashboard"))
         matched = db.get_company(draft["matched_company_id"]) if draft["matched_company_id"] else None
-        return render_template("intake.html", draft=draft, company=draft["draft_data"], matched=matched)
+        registry = preliminary.MANUAL_REGISTRIES.get(preliminary.country_code(draft["draft_data"]["country_registration"]))
+        return render_template("intake.html", draft=draft, company=draft["draft_data"],
+                               matched=matched, registry=registry)
 
     @app.get("/api/intake/<int:intake_id>/status")
     def intake_status(intake_id: int):
