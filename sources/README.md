@@ -1,6 +1,6 @@
 # RA source registry
 
-Checked: **2 November 2026** for [six newly added registration countries](new-countries.md); **31 October 2026** for the earlier [Brazil](brazil.md) and [global and cross-border sources](global.md). [Free news sources](free-news.md) separates machine-readable feeds from free-to-read websites and records commercial-use restrictions. The [parallel AI search and review proposal](ai-provider-options.md) compares Perplexity, Gemini and Kimi. [registry.tsv](registry.tsv) is the machine-readable inventory for future database import.
+Checked: **3 November 2026** for the [user-suggested regional publishers](publisher-candidates.md); **2 November 2026** for [six newly added registration countries](new-countries.md); **31 October 2026** for the earlier [Brazil](brazil.md) and [global and cross-border sources](global.md). [Free news sources](free-news.md) separates machine-readable feeds from free-to-read websites and records commercial-use restrictions. The [parallel AI search and review proposal](ai-provider-options.md) compares Perplexity, Gemini and Kimi. [registry.tsv](registry.tsv) is the machine-readable inventory for future database import.
 
 **Access terms used here**
 

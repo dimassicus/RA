@@ -3,7 +3,7 @@
 {% block content %}
 <p class="back"><a href="{{ url_for('dashboard') }}">← Back to watchlist</a></p>
 <section class="panel form-panel"><span class="step">Company record #{{ company.id }}</span><h1>Edit {{ company.name }}</h1><p>Changes affect future searches. Earlier search runs retain their original company details.</p>
-  {% if identity_evidence %}<p class="identity-note">Registration number verified against {% for evidence in identity_evidence %}<a href="{{ evidence.source_url }}" target="_blank" rel="noopener noreferrer">{{ evidence.source_name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
+  {% if identity_evidence %}<p class="identity-note">Identifier matched against {% for evidence in identity_evidence %}<a href="{{ evidence.source_url }}" target="_blank" rel="noopener noreferrer">{{ evidence.source_name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.</p>{% endif %}
   <form method="post" action="{{ url_for('update_company', company_id=company.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% include '_company_fields.html' %}<div class="form-actions"><button class="button primary">Save changes</button><a class="button secondary" href="{{ url_for('dashboard') }}">Cancel</a></div></form>
 </section>
 {% endblock %}

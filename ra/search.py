@@ -134,7 +134,7 @@ def fetch_json_post(url: str, payload: dict) -> dict:
 def is_heringer(subject: dict) -> bool:
     if normalized(subject.get("country_registration", "")) not in ("brazil", "brasil"):
         return False
-    registration = re.sub(r"\D", "", subject.get("registration_number", ""))
+    registration = re.sub(r"\D", "", subject.get("tax_id", "") or subject.get("registration_number", ""))
     return "22266175000188" in registration or normalized(subject["name"]).strip() in (
         "fertilizantes heringer", "fertilizantes heringer s.a.", "fertilizantes heringer s/a",
     ) or normalized(subject["name"]).startswith("fertilizantes heringer sociedade")

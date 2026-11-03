@@ -39,7 +39,7 @@
   <form method="post" action="{{ url_for('search_one_off') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     {% set company = none %}{% include '_company_fields.html' %}
-    <div class="form-actions"><button class="button primary" type="submit">Search once <span aria-hidden="true">↗</span></button><button class="button secondary" type="submit" formaction="{{ url_for('add_company') }}">Research for watchlist</button></div>
+    <div class="form-actions"><button class="button primary" type="submit">Search once <span aria-hidden="true">↗</span></button><button class="button secondary" type="submit" formaction="{{ url_for('add_company') }}">Research for review &amp; addition</button></div>
   </form>
 </section>
 
@@ -47,24 +47,32 @@
   <div class="section-heading"><div><span class="step">Identity review</span><h2>Pending company drafts</h2></div><span class="pill">{{ intake|length }} awaiting review</span></div>
   <p>Workbook and manual entries are searched in public identity sources. They enter the watchlist only after you confirm or edit them.</p>
   {% if intake %}<div class="table-scroll"><table><thead><tr><th>Company</th><th>Country</th><th>Source</th><th>Research</th><th>Action</th></tr></thead><tbody>
-  {% for draft in intake %}<tr><td><strong>{{ draft.draft_data.name }}</strong><span class="subtext">{{ draft.draft_data.registration_number or 'No identifier supplied' }}</span></td><td>{{ draft.draft_data.country_registration }}</td><td>{{ draft.source }}{% if draft.workbook_row %} · row {{ draft.workbook_row }}{% endif %}</td><td><span class="status status-{{ draft.status }}">{{ draft.status }}</span>{% if draft.matched_company_id %}<span class="subtext">Potential saved record #{{ draft.matched_company_id }}</span>{% endif %}</td><td><a href="{{ url_for('review_intake', intake_id=draft.id) }}">Review draft</a></td></tr>{% endfor %}
+  {% for draft in intake %}<tr><td><strong>{{ draft.draft_data.name }}</strong><span class="subtext">Registration: {{ draft.draft_data.registration_number or '—' }} · Tax ID: {{ draft.draft_data.tax_id or '—' }}</span></td><td>{{ draft.draft_data.country_registration }}</td><td>{{ draft.source }}{% if draft.workbook_row %} · row {{ draft.workbook_row }}{% endif %}</td><td><span class="status status-{{ draft.status }}">{{ draft.status }}</span>{% if draft.matched_company_id %}<span class="subtext">Potential saved record #{{ draft.matched_company_id }}</span>{% endif %}</td><td><a href="{{ url_for('review_intake', intake_id=draft.id) }}">Review draft</a></td></tr>{% endfor %}
   </tbody></table></div>{% else %}<p class="empty">No drafts awaiting review.</p>{% endif %}
 </section>
 
 <section class="panel list-panel">
   <div class="section-heading"><div><span class="step">Saved records</span><h2>Active watchlist</h2></div><span class="pill">{{ companies|length }} monitored</span></div>
   {% if companies %}
-  <div class="table-scroll"><table><thead><tr><th>Company</th><th>Registration</th><th>Industries</th><th>Owner / affiliate</th><th>Actions</th></tr></thead><tbody>
+  <div class="table-scroll"><table><thead><tr><th>Company and identifiers</th><th>Country</th><th>Industries</th><th>Owner / affiliate</th><th>Actions</th></tr></thead><tbody>
     {% for company in companies %}<tr>
-      <td><strong>{{ company.name }}</strong><span class="subtext">{{ company.registration_number or 'No registration number yet' }}</span></td>
+      <td><strong>{{ company.name }}</strong><span class="subtext">Registration: {{ company.registration_number or '—' }} · Tax ID: {{ company.tax_id or '—' }}</span></td>
       <td>{{ company.country_registration }}</td><td>{{ company.primary_industries or '—' }}</td><td>{{ company.key_owners or company.affiliates or '—' }}</td>
       <td class="row-actions"><a href="{{ url_for('edit_company', company_id=company.id) }}">Edit</a><form method="post" action="{{ url_for('remove_company', company_id=company.id) }}" onsubmit="return confirm('Remove this company from the active watchlist? Search history will be kept.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="link-button danger">Remove</button></form></td>
     </tr>{% endfor %}
   </tbody></table></div>
   {% else %}<p class="empty">No active companies yet. Add one above or import the workbook below.</p>{% endif %}
-  <details class="import-box"><summary>Stage the 11-column Excel workbook</summary><p>Use the saved <code>companies.xlsx</code> or upload a newer .xlsx file. Each changed row is staged for research and your review; existing records are kept until you confirm an update.</p><form method="post" action="{{ url_for('import_companies') }}" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="file" name="workbook" accept=".xlsx"><button class="button secondary">Stage workbook for review</button></form></details>
+  <details class="import-box"><summary>Stage the Excel workbook</summary><p>Use the saved <code>companies.xlsx</code> or upload a newer .xlsx file. New files should have separate Registration number and Tax ID columns. Older combined columns remain supported. Each changed row is staged for research and your review; existing records are kept until you confirm an update.</p><form method="post" action="{{ url_for('import_companies') }}" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="file" name="workbook" accept=".xlsx"><button class="button secondary">Stage workbook for review</button></form></details>
   {% if archived %}<details class="archive-box"><summary>{{ archived|length }} removed compan{{ 'y' if archived|length == 1 else 'ies' }}</summary><div class="archived-list">{% for company in archived %}<div><span>{{ company.name }} · {{ company.country_registration }}</span><form method="post" action="{{ url_for('restore_company', company_id=company.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="link-button">Restore</button></form></div>{% endfor %}</div></details>{% endif %}
 </section>
+
+{% if model_coverage %}<section class="panel list-panel">
+  <div class="section-heading"><div><span class="step">Languages</span><h2>Translation model coverage</h2></div></div>
+  <p>Languages are added from each watchlist country, including countries with several local languages. Models install automatically when available; each headline is classified separately because publishers may use other languages.</p>
+  <div class="table-scroll"><table><thead><tr><th>Country</th><th>Language</th><th>Offline English model</th></tr></thead><tbody>
+  {% for item in model_coverage %}<tr><td>{{ item.country }}</td><td>{{ item.language }}</td><td>{{ item.status|capitalize }}</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>{% endif %}
 
 <section class="panel runs-panel">
   <div class="section-heading"><div><span class="step">Activity</span><h2>Recent searches</h2></div></div>

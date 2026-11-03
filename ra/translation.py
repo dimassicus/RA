@@ -11,6 +11,9 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+from .model_store import ensure_model
+from .language import detect_language
+
 
 ROOT = Path(__file__).resolve().parent.parent
 MODEL_ROOT = ROOT / ".local" / "models"
@@ -26,7 +29,7 @@ PT_CREDIT_GLOSSARY = (
 )
 
 
-@lru_cache(maxsize=12)
+@lru_cache(maxsize=3)
 def _model(source_code: str):
     path = MODEL_ROOT / f"{source_code}_en"
     if not (path / "model").is_dir() or not (path / "sentencepiece.model").is_file():
@@ -41,7 +44,6 @@ def _model(source_code: str):
     return tokenizer, translator, metadata.get("target_prefix", "")
 
 
-@lru_cache(maxsize=4096)
 def translate_text(text: str, language: str, company_name: str = "", publisher: str = "") -> tuple[str, str]:
     """Return English text and provenance, or empty strings when unavailable."""
     text = (text or "").strip()
@@ -65,7 +67,13 @@ def translate_text(text: str, language: str, company_name: str = "", publisher: 
     try:
         model = _model(source_code)
         if model is None:
-            return "", ""
+            ready, status = ensure_model(source_code)
+            if not ready:
+                return "", status
+            _model.cache_clear()
+            model = _model(source_code)
+        if model is None:
+            return "", f"offline model unreadable ({source_code})"
         tokenizer, translator, prefix = model
         protected = text[:1000]
         marker = "ZXQENTITYZXQ"
@@ -98,8 +106,8 @@ def translate_text(text: str, language: str, company_name: str = "", publisher: 
         for term_marker, english_term in terms:
             translated = translated.replace(term_marker, english_term)
         return translated, "Argos offline model" if translated else ""
-    except Exception:
-        return "", ""
+    except Exception as exc:
+        return "", f"translation failed: {type(exc).__name__}"
 
 
 def backfill(force: bool = False) -> tuple[int, int]:
@@ -115,19 +123,16 @@ def backfill(force: bool = False) -> tuple[int, int]:
         ).fetchall()
     updated = 0
     for row in rows:
-        title_en, provider = translate_text(
-            row["title"], row["language"], row["subject_name"], row["publisher"]
-        )
+        language = detect_language(row["title"], row["language"])
+        title_en, provider = translate_text(row["title"], language, row["subject_name"], row["publisher"])
         publisher_en = row["publisher"]  # Publisher names are brands, not prose.
-        if not title_en:
-            continue
         with db.connect() as conn:
             conn.execute(
-                "UPDATE search_results SET title_en = %s, publisher_en = %s, translation_provider = %s "
+                "UPDATE search_results SET title_en = %s, publisher_en = %s, translation_provider = %s, language = %s "
                 "WHERE id = %s AND (title_en = '' OR (%s AND translation_provider = 'Argos offline model'))",
-                (title_en, publisher_en, provider, row["id"], force),
+                (title_en, publisher_en, provider, language, row["id"], force),
             )
-        updated += 1
+        updated += bool(title_en)
     return updated, len(rows)
 
 

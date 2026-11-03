@@ -93,9 +93,10 @@ def research_company(data: dict, json_fetcher=fetch_json, feed_fetcher=search.fe
     findings = {"matches": [], "identity_evidence": [], "news": [], "errors": [], "filled": {},
                 "conflicts": [], "possible_duplicates": []}
     country = country_code(data["country_registration"])
-    ids = db.identifier_tokens(data.get("registration_number", ""), data["country_registration"])
+    ids = (db.identifier_tokens(data.get("registration_number", ""), data["country_registration"]) |
+           db.identifier_tokens(data.get("tax_id", ""), data["country_registration"]))
     names = [name for name in (data["name"], data.get("short_name", "")) if name]
-    cnpjs = brazil_cnpjs(data.get("registration_number", ""))[:2] if country == "BR" else []
+    cnpjs = brazil_cnpjs(" ".join((data.get("registration_number", ""), data.get("tax_id", ""))))[:2] if country == "BR" else []
 
     def add_match(source: str, url: str, legal_name: str, identifier: str, source_country: str,
                   extra_names=(), suggestions=None):
@@ -114,7 +115,7 @@ def research_company(data: dict, json_fetcher=fetch_json, feed_fetcher=search.fe
         if verified:
             normalized_id = "".join(c for c in identifier.upper() if c.isalnum())
             findings["identity_evidence"].append({"source_name": source, "source_url": url,
-                                                    "identifier_type": "CNPJ" if source_country == "BR" else "registration",
+                                                    "identifier_type": "CNPJ" if source_country == "BR" else "registry identifier",
                                                     "identifier_value": normalized_id, "verified": True})
             for field, value in (suggestions or {}).items():
                 if not value:
@@ -189,6 +190,7 @@ def research_company(data: dict, json_fetcher=fetch_json, feed_fetcher=search.fe
         if score >= 0.72:
             findings["possible_duplicates"].append({"id": saved["id"], "name": saved["name"],
                                                      "registration_number": saved["registration_number"],
+                                                     "tax_id": saved.get("tax_id", ""),
                                                      "name_score": round(score, 2)})
     error = "; ".join(findings["errors"]) if len(findings["errors"]) >= 2 + len(cnpjs) else ""
     return proposed, findings, error

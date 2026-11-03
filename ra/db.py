@@ -11,11 +11,14 @@ from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
+
+from .identifiers import split_legacy_identifier
 
 
 DATABASE_URL = os.environ.get("RA_DATABASE_URL", "postgresql://localhost/RA")
 FIELDS = (
-    "name", "short_name", "country_registration", "registration_number", "key_owners",
+    "name", "short_name", "country_registration", "registration_number", "tax_id", "key_owners",
     "top_management", "primary_countries", "affiliates", "primary_industries",
     "legal_address", "comment",
 )
@@ -28,6 +31,55 @@ def connect():
 def init_schema():
     with connect() as conn:
         conn.execute(Path(__file__).with_name("schema.sql").read_text())
+        # Existing rows used registration_number as a combined identifier field.
+        for row in conn.execute(
+            "SELECT id, country_registration, registration_number FROM companies "
+            "WHERE tax_id = '' AND registration_number <> ''"
+        ).fetchall():
+            registration, tax_id = split_legacy_identifier(row["registration_number"], row["country_registration"])
+            if tax_id:
+                conn.execute("UPDATE companies SET registration_number = %s, tax_id = %s WHERE id = %s",
+                             (registration, tax_id, row["id"]))
+        for row in conn.execute("SELECT id, draft_data, findings FROM company_intake").fetchall():
+            data = row["draft_data"]
+            if "tax_id" not in data:
+                registration, tax_id = split_legacy_identifier(
+                    data.get("registration_number", ""), data.get("country_registration", ""))
+                data["registration_number"], data["tax_id"] = registration, tax_id
+                conn.execute("UPDATE company_intake SET draft_data = %s WHERE id = %s", (Jsonb(data), row["id"]))
+            findings = row["findings"]
+            changed = False
+            for candidate in findings.get("possible_duplicates", []):
+                if "tax_id" not in candidate:
+                    registration, tax_id = split_legacy_identifier(
+                        candidate.get("registration_number", ""), data.get("country_registration", ""))
+                    candidate["registration_number"], candidate["tax_id"] = registration, tax_id
+                    changed = True
+            if changed:
+                conn.execute("UPDATE company_intake SET findings = %s WHERE id = %s",
+                             (Jsonb(findings), row["id"]))
+        # When the original combined-column workbook is still available,
+        # translate its staged hashes so the split-column copy imports cleanly.
+        workbook_path = Path(__file__).resolve().parent.parent / "companies.xlsx"
+        if workbook_path.exists():
+            from .importer import read_workbook
+            try:
+                workbook_rows = read_workbook(workbook_path)
+            except (OSError, ValueError):
+                workbook_rows = []  # Import errors belong on the dashboard, not app startup.
+            for _, imported in workbook_rows:
+                legacy = imported.get("_legacy_identifier")
+                if not legacy:
+                    continue
+                current = {field: str(imported.get(field, "")).strip() for field in FIELDS}
+                old = {field: value for field, value in current.items() if field != "tax_id"}
+                old["registration_number"] = legacy
+                old_key = hashlib.sha256(json.dumps(["workbook", old], sort_keys=True,
+                                                    ensure_ascii=False).encode()).hexdigest()
+                new_key = hashlib.sha256(json.dumps(["workbook", current], sort_keys=True,
+                                                    ensure_ascii=False).encode()).hexdigest()
+                conn.execute("UPDATE company_intake SET source_key = %s "
+                             "WHERE source_key = %s AND source = 'workbook'", (new_key, old_key))
 
 
 def list_companies(active: bool | None = True):
@@ -44,14 +96,14 @@ def get_company(company_id: int):
         return conn.execute("SELECT * FROM companies WHERE id = %s", (company_id,)).fetchone()
 
 
-def get_identity_evidence(company_id: int, registration_number: str, country: str = ""):
+def get_identity_evidence(company_id: int, registration_number: str, tax_id: str = "", country: str = ""):
     with connect() as conn:
         rows = conn.execute(
             "SELECT * FROM company_identity_evidence WHERE company_id = %s ORDER BY checked_at DESC",
             (company_id,),
         ).fetchall()
-    return [row for row in rows if _ids_overlap(identifier_tokens(row["identifier_value"], country),
-                                                identifier_tokens(registration_number, country))]
+    supplied = identifier_tokens(registration_number, country) | identifier_tokens(tax_id, country)
+    return [row for row in rows if _ids_overlap(identifier_tokens(row["identifier_value"], country), supplied)]
 
 
 def find_company(name: str, country: str):
@@ -83,19 +135,34 @@ def _ids_overlap(left: set[str], right: set[str]) -> bool:
                for a in left for b in right)
 
 
+def _company_ids_match(left: dict, right: dict, country: str) -> bool:
+    return any(_ids_overlap(identifier_tokens(left.get(field, ""), country),
+                            identifier_tokens(right.get(field, ""), country))
+               for field in ("registration_number", "tax_id"))
+
+
+def _company_ids_conflict(left: dict, right: dict, country: str) -> bool:
+    return any(bool(a and b and not _ids_overlap(a, b)) for field in ("registration_number", "tax_id")
+               for a, b in [(identifier_tokens(left.get(field, ""), country),
+                             identifier_tokens(right.get(field, ""), country))])
+
+
 def find_company_match(data: dict):
     country = data.get("country_registration", "").strip().casefold()
     names = {_name_key(data.get("name", "")), _name_key(data.get("short_name", ""))} - {""}
-    ids = identifier_tokens(data.get("registration_number", ""), country)
     local = [company for company in list_companies(None)
              if company["country_registration"].strip().casefold() == country]
     for company in local:
-        if _ids_overlap(ids, identifier_tokens(company["registration_number"], country)):
+        if _company_ids_match(data, company, country):
             return company
     for company in local:
         known = {_name_key(company["name"]), _name_key(company.get("short_name", ""))} - {""}
-        known_ids = identifier_tokens(company["registration_number"], country)
-        if names & known and not (ids and known_ids and not _ids_overlap(ids, known_ids)):
+        supplied = any(identifier_tokens(data.get(field, ""), country)
+                       for field in ("registration_number", "tax_id"))
+        recorded = any(identifier_tokens(company.get(field, ""), country)
+                       for field in ("registration_number", "tax_id"))
+        if (names & known and not _company_ids_conflict(data, company, country)
+                and (not supplied or not recorded or _company_ids_match(data, company, country))):
             return company
     return None
 
@@ -108,8 +175,18 @@ def stage_company(data: dict, source: str, workbook_row: int | None = None) -> i
     if not clean["name"] or not clean["country_registration"]:
         raise ValueError("Company name and country of registration are required")
     digest = hashlib.sha256(json.dumps([source, clean], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    # Recognize drafts staged from the old combined-ID workbook after migration.
+    old_digest = None
+    if data.get("_legacy_identifier"):
+        old_clean = {key: value for key, value in clean.items() if key != "tax_id"}
+        old_clean["registration_number"] = data["_legacy_identifier"]
+        old_digest = hashlib.sha256(json.dumps([source, old_clean], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     match = find_company_match(clean)
     with connect() as conn:
+        if old_digest and conn.execute(
+            "SELECT 1 FROM company_intake WHERE source_key = %s AND status <> 'dismissed'", (old_digest,)
+        ).fetchone():
+            return None
         row = conn.execute(
             "INSERT INTO company_intake (source, source_key, workbook_row, draft_data, matched_company_id) "
             "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (source_key) DO UPDATE SET "
@@ -198,7 +275,8 @@ def confirm_intake(intake_id: int, data: dict):
             ).fetchone()["id"]
         for evidence in draft["findings"].get("identity_evidence", []):
             if evidence.get("verified") and _ids_overlap({evidence["identifier_value"]},
-                    identifier_tokens(data["registration_number"], data["country_registration"])):
+                    identifier_tokens(data["registration_number"], data["country_registration"]) |
+                    identifier_tokens(data["tax_id"], data["country_registration"])):
                 conn.execute(
                     "INSERT INTO company_identity_evidence "
                     "(company_id, identifier_type, identifier_value, source_name, source_url) "

@@ -5,7 +5,7 @@ from ra.search import heringer_official_notices, is_heringer, parse_feed, search
 
 def test_heringer_adapter_requires_brazilian_identity():
     same_name_elsewhere = {"name": "Fertilizantes Heringer", "country_registration": "Portugal", "registration_number": ""}
-    pilot = {"name": "Fertilizantes Heringer", "country_registration": "Brazil", "registration_number": "22.266.175/0001-88"}
+    pilot = {"name": "Fertilizantes Heringer", "country_registration": "Brazil", "registration_number": "", "tax_id": "22.266.175/0001-88"}
     assert not is_heringer(same_name_elsewhere)
     assert is_heringer(pilot)
 

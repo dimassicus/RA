@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS companies (
     short_name TEXT NOT NULL DEFAULT '',
     country_registration TEXT NOT NULL,
     registration_number TEXT NOT NULL DEFAULT '',
+    tax_id TEXT NOT NULL DEFAULT '',
     key_owners TEXT NOT NULL DEFAULT '',
     top_management TEXT NOT NULL DEFAULT '',
     primary_countries TEXT NOT NULL DEFAULT '',
@@ -24,9 +25,12 @@ CREATE INDEX IF NOT EXISTS companies_active_name_idx
 CREATE UNIQUE INDEX IF NOT EXISTS companies_registration_idx
     ON companies (lower(country_registration), registration_number)
     WHERE registration_number <> '';
-
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS short_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS legal_address TEXT NOT NULL DEFAULT '';
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS tax_id TEXT NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS companies_tax_id_idx
+    ON companies (lower(country_registration), tax_id)
+    WHERE tax_id <> '';
 
 CREATE TABLE IF NOT EXISTS company_intake (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

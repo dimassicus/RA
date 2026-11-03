@@ -10,14 +10,14 @@ from pathlib import Path
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from psycopg.errors import UniqueViolation
 
-from . import db, intake_worker, preliminary, worker
+from . import db, intake_worker, model_store, preliminary, worker
 from .importer import stage_workbook
 from .reports import make_pdf, make_xlsx
 
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_FIELD = {"name": 300, "short_name": 300, "country_registration": 150,
-             "registration_number": 150, "legal_address": 1500, "comment": 5000}
+             "registration_number": 150, "tax_id": 150, "legal_address": 1500, "comment": 5000}
 
 
 def form_company(form) -> dict:
@@ -53,9 +53,11 @@ def create_app() -> Flask:
 
     @app.get("/")
     def dashboard():
+        companies = db.list_companies(True)
         return render_template(
-            "index.html", companies=db.list_companies(True),
+            "index.html", companies=companies,
             archived=db.list_companies(False), runs=db.list_runs(), intake=db.list_intake(),
+            model_coverage=model_store.coverage([company["country_registration"] for company in companies]),
         )
 
     @app.post("/companies")
@@ -83,7 +85,8 @@ def create_app() -> Flask:
             abort(404)
         return render_template(
             "edit.html", company=company,
-            identity_evidence=db.get_identity_evidence(company_id, company["registration_number"], company["country_registration"]),
+            identity_evidence=db.get_identity_evidence(
+                company_id, company["registration_number"], company["tax_id"], company["country_registration"]),
         )
 
     @app.post("/companies/<int:company_id>/edit")
@@ -96,6 +99,7 @@ def create_app() -> Flask:
             if other and other["id"] != company_id:
                 raise ValueError("Another record already has this name and registration country")
             db.save_company(data, company_id)
+            model_store.schedule_countries([data["country_registration"]])
             flash("Company details saved.", "success")
             return redirect(url_for("dashboard"))
         except (ValueError, UniqueViolation) as exc:
@@ -276,9 +280,10 @@ def create_app() -> Flask:
     def confirm_intake(intake_id: int):
         try:
             if request.form.get("identity_checked") != "yes":
-                raise ValueError("Double-check the legal name, country and identifier, then tick the review box")
+                raise ValueError("Double-check the legal name, country, registration number and tax ID, then tick the review box")
             data = form_company(request.form)
             company_id, updated = db.confirm_intake(intake_id, data)
+            model_store.schedule_countries([data["country_registration"]])
             flash(f"{'Updated' if updated else 'Added'} {data['name']} after review. It is now available for searches.", "success")
             return redirect(url_for("edit_company", company_id=company_id))
         except (ValueError, UniqueViolation) as exc:
@@ -306,6 +311,7 @@ def main():
     db.init_schema()
     intake_worker.start()
     worker.start_worker()
+    model_store.schedule_countries([company["country_registration"] for company in db.list_companies(True)])
     app = create_app()
     port = int(os.environ.get("RA_PORT", "8765"))
     app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)

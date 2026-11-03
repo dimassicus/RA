@@ -9,6 +9,7 @@ import time
 from . import db
 from .search import search_company
 from .translation import translate_text
+from .language import detect_language
 
 
 _queue: queue.Queue[int] = queue.Queue()
@@ -71,8 +72,9 @@ def process_run(run_id: int, searcher=search_company):
             articles, errors = [], [f"{type(exc).__name__}: {exc}"]
         with db.connect() as conn:
             for article in articles:
+                language = detect_language(article["title"], article["language"])
                 title_en, provider = translate_text(
-                    article["title"], article["language"], name, article["publisher"]
+                    article["title"], language, name, article["publisher"]
                 )
                 publisher_en = article["publisher"]
                 seen_before = conn.execute(
@@ -88,7 +90,7 @@ def process_run(run_id: int, searcher=search_company):
                     "ON CONFLICT (run_id, subject_key, url) DO NOTHING",
                     (run_id, subject.get("id"), subject_key, name, article["title"],
                      article["url"], article["publisher"], article.get("source_kind", "news"), article["published_at"],
-                     article["query"], article["language"], title_en, publisher_en, provider,
+                     article["query"], language, title_en, publisher_en, provider,
                      article["signal_terms"], seen_before),
                 )
             for message in errors:
