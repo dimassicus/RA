@@ -7,7 +7,7 @@ import unicodedata
 import json
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
@@ -46,6 +46,8 @@ HERINGER_IR_URL = (
     "https://apicatalog.mziq.com/filemanager/company/"
     + HERINGER_IR_COMPANY_ID + "/filter/categories/year/meta"
 )
+FCA_WARNINGS_RSS_URL = "https://www.fca.org.uk/news/warnings/rss.xml"
+UK_NAMES = {"united kingdom", "uk", "great britain", "england", "scotland", "wales", "northern ireland"}
 
 
 def normalized(value: str) -> str:
@@ -140,6 +142,31 @@ def is_heringer(subject: dict) -> bool:
     ) or normalized(subject["name"]).startswith("fertilizantes heringer sociedade")
 
 
+def has_uk_presence(subject: dict) -> bool:
+    countries = re.split(r"[,;\n]", subject.get("primary_countries", ""))
+    return any(normalized(value.strip()) in UK_NAMES for value in
+               [subject.get("country_registration", ""), *countries])
+
+
+def fca_warning_list(subject: dict, fetcher=fetch_feed) -> list[dict]:
+    """Find possible name matches in the FCA's current warning RSS; analyst review is required."""
+    names = [subject.get("name", ""), subject.get("short_name", "")]
+    names = [normalized(name.strip()) for name in names if len(name.strip()) >= 4]
+    if not names:
+        return []
+    warnings = parse_feed(fetcher(FCA_WARNINGS_RSS_URL), "FCA Warning List", "en-GB", limit=1000)
+    matches = []
+    for warning in warnings:
+        if urlparse(warning["url"]).hostname not in {"fca.org.uk", "www.fca.org.uk"}:
+            continue
+        title = normalized(warning["title"])
+        if any(re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", title) for name in names):
+            warning["publisher"] = "Financial Conduct Authority"
+            warning["source_kind"] = "official"
+            matches.append(warning)
+    return matches
+
+
 def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None) -> list[dict]:
     current_year = year or datetime.now(timezone.utc).year
     articles = []
@@ -179,6 +206,13 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
                 articles.append(article)
         except Exception as exc:
             errors.append(f"Heringer RI: {type(exc).__name__}: {exc}")
+    if has_uk_presence(subject):
+        try:
+            for article in fca_warning_list(subject, fetcher=fetcher):
+                seen_urls.add(article["url"])
+                articles.append(article)
+        except Exception as exc:
+            errors.append(f"FCA Warning List: {type(exc).__name__}: {exc}")
     for query in search_queries(subject):
         url, language = feed_url(query, subject["country_registration"])
         try:

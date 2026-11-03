@@ -1,6 +1,6 @@
 # RA source registry
 
-Checked: **3 November 2026** for the [user-suggested regional publishers](publisher-candidates.md); **2 November 2026** for [six newly added registration countries](new-countries.md); **31 October 2026** for the earlier [Brazil](brazil.md) and [global and cross-border sources](global.md). [Free news sources](free-news.md) separates machine-readable feeds from free-to-read websites and records commercial-use restrictions. The [parallel AI search and review proposal](ai-provider-options.md) compares Perplexity, Gemini and Kimi. [registry.tsv](registry.tsv) is the machine-readable inventory for future database import.
+Checked: **3 November 2026** for the [official-authority coverage checklist](official-authorities.md), [people and biography sources](people-sources.md), [regulator and law-enforcement watchlists](regulatory-watchlists.md), and [user-suggested regional publishers](publisher-candidates.md); **2 November 2026** for [six newly added registration countries](new-countries.md); **31 October 2026** for the earlier [Brazil](brazil.md) and [global and cross-border sources](global.md). [Free news sources](free-news.md) separates machine-readable feeds from free-to-read websites and records commercial-use restrictions. The [parallel AI search and review proposal](ai-provider-options.md) compares Perplexity, Gemini and Kimi. [registry.tsv](registry.tsv) is the machine-readable inventory for future database import.
 
 **Access terms used here**
 
@@ -18,4 +18,4 @@ Source pricing is recorded for **entry access only** and is not a quote for stor
 
 ## Adding another country
 
-When a new registration country appears in the watchlist, add a country pack and registry rows covering its official company register, financial filing portal, courts, insolvency gazette, sector regulators, government data, local-language business publishers and relevant global feeds. Record access method, price, language, update frequency and a tested company identifier. A separate advance list of countries can speed this research; it is not required to add companies. The pilot app does not yet automatically discover or connect a country's sources from its watchlist entry.
+When a new registration country appears in the watchlist, use the [official-authority coverage checklist](official-authorities.md) to add a country pack and registry rows, then add local-language business publishers and relevant global feeds. Record access method, price, language, update frequency and a tested company identifier. A separate advance list of countries can speed this research; it is not required to add companies. The pilot app does not yet automatically discover or connect a country's sources from its watchlist entry.

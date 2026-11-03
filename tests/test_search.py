@@ -1,6 +1,9 @@
 from datetime import timezone
 
-from ra.search import heringer_official_notices, is_heringer, parse_feed, search_queries, signal_terms
+from ra.search import (
+    FCA_WARNINGS_RSS_URL, fca_warning_list, has_uk_presence, heringer_official_notices,
+    is_heringer, parse_feed, search_company, search_queries, signal_terms,
+)
 
 
 def test_heringer_adapter_requires_brazilian_identity():
@@ -52,3 +55,27 @@ def test_official_notice_keeps_document_link_and_date():
 
 def test_keyword_cues_are_explicitly_just_title_cues():
     assert "management change" in signal_terms("Fato Relevante - Renúncia do Diretor")
+
+
+def test_fca_rss_is_used_for_uk_presence_and_only_keeps_name_matches_on_fca_domain():
+    subject = {"name": "Acme Finance Limited", "short_name": "Acme Finance",
+               "country_registration": "France", "primary_countries": "United Kingdom; France"}
+    feed = b'''<rss><channel>
+      <item><title>Acme Finance (clone of FCA authorised firm)</title><link>https://www.fca.org.uk/news/warnings/acme-finance</link></item>
+      <item><title>Acme Finance elsewhere</title><link>https://example.com/imitation</link></item>
+      <item><title>Unrelated Finance</title><link>https://www.fca.org.uk/news/warnings/unrelated</link></item>
+    </channel></rss>'''
+    calls = []
+
+    def fetcher(url):
+        calls.append(url)
+        return feed if url == FCA_WARNINGS_RSS_URL else b"<rss><channel></channel></rss>"
+
+    assert has_uk_presence(subject)
+    articles, errors = search_company(subject, fetcher=fetcher)
+    assert errors == []
+    assert calls.count(FCA_WARNINGS_RSS_URL) == 1
+    assert len(articles) == 1
+    assert articles[0]["source_kind"] == "official"
+    assert articles[0]["publisher"] == "Financial Conduct Authority"
+    assert not has_uk_presence({"name": "Acme Finance", "country_registration": "France"})
