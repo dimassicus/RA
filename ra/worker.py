@@ -117,3 +117,5 @@ def process_run(run_id: int, searcher=search_company):
             (status, run_id),
         )
     refresh_scores(run_id)
+    from .verification_store import enqueue_run
+    enqueue_run(run_id)

@@ -74,7 +74,7 @@ def make_xlsx(run: dict, results: list[dict], errors: list[dict], selected: bool
         "Published", "Company", "Source type", "Publisher (original)", "Publisher (English)",
         "Headline (original)", "Headline (English, machine translation)", "Review cues",
         "Discovery status", "Language", "Article / notice URL", "Search query", "Discovery service",
-        "Article score (-3 to +3)", "Score status", "Included in weekly score", "Score reason", "Scoring version",
+        "Article score (-3 to +3)", "Score status", "Included in weekly score", "Score reason", "Scoring version", "Source check", "Source check reason", "Event group",
     ]
     leads.append(columns)
     for cell in leads[1]:
@@ -94,6 +94,8 @@ def make_xlsx(run: dict, results: list[dict], errors: list[dict], selected: bool
             item.get("score"), _safe_excel(item.get("score_status", "pending")),
             "Yes" if item.get("score_included") else "No", _safe_excel(item.get("score_reason", "")),
             _safe_excel(item.get("score_version", "")),
+            _safe_excel(item.get("verification", {}).get("status", "pending")),
+            _safe_excel(item.get("verification", {}).get("reason", "")), _safe_excel(item.get("event_group", "")),
         ])
         row = leads.max_row
         link = leads.cell(row, 11)
@@ -104,8 +106,8 @@ def make_xlsx(run: dict, results: list[dict], errors: list[dict], selected: bool
         for cell in leads[row]:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
     leads.freeze_panes = "A2"
-    leads.auto_filter.ref = f"A1:R{max(1, leads.max_row)}"
-    for index, width in enumerate((15, 29, 18, 22, 22, 70, 70, 28, 19, 14, 55, 40, 22, 15, 18, 20, 60, 22), start=1):
+    leads.auto_filter.ref = f"A1:U{max(1, leads.max_row)}"
+    for index, width in enumerate((15, 29, 18, 22, 22, 70, 70, 28, 19, 14, 55, 40, 22, 15, 18, 20, 60, 22, 18, 60, 24), start=1):
         leads.column_dimensions[get_column_letter(index)].width = width
     if errors:
         failure_sheet = book.create_sheet("Source errors")

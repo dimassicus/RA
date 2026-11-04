@@ -17,7 +17,7 @@ from .aliases import provider_name, validate_aliases
 from .search import search_queries
 from .reports import make_pdf, make_xlsx
 from .relevance import classify_results
-from . import score_store
+from . import score_store, verification_store
 from .scoring import LABELS, RUBRIC, VERSION, week_start
 
 
@@ -132,7 +132,35 @@ def create_app() -> Flask:
             flash("Article score saved. Weekly history updated and the decision recorded.", "success")
             return redirect(url_for("article_score", result_id=result_id))
         return render_template("article_score.html", article=article, history=score_store.article_history(result_id),
-                               labels=LABELS, rubric=RUBRIC)
+                               labels=LABELS, rubric=RUBRIC, **verification_store.details(result_id))
+
+    @app.post("/articles/<int:result_id>/verify")
+    def verify_article(result_id):
+        try:
+            verification_store.enqueue(result_id, request.form.get("source_url", "").strip())
+            flash("Source check queued. Cached sources are reused; no news API request is made.", "success")
+        except ValueError as exc:
+            flash(str(exc), "error")
+        return redirect(url_for("article_score", result_id=result_id))
+
+    @app.post("/articles/<int:result_id>/group")
+    def article_group(result_id):
+        try:
+            target = int(request.form.get("target_id") or "0")
+            verification_store.review_group(result_id, request.form.get("action"), target, request.form.get("reason", ""))
+            flash("Event grouping saved and weekly history updated.", "success")
+        except ValueError as exc:
+            flash(str(exc), "error")
+        return redirect(url_for("article_score", result_id=result_id))
+
+    @app.post("/runs/<int:run_id>/verify")
+    def verify_run(run_id):
+        try:
+            count = verification_store.enqueue_run(run_id)
+            flash(f"Queued {count} source checks (up to eight new articles per company).", "success")
+        except ValueError as exc:
+            flash(str(exc), "error")
+        return redirect(url_for("run_detail", run_id=run_id, view="review"))
 
     @app.post("/companies")
     def add_company():
@@ -256,16 +284,27 @@ def create_app() -> Flask:
             abort(400, "Unknown lead view")
         results = [item for item in all_results if view == "all" or item["relevance"] == view
                    or (view == "scored" and item.get("score_included"))]
+        if view in ("risk", "older", "scored"):
+            grouped = {}
+            for item in results:
+                grouped.setdefault(item.get("event_group") or str(item["id"]), []).append(item)
+            results = []
+            for members in grouped.values():
+                representative = max(members, key=lambda a: (a.get("score_status") == "reviewed",
+                                     a.get("score_updated_at") or a["published_at"] or run["created_at"], a["id"]))
+                representative["group_sources"] = [a for a in members if a["id"] != representative["id"]]
+                results.append(representative)
+        visible_ids = {item["id"] for item in results}
         return render_template(
             "run.html", run=run, results=results, errors=db.get_errors(run_id), view=view,
             counts={**{key: sum(item["relevance"] == key for item in all_results)
                     for key in ("risk", "review", "older", "background")},
                     "scored": sum(bool(item.get("score_included")) for item in all_results)},
-            score_labels=LABELS,
+            score_labels=LABELS, verification_jobs=verification_store.job_summary(run_id),
             all_count=len(all_results),
             selected_count=sum(bool(item["report_selected"]) for item in all_results),
             hidden_selected=[item["id"] for item in all_results
-                             if item["report_selected"] and item not in results],
+                             if item["report_selected"] and item["id"] not in visible_ids],
         )
 
     @app.get("/api/runs/<int:run_id>/status")
@@ -402,6 +441,7 @@ def main():
     score_store.refresh_scores()
     intake_worker.start()
     worker.start_worker()
+    verification_store.start()
     model_store.schedule_countries([company["country_registration"] for company in db.list_companies(True)])
     app = create_app()
     port = int(os.environ.get("RA_PORT", "8765"))

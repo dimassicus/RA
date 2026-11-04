@@ -1,0 +1,167 @@
+{
+  "description": "Controlled, fictional credit-news articles and stress sentences; not factual claims or analyst-labelled validation. Paired articles are independently supplied inputs, not round-trip translations.",
+  "articles": [
+    {
+      "id": "payment",
+      "title": "Payment delay and the limits of a guarantee",
+      "company": "Volna Industries",
+      "ru": [
+        "3 ноября 2026 года компания Volna Industries сообщила, что не выплатила купон в размере 125,5 млн рублей по облигациям серии БО-03. Платёж должен был состояться 2 ноября 2026 года. Льготный период истекает 12 ноября 2026 года; основной долг в размере 2 млрд рублей пока не подлежит погашению.",
+        "Компания не подавала заявление о банкротстве и отрицает сообщения о прекращении производства. Просрочен именно купонный платёж, а не заработная плата. Volna Industries заявила, что ведёт переговоры с банками, но кредитная линия ещё не одобрена.",
+        "Гарантия материнской компании покрывает только 40% основной суммы долга и не распространяется на проценты. Поставщик ООО «Северный Контур» не является гарантом. Если купон не будет выплачен до окончания льготного периода, держатели облигаций смогут потребовать досрочного погашения в соответствии с условиями выпуска. Такое требование пока не предъявлено.",
+        "На отчётную дату остаток денежных средств составлял 30 млн рублей, из которых 10 млн рублей находились на заблокированном счёте. Эти средства нельзя использовать для погашения купона без согласия банка. Прогноз поступлений от покупателей не является подтверждённым источником финансирования."
+      ],
+      "en": [
+        "On 3 November 2026, Volna Industries reported that it had not paid the RUB 125.5 million coupon on its BO-03 bonds. Payment had been due on 2 November 2026. The grace period expires on 12 November 2026; the RUB 2 billion principal is not yet due for repayment.",
+        "The company has not filed for bankruptcy and denies reports that it has stopped production. The overdue obligation is the coupon payment, not wages. Volna Industries said it was negotiating with banks, but the credit facility has not yet been approved.",
+        "The parent company's guarantee covers only 40% of the principal and does not cover interest. The supplier Severny Kontur LLC is not a guarantor. If the coupon remains unpaid when the grace period ends, bondholders may demand early repayment under the terms of the issue. No such demand has yet been made.",
+        "At the reporting date, the cash balance was RUB 30 million, of which RUB 10 million was held in a blocked account. Those funds cannot be used to pay the coupon without the bank’s consent. Forecast customer receipts are not a confirmed source of funding."
+      ],
+      "checks": [
+        "Volna Industries remains the borrower; supplier and parent are distinct",
+        "RUB 125.5 million coupon versus RUB 2 billion principal; 40% guarantee",
+        "Dates 2, 3 and 12 November 2026 retain their separate roles",
+        "No bankruptcy filing or production stoppage; credit facility not approved",
+        "Acceleration is conditional, not an event that has already occurred",
+        "Final paragraph is fully translated, including qualifications and negations"
+      ]
+    },
+    {
+      "id": "court",
+      "title": "Interim protection is not a bankruptcy judgment",
+      "company": "Baltic Components",
+      "ru": [
+        "28 октября 2026 года суд частично удовлетворил ходатайство Baltic Components об обеспечительных мерах. Суд приостановил исполнительное производство на 60 дней, но не признал компанию банкротом и не списал её задолженность в размере 18,75 млн евро.",
+        "Запрет на обращение взыскания распространяется только на оборудование завода в Твери. Он не распространяется на денежные средства дочерней компании «Балтик Логистика». Заявление кредитора о взыскании 900 000 евро остаётся на рассмотрении; окончательное решение по существу спора не принято.",
+        "Baltic Components оспаривает сумму требований, а не факт заключения договора. Следующее заседание назначено на 15 января 2027 года. Временная судебная защита не означает, что кредитор согласился на реструктуризацию. Ранее выданная гарантия продолжает действовать, если стороны не договорятся об ином.",
+        "Кредитор вправе обжаловать определение, однако подача жалобы сама по себе не отменяет обеспечительные меры. Ограничение действует до истечения указанного срока, если суд не изменит его ранее. Сведения об отзыве иска или заключении мирового соглашения отсутствуют."
+      ],
+      "en": [
+        "On 28 October 2026, the court partially granted Baltic Components' application for interim measures. It stayed enforcement proceedings for 60 days but did not declare the company bankrupt or cancel its EUR 18.75 million debt.",
+        "The restriction on enforcement applies only to equipment at the Tver plant. It does not apply to funds held by the subsidiary Baltic Logistics. A creditor's claim for EUR 900,000 remains pending; no final judgment on the merits has been issued.",
+        "Baltic Components disputes the amount claimed, not the existence of the contract. The next hearing is scheduled for 15 January 2027. Temporary court protection does not mean that the creditor has agreed to restructuring. The previously issued guarantee remains in force unless the parties agree otherwise.",
+        "The creditor may appeal the order, but filing an appeal does not by itself lift the interim measures. The restriction remains in place until the stated period expires unless the court changes it earlier. There is no information indicating that the claim has been withdrawn or a settlement reached."
+      ],
+      "checks": [
+        "Baltic Components and Baltic Logistics remain distinct entities",
+        "EUR 18.75 million debt versus EUR 900,000 claim; 60 days",
+        "28 October 2026 order versus 15 January 2027 future hearing",
+        "Partial interim relief, not bankruptcy, debt forgiveness or a final judgment",
+        "Stay of enforcement, assets covered, pending claim and continuing guarantee retain legal meaning",
+        "Final paragraph is fully translated, including qualifications and negations"
+      ]
+    },
+    {
+      "id": "refinancing",
+      "title": "Conditional refinancing and adjusted profit",
+      "company": "Meridian Packaging",
+      "ru": [
+        "1 ноября 2026 года Meridian Packaging подписала соглашение о рефинансировании на 75 млн долларов США. Срок погашения должен быть продлён с 30 июня 2027 года до 30 июня 2030 года. Однако сделка вступит в силу только после регистрации залога; средства ещё не поступили.",
+        "Кредиторы согласились временно отказаться от требования соблюдать один финансовый ковенант до 31 марта 2027 года. Это не означает прощения долга. Процентная ставка увеличится с 8,25% до 9,5% годовых, если регистрация будет завершена.",
+        "Компания сообщила о чистом убытке в размере 4,2 млн долларов США за квартал, несмотря на рост скорректированной EBITDA на 12%. Убыток включает разовое обесценение на 6 млн долларов США. Аудитор не отзывал своё заключение; совет директоров лишь предложил сменить аудитора в следующем году. Поставки продолжаются, но риск нарушения ликвидности не устранён.",
+        "Новая кредитная линия является возобновляемой, но доступный лимит зависит от стоимости залога. В опубликованном сообщении нет подтверждения выполнения всех предварительных условий. Поэтому подписанное соглашение нельзя считать уже полученными денежными средствами."
+      ],
+      "en": [
+        "On 1 November 2026, Meridian Packaging signed a USD 75 million refinancing agreement. The maturity is to be extended from 30 June 2027 to 30 June 2030. However, the transaction will take effect only after the security interest is registered; the funds have not yet been received.",
+        "The lenders agreed to waive compliance with one financial covenant temporarily until 31 March 2027. This is not debt forgiveness. The annual interest rate will increase from 8.25% to 9.5% if registration is completed.",
+        "The company reported a quarterly net loss of USD 4.2 million despite a 12% increase in adjusted EBITDA. The loss includes a one-off impairment of USD 6 million. The auditor has not withdrawn its opinion; the board has only proposed changing auditors next year. Deliveries continue, but the liquidity risk has not been eliminated.",
+        "The new credit facility is revolving, but the available limit depends on the value of the collateral. The published announcement does not confirm that all conditions precedent have been met. The signed agreement therefore cannot be treated as cash already received."
+      ],
+      "checks": [
+        "Meridian Packaging's name is retained",
+        "USD 75 million financing, USD 4.2 million loss, USD 6 million impairment; 12% EBITDA growth",
+        "8.25% to 9.5% rate; 2027 to 2030 maturity; 31 March 2027 covenant waiver",
+        "Signed but conditional and unfunded; waiver is not debt forgiveness",
+        "Net loss and adjusted EBITDA growth coexist; auditor opinion was not withdrawn",
+        "Final paragraph is fully translated, including qualifications and negations"
+      ]
+    }
+  ],
+  "sentences": [
+    {
+      "id": "pt_relief",
+      "source_lang": "pt",
+      "target_lang": "en",
+      "text": "A empresa fictícia Aurora obteve tutela de urgência cautelar por 60 dias; o deferimento não equivale à decretação de falência nem ao deferimento de recuperação judicial.",
+      "checks": [
+        "Urgent interim relief granted for 60 days",
+        "Neither bankruptcy order nor approval of court-supervised restructuring"
+      ]
+    },
+    {
+      "id": "pt_restructuring",
+      "source_lang": "pt",
+      "target_lang": "en",
+      "text": "A empresa fictícia Aurora apresentou um plano de recuperação extrajudicial, não um pedido de recuperação judicial; os credores ainda não aprovaram o plano.",
+      "checks": [
+        "Out-of-court restructuring plan versus court-supervised restructuring application",
+        "Creditors have not yet approved"
+      ]
+    },
+    {
+      "id": "pt_negation",
+      "source_lang": "pt",
+      "target_lang": "en",
+      "text": "A empresa fictícia Aurora não deixou de pagar juros de R$ 2,5 milhões em 31 de outubro de 2026; foi o seu fornecedor, e não a companhia, que entrou em recuperação judicial.",
+      "checks": [
+        "Company did pay interest, despite double negation",
+        "R$ 2.5 million, 31 October 2026",
+        "Supplier entered restructuring, not the company"
+      ]
+    },
+    {
+      "id": "vi_negation",
+      "source_lang": "vi",
+      "target_lang": "en",
+      "text": "Công ty giả định Sao Bắc chưa bị tuyên bố phá sản. Khoản nợ 125,5 tỷ đồng đến hạn vào ngày 15 tháng 1 năm 2027; chủ nợ chưa đồng ý gia hạn.",
+      "checks": [
+        "Hypothetical company Sao Bắc has not been declared bankrupt",
+        "125.5 billion VND due 15 January 2027",
+        "Creditor has not agreed to extension"
+      ]
+    },
+    {
+      "id": "tr_negation",
+      "source_lang": "tr",
+      "target_lang": "en",
+      "text": "Kurgusal şirket Kuzey Metal konkordato başvurusunda bulunmadı. Mahkeme yalnızca tedarikçisine üç aylık geçici mühlet verdi; şirketin 12,5 milyon TL borcu silinmedi.",
+      "checks": [
+        "Fictional Kuzey Metal did not apply for concordat",
+        "Only supplier received three-month provisional moratorium",
+        "TRY 12.5 million company debt not cancelled"
+      ]
+    },
+    {
+      "id": "el_negation",
+      "source_lang": "el",
+      "target_lang": "en",
+      "text": "Η υποθετική εταιρεία Αλκυών δεν κηρύχθηκε σε πτώχευση. Η ζημία των 4,2 εκατ. ευρώ δεν αποτελεί αθέτηση πληρωμής και η προθεσμία λήγει στις 15 Ιανουαρίου 2027.",
+      "checks": [
+        "Hypothetical Alkyon not declared bankrupt",
+        "EUR 4.2 million loss does not constitute payment default",
+        "Deadline 15 January 2027"
+      ]
+    },
+    {
+      "id": "ru_negation",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "text": "Компания не отрицает, что допустила дефолт, но отрицает, что подала заявление о банкротстве. Её дочерняя компания не является заёмщиком.",
+      "checks": [
+        "Does not deny default; denies bankruptcy filing",
+        "Subsidiary is not borrower"
+      ]
+    },
+    {
+      "id": "en_legal",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "text": "The claim was dismissed without prejudice. The lender waived a covenant breach, not the outstanding principal; the guarantee remains enforceable.",
+      "checks": [
+        "Dismissal preserves ability to refile",
+        "Covenant breach waiver, not forgiveness of principal",
+        "Guarantee still enforceable"
+      ]
+    }
+  ]
+}

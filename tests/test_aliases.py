@@ -32,13 +32,15 @@ def test_alias_identity_is_shared_by_scoring_and_risk_filter():
     for title in ("PVFCCo reports losses", "Phan bon va Hoa chat Dau khi reports losses"):
         article = {"title": title, "language": "en", "published_at": NOW}
         assert classify(article, VIETNAM, NOW)["relevance"] == "risk"
-        assert score_article(article, VIETNAM, NOW)["score_included"]
+        assert score_article(article, VIETNAM, NOW)["score"] == -1
+        assert not score_article(article, VIETNAM, NOW)["score_included"]
     for title in ("DPM reports losses", "PVFCCoPlus reports losses", "Petrovietnam reports losses"):
         article = {"title": title, "language": "en", "published_at": NOW}
         assert classify(article, VIETNAM, NOW)["relevance"] == "review"
         assert not score_article(article, VIETNAM, NOW)["score_included"]
     contextual = {"title": "DPM in Vietnam reports losses", "language": "en", "published_at": NOW}
-    assert score_article(contextual, VIETNAM, NOW)["score_included"]
+    assert score_article(contextual, VIETNAM, NOW)["score"] == -1
+    assert not score_article(contextual, VIETNAM, NOW)["score_included"]
 
 
 def test_publishers_and_affiliates_are_not_company_aliases():

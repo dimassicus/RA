@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 from .relevance import headline
 from .aliases import headline_identity, normalized
 
-VERSION = "headline-credit-v2"
+VERSION = "source-credit-v3"
 WEEK_TIMEZONE = ZoneInfo("Europe/Moscow")
 LABELS = {-3: "Severe negativity", -2: "Strong negativity", -1: "Limited negativity",
           0: "Neutral / no directional evidence", 1: "Limited positivity",
@@ -59,7 +59,7 @@ def week_start(value: datetime) -> object:
 
 def input_hash(article: dict, subject: dict) -> str:
     values = {key: article.get(key) for key in
-              ("title", "title_en", "publisher", "publisher_en", "language", "published_at", "source_kind", "discovery_service")}
+              ("title", "title_en", "publisher", "publisher_en", "language", "published_at", "source_kind", "discovery_service", "verification")}
     values["subject"] = subject
     return hashlib.sha256(json.dumps(values, sort_keys=True, default=str).encode()).hexdigest()
 
@@ -104,6 +104,14 @@ def score_article(article: dict, subject: dict, now: datetime | None = None) -> 
             result["score_reason"] += "; mixed directions, strongest magnitude used (negative wins ties)"
     if problem:
         result.update(score_included=False, score_status="needs_review", score_reason=problem)
+    verification = article.get("verification") or {}
+    if verification.get("status") == "supported":
+        result.update(score=verification["score"], score_auto=verification["score"],
+                      score_evidence=verification["evidence"], score_status="provisional",
+                      score_included=True, score_reason=verification["reason"])
+    else:
+        result.update(score_included=False, score_status="needs_review",
+                      score_reason=result["score_reason"] + "; " + verification.get("reason", "Full-article verification pending"))
     published = article.get("published_at")
     if published and published.tzinfo is None:
         published = published.replace(tzinfo=timezone.utc)
@@ -114,20 +122,32 @@ def score_article(article: dict, subject: dict, now: datetime | None = None) -> 
 
 
 def aggregate_week(articles: list[dict]) -> dict:
-    """One contribution per exact article URL; reviewed copy takes precedence."""
+    """One contribution per event group; reviewed copy takes precedence."""
     unique = {}
     for article in articles:
-        key = article["url"]
-        rank = (article.get("score_status") == "reviewed", article.get("score_updated_at") or article["created_at"], article["id"])
+        key = article.get("event_group") or article["url"]
+        rank = (article.get("score_status") == "reviewed", bool(article.get("score_included")), article.get("score_updated_at") or article["created_at"], article["id"])
         if key not in unique or rank > unique[key][0]:
             unique[key] = (rank, article)
     records = [item[1] for item in unique.values()]
-    included = [a for a in records if a.get("score_included") and a.get("score") is not None]
+    # Conflicting automatic assessments must not silently choose a direction.
+    conflicts = {key for key, (_, representative) in unique.items()
+                 if representative.get("score_status") != "reviewed" and len({
+                     a.get("score") for a in articles
+                     if (a.get("event_group") or a["url"]) == key and a.get("score_included")}) > 1}
+    included = [a for a in records if a.get("score_included") and a.get("score") is not None
+                and (a.get("event_group") or a["url"]) not in conflicts]
+    duplicate_ids = sorted(a["id"] for a in articles if a["id"] not in {r["id"] for r in records})
     values = [a["score"] for a in included]
     mean = (Decimal(sum(values)) / len(values)) if values else None
     return {
         "score": int(mean.quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if mean is not None else None,
         "mean_score": float(mean.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if mean is not None else None,
+        "event_count": len(values), "duplicate_count": len(duplicate_ids), "duplicate_ids": duplicate_ids,
+        "group_conflicts": sorted(conflicts),
+        "groups": [{"id": key, "representative_id": representative["id"],
+                    "article_ids": sorted(a["id"] for a in articles if (a.get("event_group") or a["url"]) == key)}
+                   for key, (_, representative) in sorted(unique.items())],
         "article_count": len(values), "excluded_count": len(records) - len(values),
         "negative_count": sum(value < 0 for value in values),
         "neutral_count": values.count(0), "positive_count": sum(value > 0 for value in values),
@@ -137,7 +157,7 @@ def aggregate_week(articles: list[dict]) -> dict:
         "excluded_ids": sorted(a["id"] for a in records if a not in included),
         "contributions": [{"id": a["id"], "url": a["url"], "score": a["score"],
                            "status": a["score_status"], "reason": a.get("score_reason", ""),
-                           "version": a.get("score_version", VERSION)} for a in sorted(included, key=lambda a: a["id"])],
+                           "version": a.get("score_version", VERSION), "event_group": a.get("event_group", "")} for a in sorted(included, key=lambda a: a["id"])],
         "version": VERSION, "timezone": str(WEEK_TIMEZONE),
     }
 

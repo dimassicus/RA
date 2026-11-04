@@ -34,8 +34,8 @@ def article(title, **extra):
 def test_seven_steps_and_directional_context(title, expected):
     result = score_article(article(title), SUBJECT, NOW)
     assert result["score"] == expected
-    assert result["score_included"] is True
-    assert result["score_status"] == "provisional"
+    assert result["score_included"] is False  # Headlines alone no longer enter weekly history.
+    assert result["score_status"] == "needs_review"
 
 
 @pytest.mark.parametrize("title", [

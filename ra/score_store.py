@@ -61,6 +61,15 @@ def _weekly(conn):
         "SELECT r.* FROM search_results r JOIN search_runs s ON s.id=r.run_id "
         "WHERE r.company_id IS NOT NULL AND s.status NOT IN ('running','queued')"
     ).fetchall()
+    from .events import assign_groups
+    assigned = assign_groups(articles)
+    for article in articles:
+        group = assigned[article["id"]]
+        if article["event_group"] != group:
+            conn.execute("UPDATE search_results SET event_group=%s WHERE id=%s", (group, article["id"]))
+            conn.execute("INSERT INTO article_event_history (result_id,previous_group,new_group,reason) VALUES (%s,%s,%s,%s)",
+                         (article["id"], article["event_group"], group, "Automatic URL / source-evidence grouping"))
+            article["event_group"] = group
     groups = weekly_groups(articles)
     existing = {(row["company_id"], row["week_start"]): row["metrics"] for row in
                 conn.execute("SELECT * FROM company_weekly_scores").fetchall()}
@@ -157,7 +166,7 @@ def week_detail(company_id, start):
         row = conn.execute("SELECT * FROM company_weekly_scores WHERE company_id=%s AND week_start=%s", (company_id, start)).fetchone()
         if not row:
             return None, [], []
-        ids = row["metrics"]["article_ids"] + row["metrics"]["excluded_ids"]
+        ids = row["metrics"]["article_ids"] + row["metrics"]["excluded_ids"] + row["metrics"].get("duplicate_ids", [])
         articles = conn.execute("SELECT * FROM search_results WHERE id=ANY(%s) ORDER BY score,id", (ids,)).fetchall()
         history = conn.execute("SELECT * FROM weekly_score_history WHERE company_id=%s AND week_start=%s ORDER BY id DESC",
                                (company_id, start)).fetchall()

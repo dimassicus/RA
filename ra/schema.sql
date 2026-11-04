@@ -169,3 +169,34 @@ CREATE INDEX IF NOT EXISTS weekly_score_history_company_week_idx
 
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS aliases TEXT NOT NULL DEFAULT '';
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS alias_notes TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS verification JSONB NOT NULL DEFAULT '{"status":"pending"}';
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS event_group TEXT NOT NULL DEFAULT '';
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS event_group_manual TEXT NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS article_documents (
+    url TEXT PRIMARY KEY,
+    document JSONB NOT NULL,
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS article_verification_history (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    result_id BIGINT REFERENCES search_results(id) ON DELETE SET NULL,
+    previous JSONB NOT NULL,
+    assessment JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS article_event_history (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    result_id BIGINT REFERENCES search_results(id) ON DELETE SET NULL,
+    previous_group TEXT NOT NULL,
+    new_group TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS verification_jobs (
+    result_id BIGINT PRIMARY KEY REFERENCES search_results(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','completed','failed')),
+    error TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE verification_jobs ADD COLUMN IF NOT EXISTS source_url TEXT NOT NULL DEFAULT '';

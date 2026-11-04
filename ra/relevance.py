@@ -60,6 +60,17 @@ def classify(article: dict, subject: dict, as_of=None) -> dict:
         r"(?:fraud|default|bankruptcy|loss|prejuizo|inadimplencia)", text
     ):
         category, reason = "review", "Possible negated or resolved event; check source context"
+    verification = article.get("verification") or {}
+    # When loaded from the database, source verification gates the risk queue.
+    if "verification" in article:
+        assessed = article.get("score_status") == "reviewed" or verification.get("status") == "supported"
+        if assessed and article.get("score_included"):
+            category = "risk" if (article.get("score") or 0) < 0 else "background"
+            reason = article.get("score_reason", verification.get("reason", ""))
+        elif verification.get("status") == "unmatched":
+            category, reason = "background", verification["reason"]
+        else:
+            category, reason = "review", verification.get("reason", "Full-article verification pending")
     published = article.get("published_at")
     if category == "risk" and as_of:
         as_of = as_of.replace(tzinfo=timezone.utc) if as_of.tzinfo is None else as_of
