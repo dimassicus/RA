@@ -1,0 +1,942 @@
+{
+  "identity": {
+    "corpus_sha256": "d3d642598c46bf46838234ed21bb96942e41243f9c87de61a422d8445984f8ea",
+    "prompt_sha256": "b43d8f6bdd9a61f0ff2e01f52a59b9c2c4fb36ca447ca7740d0eec0896f9b95f",
+    "implementation_sha256": "f4c2f9b65aa7bd6ba403bcd7fba5a2d4bfce3e8db7d8b7694e852a7706a403d2",
+    "model": "qwen3:8b",
+    "rules_only": false,
+    "model_identity": {
+      "name": "qwen3:8b",
+      "digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+      "details": {
+        "parent_model": "",
+        "format": "gguf",
+        "family": "qwen3",
+        "families": [
+          "qwen3"
+        ],
+        "parameter_size": "8.2B",
+        "quantization_level": "Q4_K_M",
+        "context_length": 40960,
+        "embedding_length": 4096,
+        "runner": "ggml"
+      }
+    }
+  },
+  "summary": {
+    "cases": 34,
+    "completed": 28,
+    "shadow_candidate": 27,
+    "selected_madlad": 15,
+    "prior_nonmaterial": 55,
+    "nonmaterial_rejected_by_reviewer": 4,
+    "known_material": 10,
+    "material_missed": 7,
+    "selected_baseline": 12,
+    "failed": 6,
+    "translation_uncertain": 7,
+    "material_unassessed": 1,
+    "material_detected": 2,
+    "known_bad_selected": 2,
+    "reviewer_pass_blocked_by_rules": 3
+  },
+  "validation": {
+    "cases": 34,
+    "translation_candidates": 81,
+    "app_config_files_unchanged": 36,
+    "all_scoring_disabled": true,
+    "runtime_seconds": 145.74,
+    "corrections_exercised_by_model": 0,
+    "visual_browser_check": false
+  },
+  "cases": [
+    {
+      "id": "N1_ru_en",
+      "kind": "fictional",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "source_sha256": "8ca803f7bf14d13437e241b00cef74ec466eb136c7b33c2175988f7527624e07",
+      "diagnostics": {
+        "baseline": [],
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {
+        "baseline": "clear",
+        "nllb": "material",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "nllb": "faithful",
+        "baseline": "material_error",
+        "madlad": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "N2_ru_en",
+      "kind": "fictional",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "source_sha256": "afddaab6c627401d674318b614acf3d08431f63935e72cbc3b7903b190f2ff53",
+      "diagnostics": {
+        "baseline": [],
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "baseline",
+      "score_eligible": false,
+      "reference": {
+        "baseline": "wording",
+        "nllb": "clear",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "nllb": "faithful",
+        "madlad": "faithful",
+        "baseline": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "N3_ru_en",
+      "kind": "fictional",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "source_sha256": "34d7ba5c491bbdad59d832461d363846f841745028a42974d7457199444f8868",
+      "diagnostics": {
+        "baseline": [],
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "baseline",
+      "score_eligible": false,
+      "reference": {
+        "baseline": "clear",
+        "nllb": "clear",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "baseline": "faithful",
+        "madlad": "material_error",
+        "nllb": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "D1_ru_en",
+      "kind": "fictional",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "source_sha256": "b7859b93de6ccd609dd4015ca542dadef4dbc5dce06f80d67cf827ab8407eee2",
+      "diagnostics": {
+        "baseline": [],
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {
+        "baseline": "clear",
+        "nllb": "material",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "nllb": "faithful",
+        "baseline": "material_error",
+        "madlad": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "D2_ru_en",
+      "kind": "fictional",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "source_sha256": "7cb064592138d34a1e5bcb290ccea3adf67bc0d4a425b3b21e1b94059dec6524",
+      "diagnostics": {
+        "baseline": [],
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "translation_uncertain",
+      "selected": null,
+      "score_eligible": false,
+      "reference": {
+        "baseline": "clear",
+        "nllb": "clear",
+        "madlad": "clear"
+      },
+      "review_status": "failed",
+      "verdicts": {},
+      "error": "ReviewError: Contradictory faithful verdict"
+    },
+    {
+      "id": "D3_ru_en",
+      "kind": "fictional",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "source_sha256": "bfff9755697e9224dbc4e637cb4dc194d1abd67428df62bd4a3963390a65a2c0",
+      "diagnostics": {
+        "baseline": [],
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "baseline",
+      "score_eligible": false,
+      "reference": {
+        "baseline": "clear",
+        "nllb": "clear",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "madlad": "faithful",
+        "nllb": "faithful",
+        "baseline": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "A1_ru_en",
+      "kind": "fictional",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "source_sha256": "49e2383bfb2b90691c98299e3d4d32a6f948d17f689f61bcbe5a1ac12cd3d7a0",
+      "diagnostics": {
+        "baseline": [],
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "baseline",
+      "score_eligible": false,
+      "reference": {
+        "baseline": "clear",
+        "nllb": "clear",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "baseline": "faithful",
+        "madlad": "faithful",
+        "nllb": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "A2_ru_en",
+      "kind": "fictional",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "source_sha256": "3770cea7601f4d809cbd296fdf73dc050e05f9ed076785596ecf3622777377cd",
+      "diagnostics": {
+        "baseline": [],
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "translation_uncertain",
+      "selected": null,
+      "score_eligible": false,
+      "reference": {
+        "baseline": "clear",
+        "nllb": "clear",
+        "madlad": "clear"
+      },
+      "review_status": "failed",
+      "verdicts": {},
+      "error": "ReviewError: Contradictory faithful verdict"
+    },
+    {
+      "id": "A3_ru_en",
+      "kind": "fictional",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "source_sha256": "f16ec203bb9d8b80a0ee9114f7f38015bc6293c21aeb9bd9e8ff76cda7873dc6",
+      "diagnostics": {
+        "baseline": [],
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "baseline",
+      "score_eligible": false,
+      "reference": {
+        "baseline": "clear",
+        "nllb": "wording",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "nllb": "faithful",
+        "baseline": "faithful",
+        "madlad": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "L1_ru_en",
+      "kind": "fictional",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "source_sha256": "b84d2a85267e5befc07a6b1ce2dd22445e872d2111be47dcbb4a5ec944c0e1cf",
+      "diagnostics": {
+        "baseline": [],
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "baseline",
+      "score_eligible": false,
+      "reference": {
+        "baseline": "clear",
+        "nllb": "clear",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "baseline": "faithful",
+        "madlad": "faithful",
+        "nllb": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "L2_ru_en",
+      "kind": "fictional",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "source_sha256": "8b634c08e318e6c23c44eb07bfe6eafe184da327ce48d773b1b11d72610ff12a",
+      "diagnostics": {
+        "baseline": [],
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "baseline",
+      "score_eligible": false,
+      "reference": {
+        "baseline": "clear",
+        "nllb": "clear",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "madlad": "faithful",
+        "baseline": "faithful",
+        "nllb": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "L3_ru_en",
+      "kind": "fictional",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "source_sha256": "0a022c59dbb23270de5b7dc9f45228108041dec08f568a8b3bc6d406e9c11691",
+      "diagnostics": {
+        "baseline": [],
+        "nllb": [],
+        "madlad": [
+          {
+            "code": "literal_html_entity"
+          }
+        ]
+      },
+      "status": "shadow_candidate",
+      "selected": "baseline",
+      "score_eligible": false,
+      "reference": {
+        "baseline": "wording",
+        "nllb": "material",
+        "madlad": "wording"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "nllb": "faithful",
+        "baseline": "faithful",
+        "madlad": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "L5_ru_en",
+      "kind": "fictional",
+      "source_lang": "ru",
+      "target_lang": "en",
+      "source_sha256": "6e404b0c839a17af254d854f938eb8fb85e834eb849888d706b5f3ba94bd4e36",
+      "diagnostics": {
+        "baseline": [],
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "baseline",
+      "score_eligible": false,
+      "reference": {
+        "baseline": "wording",
+        "nllb": "clear",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "baseline": "faithful",
+        "madlad": "faithful",
+        "nllb": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "N1_en_ru",
+      "kind": "fictional",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "source_sha256": "70190a7feef3856b1a6a41fee2f1e8bc2533d6b8761157c7862218b34fcf933e",
+      "diagnostics": {
+        "nllb": [],
+        "madlad": [
+          {
+            "code": "literal_html_entity"
+          }
+        ]
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {
+        "nllb": "clear",
+        "madlad": "wording"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "madlad": "faithful",
+        "nllb": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "N2_en_ru",
+      "kind": "fictional",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "source_sha256": "01977e6e345f74c5ff06477d4a2ef781757917b41e79f5bf89111f31dc9df606",
+      "diagnostics": {
+        "nllb": [],
+        "madlad": [
+          {
+            "code": "literal_html_entity"
+          }
+        ]
+      },
+      "status": "translation_uncertain",
+      "selected": null,
+      "score_eligible": false,
+      "reference": {
+        "nllb": "material",
+        "madlad": "wording"
+      },
+      "review_status": "failed",
+      "verdicts": {},
+      "error": "ReviewError: Translation evidence is not an exact quote"
+    },
+    {
+      "id": "N3_en_ru",
+      "kind": "fictional",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "source_sha256": "8559ad4fa500565e0783a162501aee9a1424059df7b9f432c32e9c006504173b",
+      "diagnostics": {
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {
+        "nllb": "wording",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "madlad": "faithful",
+        "nllb": "material_error"
+      },
+      "error": null
+    },
+    {
+      "id": "D1_en_ru",
+      "kind": "fictional",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "source_sha256": "8dd57db1370deba1e7e49654b0a083c55177e2596a9a2098d07e267352287447",
+      "diagnostics": {
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {
+        "nllb": "material",
+        "madlad": "wording"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "madlad": "faithful",
+        "nllb": "material_error"
+      },
+      "error": null
+    },
+    {
+      "id": "D2_en_ru",
+      "kind": "fictional",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "source_sha256": "1c168174b4ff7b2c3bd9d7befc8ae026c4cfb21bca2b95d4e73ca7049c42f009",
+      "diagnostics": {
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "translation_uncertain",
+      "selected": null,
+      "score_eligible": false,
+      "reference": {
+        "nllb": "wording",
+        "madlad": "clear"
+      },
+      "review_status": "failed",
+      "verdicts": {},
+      "error": "ReviewError: Contradictory faithful verdict"
+    },
+    {
+      "id": "D3_en_ru",
+      "kind": "fictional",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "source_sha256": "cd7dd9bf80f0826e3e34fa2d437777b56e06bc2669131795b110241075a5c80e",
+      "diagnostics": {
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {
+        "nllb": "clear",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "madlad": "faithful",
+        "nllb": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "A1_en_ru",
+      "kind": "fictional",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "source_sha256": "d3b98966d6f8797fb84d99b71948da844eb925f1c583c26cdb515a2bcb8a07ca",
+      "diagnostics": {
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {
+        "nllb": "material",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "nllb": "faithful",
+        "madlad": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "A2_en_ru",
+      "kind": "fictional",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "source_sha256": "937e78a9a731f61b6c2124c3d6deb52564ee3234d968e093a8887fda998389d6",
+      "diagnostics": {
+        "nllb": [
+          {
+            "code": "currency_difference",
+            "source": [
+              "EUR",
+              "USD",
+              "VND"
+            ],
+            "translation": [
+              "EUR",
+              "USD"
+            ]
+          }
+        ],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {
+        "nllb": "material",
+        "madlad": "wording"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "madlad": "faithful",
+        "nllb": "material_error"
+      },
+      "error": null
+    },
+    {
+      "id": "A3_en_ru",
+      "kind": "fictional",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "source_sha256": "77b6067c61f713b0a04f6aa89e345c84181282957b71ed7d6f7ff6e72a381083",
+      "diagnostics": {
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {
+        "nllb": "clear",
+        "madlad": "clear"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "madlad": "faithful",
+        "nllb": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "L1_en_ru",
+      "kind": "fictional",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "source_sha256": "a812f820efb2a3d08648d439c887b9ac930dcba1257382fe09936ebbcc39aef4",
+      "diagnostics": {
+        "nllb": [],
+        "madlad": [
+          {
+            "code": "literal_html_entity"
+          }
+        ]
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {
+        "nllb": "wording",
+        "madlad": "material"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "nllb": "faithful",
+        "madlad": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "L2_en_ru",
+      "kind": "fictional",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "source_sha256": "090890aaafba891121b9c632be6003dd7ca92f3b678e2374f90075bccfa51b29",
+      "diagnostics": {
+        "nllb": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {
+        "nllb": "material",
+        "madlad": "material"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "madlad": "faithful",
+        "nllb": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "L3_en_ru",
+      "kind": "fictional",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "source_sha256": "f02f985795b4d7eac968c7387e5638ec6771b965c3a3ceb42a3db34b67488d35",
+      "diagnostics": {
+        "nllb": [],
+        "madlad": [
+          {
+            "code": "literal_html_entity"
+          }
+        ]
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {
+        "nllb": "wording",
+        "madlad": "wording"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "nllb": "faithful",
+        "madlad": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "L4_en_ru",
+      "kind": "fictional",
+      "source_lang": "en",
+      "target_lang": "ru",
+      "source_sha256": "8f919c31ef39721b82056e33e473f9e30f8fb66f2783c1961487b21fa8506d63",
+      "diagnostics": {
+        "nllb": [],
+        "madlad": [
+          {
+            "code": "literal_html_entity"
+          }
+        ]
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {
+        "nllb": "wording",
+        "madlad": "wording"
+      },
+      "review_status": "completed",
+      "verdicts": {
+        "nllb": "faithful",
+        "madlad": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "PT1",
+      "kind": "publisher_excerpt",
+      "source_lang": "pt",
+      "target_lang": "en",
+      "source_sha256": "6cf3b2b8f89c2b4345099212550024ebb65f4f318f43e58327fef74d404e50f8",
+      "diagnostics": {
+        "baseline": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {},
+      "review_status": "completed",
+      "verdicts": {
+        "madlad": "faithful",
+        "baseline": "material_error"
+      },
+      "error": null
+    },
+    {
+      "id": "PT2",
+      "kind": "publisher_excerpt",
+      "source_lang": "pt",
+      "target_lang": "en",
+      "source_sha256": "00c07620fae7481d73622ef6484bd85edb9b04dfba5e27b1965975f3169280d8",
+      "diagnostics": {
+        "baseline": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "baseline",
+      "score_eligible": false,
+      "reference": {},
+      "review_status": "completed",
+      "verdicts": {
+        "madlad": "faithful",
+        "baseline": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "EL1",
+      "kind": "publisher_excerpt",
+      "source_lang": "el",
+      "target_lang": "en",
+      "source_sha256": "35d269062f52d58c9a7f38afc950af258af17b894d0d8a4adecfc4822b4c782b",
+      "diagnostics": {
+        "baseline": [
+          {
+            "code": "possible_numeric_scale_change"
+          }
+        ],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "madlad",
+      "score_eligible": false,
+      "reference": {},
+      "review_status": "completed",
+      "verdicts": {
+        "madlad": "faithful",
+        "baseline": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "EL2",
+      "kind": "publisher_excerpt",
+      "source_lang": "el",
+      "target_lang": "en",
+      "source_sha256": "f707a3b47bac8effd6af126ed376e788ba0e0c7890d02544f524fe41f2acfd77",
+      "diagnostics": {
+        "baseline": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "baseline",
+      "score_eligible": false,
+      "reference": {},
+      "review_status": "completed",
+      "verdicts": {
+        "baseline": "faithful",
+        "madlad": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "TR1",
+      "kind": "publisher_excerpt",
+      "source_lang": "tr",
+      "target_lang": "en",
+      "source_sha256": "93c537ebca1e3cb034f9e4b727d418d2718dfed24b87da6d219834189fc31f78",
+      "diagnostics": {
+        "baseline": [],
+        "madlad": []
+      },
+      "status": "shadow_candidate",
+      "selected": "baseline",
+      "score_eligible": false,
+      "reference": {},
+      "review_status": "completed",
+      "verdicts": {
+        "baseline": "faithful",
+        "madlad": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "TR2",
+      "kind": "publisher_excerpt",
+      "source_lang": "tr",
+      "target_lang": "en",
+      "source_sha256": "e6c26fc5a5da0fef2f3cde58ae9d22a2808da4478716c9babaf86ad75ff85992",
+      "diagnostics": {
+        "baseline": [
+          {
+            "code": "numeric_surface_difference"
+          }
+        ],
+        "madlad": [
+          {
+            "code": "numeric_surface_difference"
+          }
+        ]
+      },
+      "status": "translation_uncertain",
+      "selected": null,
+      "score_eligible": false,
+      "reference": {},
+      "review_status": "completed",
+      "verdicts": {
+        "baseline": "faithful",
+        "madlad": "faithful"
+      },
+      "error": null
+    },
+    {
+      "id": "VI1",
+      "kind": "publisher_excerpt",
+      "source_lang": "vi",
+      "target_lang": "en",
+      "source_sha256": "355cde1e587c2577d44bcd2267edee4625bd3f55a1843f3c56600c8165afac8f",
+      "diagnostics": {
+        "baseline": [
+          {
+            "code": "numeric_surface_difference"
+          }
+        ],
+        "madlad": [
+          {
+            "code": "numeric_surface_difference"
+          }
+        ]
+      },
+      "status": "translation_uncertain",
+      "selected": null,
+      "score_eligible": false,
+      "reference": {},
+      "review_status": "failed",
+      "verdicts": {},
+      "error": "ReviewError: Contradictory faithful verdict"
+    },
+    {
+      "id": "VI2",
+      "kind": "publisher_excerpt",
+      "source_lang": "vi",
+      "target_lang": "en",
+      "source_sha256": "d9bf38c9b5c66ebf304a9a662edfca538b1df08102f33a039de56cb9a34f880f",
+      "diagnostics": {
+        "baseline": [
+          {
+            "code": "currency_difference",
+            "source": [
+              "VND"
+            ],
+            "translation": [
+              "USD"
+            ]
+          }
+        ],
+        "madlad": [
+          {
+            "code": "currency_difference",
+            "source": [
+              "VND"
+            ],
+            "translation": [
+              "KRW"
+            ]
+          }
+        ]
+      },
+      "status": "translation_uncertain",
+      "selected": null,
+      "score_eligible": false,
+      "reference": {},
+      "review_status": "failed",
+      "verdicts": {},
+      "error": "ReviewError: Contradictory faithful verdict"
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RA automated translation review experiment</title>
+<style>body{font:16px/1.6 system-ui;max-width:1150px;margin:35px auto;padding:20px;color:#203040}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccd5dd;padding:12px;text-align:left;vertical-align:top}section{margin:30px 0}pre{white-space:pre-wrap}small{color:#536578}</style>
+<h1>Automated translation review — shadow evaluation</h1>
+<p><strong>Adoption test failed: keep the live app unchanged.</strong> Of ten previously labelled material errors, the reviewer detected two, missed seven and failed response validation on one. Routing selected two known-bad legal translations. The explanations below are raw reviewer judgments and include incorrect claims; they are not verified corrections. No correction reached a second model check in this run.</p>
+<p>Existing translator and app unchanged. No analyst translation review is required by this experimental routing: unresolved cases are automatically withheld. No result is enabled for live scoring.</p>
+<p>Anonymous candidates; original source supplied, previous assessments withheld. Local reviewer: qwen3:8b, temperature 0. A second call checks proposed corrections, but uses the same model and is not independent evidence. Previous labels are provisional assistant judgments, not expert ground truth. This is a regression evaluation on known examples, not a held-out accuracy estimate.</p>
+<h2>Counts</h2><pre>{
+  &quot;cases&quot;: 34,
+  &quot;completed&quot;: 28,
+  &quot;shadow_candidate&quot;: 27,
+  &quot;selected_madlad&quot;: 15,
+  &quot;prior_nonmaterial&quot;: 55,
+  &quot;nonmaterial_rejected_by_reviewer&quot;: 4,
+  &quot;known_material&quot;: 10,
+  &quot;material_missed&quot;: 7,
+  &quot;selected_baseline&quot;: 12,
+  &quot;failed&quot;: 6,
+  &quot;translation_uncertain&quot;: 7,
+  &quot;material_unassessed&quot;: 1,
+  &quot;material_detected&quot;: 2,
+  &quot;known_bad_selected&quot;: 2,
+  &quot;reviewer_pass_blocked_by_rules&quot;: 3
+}</pre>
+<table><tr><th>Case</th><th>Reviewer verdicts</th><th>Experimental routing</th><th>Diagnostics / errors</th></tr>
+<tr><td>N1_ru_en</td><td>nllb: faithful; baseline: material_error; madlad: faithful</td><td>madlad</td><td>—</td></tr>
+<tr><td>N2_ru_en</td><td>nllb: faithful; madlad: faithful; baseline: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>N3_ru_en</td><td>baseline: faithful; madlad: material_error; nllb: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>D1_ru_en</td><td>nllb: faithful; baseline: material_error; madlad: faithful</td><td>madlad</td><td>—</td></tr>
+<tr><td>D2_ru_en</td><td>failed</td><td>Translation uncertain — withhold</td><td>ReviewError: Contradictory faithful verdict</td></tr>
+<tr><td>D3_ru_en</td><td>madlad: faithful; nllb: faithful; baseline: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>A1_ru_en</td><td>baseline: faithful; madlad: faithful; nllb: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>A2_ru_en</td><td>failed</td><td>Translation uncertain — withhold</td><td>ReviewError: Contradictory faithful verdict</td></tr>
+<tr><td>A3_ru_en</td><td>nllb: faithful; baseline: faithful; madlad: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>L1_ru_en</td><td>baseline: faithful; madlad: faithful; nllb: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>L2_ru_en</td><td>madlad: faithful; baseline: faithful; nllb: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>L3_ru_en</td><td>nllb: faithful; baseline: faithful; madlad: faithful</td><td>baseline</td><td>madlad: literal_html_entity</td></tr>
+<tr><td>L5_ru_en</td><td>baseline: faithful; madlad: faithful; nllb: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>N1_en_ru</td><td>madlad: faithful; nllb: faithful</td><td>madlad</td><td>madlad: literal_html_entity</td></tr>
+<tr><td>N2_en_ru</td><td>failed</td><td>Translation uncertain — withhold</td><td>madlad: literal_html_entity</td></tr>
+<tr><td>N3_en_ru</td><td>madlad: faithful; nllb: material_error</td><td>madlad</td><td>—</td></tr>
+<tr><td>D1_en_ru</td><td>madlad: faithful; nllb: material_error</td><td>madlad</td><td>—</td></tr>
+<tr><td>D2_en_ru</td><td>failed</td><td>Translation uncertain — withhold</td><td>ReviewError: Contradictory faithful verdict</td></tr>
+<tr><td>D3_en_ru</td><td>madlad: faithful; nllb: faithful</td><td>madlad</td><td>—</td></tr>
+<tr><td>A1_en_ru</td><td>nllb: faithful; madlad: faithful</td><td>madlad</td><td>—</td></tr>
+<tr><td>A2_en_ru</td><td>madlad: faithful; nllb: material_error</td><td>madlad</td><td>nllb: currency_difference</td></tr>
+<tr><td>A3_en_ru</td><td>madlad: faithful; nllb: faithful</td><td>madlad</td><td>—</td></tr>
+<tr><td>L1_en_ru</td><td>nllb: faithful; madlad: faithful</td><td>madlad</td><td>madlad: literal_html_entity</td></tr>
+<tr><td>L2_en_ru</td><td>madlad: faithful; nllb: faithful</td><td>madlad</td><td>—</td></tr>
+<tr><td>L3_en_ru</td><td>nllb: faithful; madlad: faithful</td><td>madlad</td><td>madlad: literal_html_entity</td></tr>
+<tr><td>L4_en_ru</td><td>nllb: faithful; madlad: faithful</td><td>madlad</td><td>madlad: literal_html_entity</td></tr>
+<tr><td>PT1</td><td>madlad: faithful; baseline: material_error</td><td>madlad</td><td>—</td></tr>
+<tr><td>PT2</td><td>madlad: faithful; baseline: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>EL1</td><td>madlad: faithful; baseline: faithful</td><td>madlad</td><td>baseline: possible_numeric_scale_change</td></tr>
+<tr><td>EL2</td><td>baseline: faithful; madlad: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>TR1</td><td>baseline: faithful; madlad: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>TR2</td><td>baseline: faithful; madlad: faithful</td><td>Translation uncertain — withhold</td><td>baseline: numeric_surface_difference; madlad: numeric_surface_difference</td></tr>
+<tr><td>VI1</td><td>failed</td><td>Translation uncertain — withhold</td><td>baseline: numeric_surface_difference; madlad: numeric_surface_difference</td></tr>
+<tr><td>VI2</td><td>failed</td><td>Translation uncertain — withhold</td><td>baseline: currency_difference; madlad: currency_difference</td></tr>
+</table><p>Publisher excerpts and their quotations are omitted here to avoid duplicating source material. See the earlier side-by-side reports and their original links. Local JSON contains the review audit trail.</p>
+<section><h2>N1_ru_en</h2>
+<p><b>baseline / material</b>: The original states that Volna Industries &#x27;does not deny&#x27; default, which is a direct negation of denial. The translation uses &#x27;has not denied&#x27;, which is grammatically correct but does not fully capture the nuance of the original statement. The original implies that the company acknowledges the default, while the translation suggests that the company has not denied it, which is a subtle but material difference.</p>
+<p><b>baseline / material</b>: The original states that Volna Industries &#x27;denies filing for bankruptcy&#x27;, which is a direct denial of the action. The translation uses &#x27;has denied filing for bankruptcy&#x27;, which is grammatically correct but does not fully capture the nuance of the original statement. The original implies that the company denies the action, while the translation suggests that the company has denied it, which is a subtle but material difference.</p>
+</section>
+<section><h2>N2_ru_en</h2>
+</section>
+<section><h2>N3_ru_en</h2>
+<p><b>madlad / material</b>: The original text uses &#x27;потребовать досрочного погашения кредита&#x27; which translates to &#x27;demand early repayment of the loan&#x27;, not &#x27;claim&#x27;. The term &#x27;claim&#x27; is not equivalent to &#x27;demand&#x27; in this legal context.</p>
+</section>
+<section><h2>D1_ru_en</h2>
+<p><b>baseline / material</b>: The original text refers to &#x27;соглашение о продлении срока погашения&#x27; which translates to &#x27;agreement to extend the repayment period&#x27;, not &#x27;maturity&#x27;. &#x27;Maturity&#x27; is a legal term that refers to the final payment, while &#x27;repayment period&#x27; refers to the entire duration of repayment.</p>
+</section>
+<section><h2>D2_ru_en</h2>
+</section>
+<section><h2>D3_ru_en</h2>
+</section>
+<section><h2>A1_ru_en</h2>
+</section>
+<section><h2>A2_ru_en</h2>
+</section>
+<section><h2>A3_ru_en</h2>
+</section>
+<section><h2>L1_ru_en</h2>
+</section>
+<section><h2>L2_ru_en</h2>
+</section>
+<section><h2>L3_ru_en</h2>
+</section>
+<section><h2>L5_ru_en</h2>
+</section>
+<section><h2>N1_en_ru</h2>
+</section>
+<section><h2>N2_en_ru</h2>
+</section>
+<section><h2>N3_en_ru</h2>
+<p><b>nllb / material</b>: The company name &#x27;Volna Industries&#x27; is transliterated as &#x27;Volna Industries&#x27; in the translation, which is not a standard transliteration for the Russian language. The correct transliteration would be &#x27;Волна Индастриз&#x27;.</p>
+<p><b>nllb / material</b>: The translation uses &#x27;кредита&#x27; (credit) instead of &#x27;займа&#x27; (loan), which is a material error as the source refers to a loan, not a credit.</p>
+</section>
+<section><h2>D1_en_ru</h2>
+<p><b>nllb / material</b>: The term &#x27;security interest&#x27; is a legal term that refers to a secured claim, while &#x27;guarantee&#x27; is a different legal concept. The translation of &#x27;security interest&#x27; as &#x27;гарантии&#x27; is incorrect and changes the legal meaning.</p>
+</section>
+<section><h2>D2_en_ru</h2>
+</section>
+<section><h2>D3_en_ru</h2>
+</section>
+<section><h2>A1_en_ru</h2>
+</section>
+<section><h2>A2_en_ru</h2>
+<p><b>nllb / material</b>: The translation incorrectly uses &#x27;венг&#x27; (which means &#x27;vnd&#x27; in Russian) for VND, which is the Vietnamese Dong. The correct translation for VND is &#x27;донг&#x27;.</p>
+</section>
+<section><h2>A3_en_ru</h2>
+</section>
+<section><h2>L1_en_ru</h2>
+</section>
+<section><h2>L2_en_ru</h2>
+</section>
+<section><h2>L3_en_ru</h2>
+</section>
+<section><h2>L4_en_ru</h2>
+</section>
+</html>

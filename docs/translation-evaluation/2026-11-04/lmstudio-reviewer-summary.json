@@ -1,0 +1,347 @@
+{
+  "models": {
+    "Qwen3 8B · Q4_K_M": {
+      "identity": {
+        "corpus_sha256": "d3d642598c46bf46838234ed21bb96942e41243f9c87de61a422d8445984f8ea",
+        "prompt_sha256": "b43d8f6bdd9a61f0ff2e01f52a59b9c2c4fb36ca447ca7740d0eec0896f9b95f",
+        "implementation_sha256": "f4c2f9b65aa7bd6ba403bcd7fba5a2d4bfce3e8db7d8b7694e852a7706a403d2",
+        "model": "qwen3:8b",
+        "rules_only": false,
+        "model_identity": {
+          "name": "qwen3:8b",
+          "digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+          "details": {
+            "parent_model": "",
+            "format": "gguf",
+            "family": "qwen3",
+            "families": [
+              "qwen3"
+            ],
+            "parameter_size": "8.2B",
+            "quantization_level": "Q4_K_M",
+            "context_length": 40960,
+            "embedding_length": 4096,
+            "runner": "ggml"
+          }
+        }
+      },
+      "counts": {
+        "cases": 34,
+        "completed": 28,
+        "shadow_candidate": 27,
+        "selected_madlad": 15,
+        "prior_nonmaterial": 55,
+        "nonmaterial_rejected_by_reviewer": 4,
+        "known_material": 10,
+        "material_missed": 7,
+        "selected_baseline": 12,
+        "failed": 6,
+        "translation_uncertain": 7,
+        "material_unassessed": 1,
+        "material_detected": 2,
+        "known_bad_selected": 2,
+        "reviewer_pass_blocked_by_rules": 3
+      },
+      "seconds": 145.74,
+      "correction_checks": 0
+    },
+    "Qwen3.8 27B · 5-bit": {
+      "identity": {
+        "corpus_sha256": "d3d642598c46bf46838234ed21bb96942e41243f9c87de61a422d8445984f8ea",
+        "prompt_sha256": "b43d8f6bdd9a61f0ff2e01f52a59b9c2c4fb36ca447ca7740d0eec0896f9b95f",
+        "implementation_sha256": "765b3778c77ed5cc6310a6ad04f4f54844570c9c138d77d12ebfb332a648f618",
+        "model": "ra-review-qwen",
+        "rules_only": false,
+        "provider": "lmstudio",
+        "model_identity": {
+          "id": "ra-review-qwen",
+          "object": "model",
+          "type": "vlm",
+          "publisher": "qwen",
+          "arch": "qwen3_5",
+          "compatibility_type": "mlx",
+          "quantization": "5bit",
+          "state": "loaded",
+          "max_context_length": 262144,
+          "loaded_context_length": 16384,
+          "capabilities": [
+            "tool_use"
+          ]
+        }
+      },
+      "counts": {
+        "cases": 34,
+        "failed": 4,
+        "translation_uncertain": 6,
+        "prior_nonmaterial": 55,
+        "known_material": 10,
+        "material_unassessed": 4,
+        "completed": 30,
+        "shadow_candidate": 28,
+        "selected_baseline": 12,
+        "selected_madlad": 15,
+        "material_missed": 5,
+        "material_marked_uncertain": 1,
+        "reviewer_pass_blocked_by_rules": 3,
+        "known_bad_selected": 1,
+        "selected_correction": 1
+      },
+      "seconds": 384.61,
+      "correction_checks": 2
+    },
+    "Gemma 4 31B QAT · Q4_0": {
+      "identity": {
+        "corpus_sha256": "d3d642598c46bf46838234ed21bb96942e41243f9c87de61a422d8445984f8ea",
+        "prompt_sha256": "b43d8f6bdd9a61f0ff2e01f52a59b9c2c4fb36ca447ca7740d0eec0896f9b95f",
+        "implementation_sha256": "765b3778c77ed5cc6310a6ad04f4f54844570c9c138d77d12ebfb332a648f618",
+        "model": "ra-review-gemma",
+        "rules_only": false,
+        "provider": "lmstudio",
+        "model_identity": {
+          "id": "ra-review-gemma",
+          "object": "model",
+          "type": "vlm",
+          "publisher": "google",
+          "arch": "gemma4",
+          "compatibility_type": "gguf",
+          "quantization": "Q4_0",
+          "state": "loaded",
+          "max_context_length": 262144,
+          "loaded_context_length": 16384,
+          "capabilities": [
+            "tool_use"
+          ]
+        }
+      },
+      "counts": {
+        "cases": 34,
+        "completed": 34,
+        "shadow_candidate": 30,
+        "selected_baseline": 13,
+        "prior_nonmaterial": 55,
+        "known_material": 10,
+        "material_marked_uncertain": 5,
+        "material_missed": 2,
+        "selected_madlad": 16,
+        "nonmaterial_rejected_by_reviewer": 1,
+        "material_detected": 3,
+        "translation_uncertain": 4,
+        "reviewer_pass_blocked_by_rules": 1,
+        "selected_correction": 1
+      },
+      "seconds": 548.02,
+      "correction_checks": 2
+    }
+  },
+  "joint": {
+    "selected": 26,
+    "withheld": 8,
+    "known_bad_selected": 0
+  },
+  "joint_cases": [
+    {
+      "id": "N1_ru_en",
+      "selected": null,
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "N2_ru_en",
+      "selected": "baseline",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "N3_ru_en",
+      "selected": "baseline",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "D1_ru_en",
+      "selected": null,
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "D2_ru_en",
+      "selected": "baseline",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "D3_ru_en",
+      "selected": "baseline",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "A1_ru_en",
+      "selected": "baseline",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "A2_ru_en",
+      "selected": "baseline",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "A3_ru_en",
+      "selected": "baseline",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "L1_ru_en",
+      "selected": "baseline",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "L2_ru_en",
+      "selected": "baseline",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "L3_ru_en",
+      "selected": null,
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "L5_ru_en",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "N1_en_ru",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "N2_en_ru",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "N3_en_ru",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "D1_en_ru",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "D2_en_ru",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "D3_en_ru",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "A1_en_ru",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "A2_en_ru",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "A3_en_ru",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "L1_en_ru",
+      "selected": null,
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "L2_en_ru",
+      "selected": null,
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "L3_en_ru",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "L4_en_ru",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "PT1",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "PT2",
+      "selected": "baseline",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "EL1",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "EL2",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "TR1",
+      "selected": "madlad",
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "TR2",
+      "selected": null,
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "VI1",
+      "selected": null,
+      "score_eligible": false,
+      "known_bad_selected": false
+    },
+    {
+      "id": "VI2",
+      "selected": null,
+      "score_eligible": false,
+      "known_bad_selected": false
+    }
+  ]
+}

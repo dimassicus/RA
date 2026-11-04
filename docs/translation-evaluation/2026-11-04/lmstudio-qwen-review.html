@@ -1,0 +1,113 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RA automated translation review experiment</title>
+<style>body{font:16px/1.6 system-ui;max-width:1150px;margin:35px auto;padding:20px;color:#203040}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccd5dd;padding:12px;text-align:left;vertical-align:top}section{margin:30px 0}pre{white-space:pre-wrap}small{color:#536578}</style>
+<h1>Automated translation review — shadow evaluation</h1>
+<p>Existing translator and app unchanged. No analyst translation review is required by this experimental routing: unresolved cases are automatically withheld. No result is enabled for live scoring.</p>
+<p>Anonymous candidates; original source supplied, previous assessments withheld. Local reviewer: ra-review-qwen, temperature 0. A second call checks proposed corrections, but uses the same model and is not independent evidence. Previous labels are provisional assistant judgments, not expert ground truth. This is a regression evaluation on known examples, not a held-out accuracy estimate.</p>
+<h2>Counts</h2><pre>{
+  &quot;cases&quot;: 34,
+  &quot;failed&quot;: 4,
+  &quot;translation_uncertain&quot;: 6,
+  &quot;prior_nonmaterial&quot;: 55,
+  &quot;known_material&quot;: 10,
+  &quot;material_unassessed&quot;: 4,
+  &quot;completed&quot;: 30,
+  &quot;shadow_candidate&quot;: 28,
+  &quot;selected_baseline&quot;: 12,
+  &quot;selected_madlad&quot;: 15,
+  &quot;material_missed&quot;: 5,
+  &quot;material_marked_uncertain&quot;: 1,
+  &quot;reviewer_pass_blocked_by_rules&quot;: 3,
+  &quot;known_bad_selected&quot;: 1,
+  &quot;selected_correction&quot;: 1
+}</pre>
+<table><tr><th>Case</th><th>Reviewer verdicts</th><th>Experimental routing</th><th>Diagnostics / errors</th></tr>
+<tr><td>N1_ru_en</td><td>failed</td><td>Translation uncertain — withhold</td><td>ReviewError: Contradictory faithful verdict</td></tr>
+<tr><td>N2_ru_en</td><td>nllb: faithful; madlad: faithful; baseline: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>N3_ru_en</td><td>baseline: faithful; madlad: faithful; nllb: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>D1_ru_en</td><td>failed</td><td>Translation uncertain — withhold</td><td>ReviewError: Contradictory faithful verdict</td></tr>
+<tr><td>D2_ru_en</td><td>baseline: faithful; madlad: faithful; nllb: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>D3_ru_en</td><td>madlad: faithful; nllb: faithful; baseline: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>A1_ru_en</td><td>baseline: faithful; madlad: faithful; nllb: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>A2_ru_en</td><td>madlad: faithful; nllb: faithful; baseline: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>A3_ru_en</td><td>nllb: faithful; baseline: faithful; madlad: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>L1_ru_en</td><td>baseline: faithful; madlad: faithful; nllb: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>L2_ru_en</td><td>madlad: faithful; baseline: faithful; nllb: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>L3_ru_en</td><td>failed</td><td>Translation uncertain — withhold</td><td>madlad: literal_html_entity</td></tr>
+<tr><td>L5_ru_en</td><td>baseline: faithful; madlad: faithful; nllb: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>N1_en_ru</td><td>madlad: faithful; nllb: faithful</td><td>madlad</td><td>madlad: literal_html_entity</td></tr>
+<tr><td>N2_en_ru</td><td>nllb: faithful; madlad: faithful</td><td>madlad</td><td>madlad: literal_html_entity</td></tr>
+<tr><td>N3_en_ru</td><td>madlad: faithful; nllb: faithful</td><td>madlad</td><td>—</td></tr>
+<tr><td>D1_en_ru</td><td>madlad: faithful; nllb: uncertain</td><td>madlad</td><td>—</td></tr>
+<tr><td>D2_en_ru</td><td>nllb: faithful; madlad: faithful</td><td>madlad</td><td>—</td></tr>
+<tr><td>D3_en_ru</td><td>madlad: faithful; nllb: faithful</td><td>madlad</td><td>—</td></tr>
+<tr><td>A1_en_ru</td><td>nllb: faithful; madlad: faithful</td><td>madlad</td><td>—</td></tr>
+<tr><td>A2_en_ru</td><td>madlad: faithful; nllb: faithful</td><td>madlad</td><td>nllb: currency_difference</td></tr>
+<tr><td>A3_en_ru</td><td>madlad: faithful; nllb: faithful</td><td>madlad</td><td>—</td></tr>
+<tr><td>L1_en_ru</td><td>failed</td><td>Translation uncertain — withhold</td><td>madlad: literal_html_entity</td></tr>
+<tr><td>L2_en_ru</td><td>madlad: faithful; nllb: faithful</td><td>madlad</td><td>—</td></tr>
+<tr><td>L3_en_ru</td><td>nllb: faithful; madlad: faithful</td><td>madlad</td><td>madlad: literal_html_entity</td></tr>
+<tr><td>L4_en_ru</td><td>nllb: faithful; madlad: faithful</td><td>madlad</td><td>madlad: literal_html_entity</td></tr>
+<tr><td>PT1</td><td>madlad: faithful; baseline: uncertain</td><td>madlad</td><td>—</td></tr>
+<tr><td>PT2</td><td>madlad: faithful; baseline: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>EL1</td><td>madlad: faithful; baseline: faithful</td><td>madlad</td><td>baseline: possible_numeric_scale_change</td></tr>
+<tr><td>EL2</td><td>baseline: faithful; madlad: faithful</td><td>baseline</td><td>—</td></tr>
+<tr><td>TR1</td><td>baseline: uncertain; madlad: faithful</td><td>madlad</td><td>—</td></tr>
+<tr><td>TR2</td><td>baseline: uncertain; madlad: faithful</td><td>Translation uncertain — withhold</td><td>baseline: numeric_surface_difference; madlad: numeric_surface_difference</td></tr>
+<tr><td>VI1</td><td>baseline: uncertain; madlad: uncertain</td><td>Translation uncertain — withhold</td><td>baseline: numeric_surface_difference; madlad: numeric_surface_difference</td></tr>
+<tr><td>VI2</td><td>baseline: uncertain; madlad: uncertain</td><td>correction</td><td>baseline: currency_difference; madlad: currency_difference</td></tr>
+</table><p>Publisher excerpts and their quotations are omitted here to avoid duplicating source material. See the earlier side-by-side reports and their original links. Local JSON contains the review audit trail.</p>
+<section><h2>N1_ru_en</h2>
+</section>
+<section><h2>N2_ru_en</h2>
+</section>
+<section><h2>N3_ru_en</h2>
+</section>
+<section><h2>D1_ru_en</h2>
+</section>
+<section><h2>D2_ru_en</h2>
+</section>
+<section><h2>D3_ru_en</h2>
+</section>
+<section><h2>A1_ru_en</h2>
+</section>
+<section><h2>A2_ru_en</h2>
+</section>
+<section><h2>A3_ru_en</h2>
+</section>
+<section><h2>L1_ru_en</h2>
+</section>
+<section><h2>L2_ru_en</h2>
+</section>
+<section><h2>L3_ru_en</h2>
+</section>
+<section><h2>L5_ru_en</h2>
+</section>
+<section><h2>N1_en_ru</h2>
+</section>
+<section><h2>N2_en_ru</h2>
+</section>
+<section><h2>N3_en_ru</h2>
+</section>
+<section><h2>D1_en_ru</h2>
+<p><b>nllb / material</b>: The source specifies a &#x27;security interest&#x27; (обеспечительный интерес), which is a distinct legal concept from a &#x27;guarantee&#x27; (гарантия). Translating it as &#x27;guarantee&#x27; changes the legal nature of the condition for the agreement to take effect.</p>
+</section>
+<section><h2>D2_en_ru</h2>
+</section>
+<section><h2>D3_en_ru</h2>
+</section>
+<section><h2>A1_en_ru</h2>
+</section>
+<section><h2>A2_en_ru</h2>
+</section>
+<section><h2>A3_en_ru</h2>
+</section>
+<section><h2>L1_en_ru</h2>
+</section>
+<section><h2>L2_en_ru</h2>
+</section>
+<section><h2>L3_en_ru</h2>
+</section>
+<section><h2>L4_en_ru</h2>
+</section>
+</html>
