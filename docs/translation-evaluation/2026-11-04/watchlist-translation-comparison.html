@@ -1,0 +1,66 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RA — translation comparison for review</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5f7;color:#172333;font:16px/1.65 system-ui,sans-serif}
+main{max-width:1500px;margin:auto;padding:36px}h1{font-size:32px;line-height:1.2;margin:10px 0}h2{font-size:23px;margin-bottom:6px}
+.eyebrow{font-size:13px;text-transform:uppercase;letter-spacing:.13em;color:#526b80}.intro{max-width:940px;color:#42566a}
+section{background:white;border:1px solid #dbe2e9;border-radius:12px;padding:25px;margin-top:28px}
+.meta,.method{color:#526477;font-size:14px}a{color:#145d9e}.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;table-layout:fixed;min-width:850px;margin:22px 0}
+th,td{border:1px solid #dbe2e9;padding:18px;vertical-align:top;overflow-wrap:break-word}th{background:#eaf0f5;text-align:left;font-size:15px}
+td{font-size:17px;line-height:1.75}.unavailable{background:#f7f8fa;color:#697889;font-size:15px}
+.segment{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#697889;margin-bottom:8px}
+details{margin-top:20px;border-top:1px solid #dbe2e9;padding-top:15px}summary{cursor:pointer;font-weight:600}
+footer{margin-top:28px;color:#526477;font-size:14px}@media(max-width:700px){main{padding:16px}section{padding:16px}h1{font-size:26px}}
+@media print{@page{size:A4 landscape;margin:12mm}body{background:white}main{padding:0}section{break-inside:avoid}table{min-width:0}td{font-size:12px}th,td{padding:10px}details{display:none}}
+</style></head><body><main><div class="eyebrow">RA / Human translation review / 4 November 2026</div>
+<h1>Two saved articles, three translators</h1>
+<p class="intro">Short excerpts translated locally, sentence by sentence. Columns show actual model outputs without corrections. These are excerpts, not full-article translations; open each publisher link to compare with the original context. Limited excerpts are reproduced for copyright reasons.</p>
+<p class="method">The existing app supports translation into English only. Its Russian column is therefore unavailable. NLLB and MADLAD ran on CPU using CTranslate2 INT8, four threads and beam size four. The existing translator retained its app settings and company-name protection. The live app was not changed.</p>
+<section><h2>1. Balton Trading Asia — Russian → English</h2>
+<div class="meta">Spot · 1 April 2024 · <a href="https://www.spot.uz/ru/2024/04/01/warehouse-2023/" target="_blank" rel="noopener noreferrer">Read original article</a></div>
+<p class="method">Excerpt location: The two warehouse-project sentences near the end, followed by the later sentence about launch timing. Non-contiguous excerpts.</p><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator · Argos</th>
+<th scope="col">Meta NLLB · 1.3B INT8</th>
+<th scope="col">Google MADLAD · 3B INT8</th>
+</tr></thead><tbody>
+<tr>
+<td lang="en"><span class="segment">Excerpt 1</span>On the territory of the transport and logistics center Highway Logistics Center will open a warehouse area of 30 thousand square meters.</td>
+<td lang="en"><span class="segment">Excerpt 1</span>On the territory of the Highway Logistics Center , a warehouse with an area of 30 thousand square meters will be opened .</td>
+<td lang="en"><span class="segment">Excerpt 1</span>On the territory of the transport and logistics center Highway Logistics Center will open a warehouse with an area of 30 thousand square meters.</td>
+</tr>
+<tr>
+<td lang="en"><span class="segment">Excerpt 2</span>Also, the distribution company Balton Trading Asia will build a class A warehouse with a total area of 20 thousand square meters.</td>
+<td lang="en"><span class="segment">Excerpt 2</span>Also , the distribution company Balton Trading Asia will build an A-class warehouse with a total area of 20 thousand square meters .</td>
+<td lang="en"><span class="segment">Excerpt 2</span>Also, the distributor company Balton Trading Asia will build a class A warehouse with a total area of 20,000 square meters.</td>
+</tr>
+<tr>
+<td lang="en"><span class="segment">Excerpt 3</span>The exact launch date is not given.</td>
+<td lang="en"><span class="segment">Excerpt 3</span>The exact launch dates are unknown.</td>
+<td lang="en"><span class="segment">Excerpt 3</span>Exact launch dates are not given.</td>
+</tr>
+</tbody></table></div>
+<details><summary>Observations — open after your review</summary><p>Figures survive; NLLB changes nondisclosure into uncertainty. Check company attribution and future tense.</p></details>
+</section>
+<section><h2>2. ElvalHalcor — English → Russian</h2>
+<div class="meta">Naftemporiki · 10 July 2026 · <a href="https://www.naftemporiki.gr/english/2135933/elvalhalcors-revised-2026-2030-investment-plan-gathers-pace/" target="_blank" rel="noopener noreferrer">Read original article</a></div>
+<p class="method">Excerpt location: The two-sentence capital-increase paragraph immediately before the four investment pillars.</p><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator · Argos</th>
+<th scope="col">Meta NLLB · 1.3B INT8</th>
+<th scope="col">Google MADLAD · 3B INT8</th>
+</tr></thead><tbody>
+<tr>
+<td class="unavailable" rowspan="2">English → Russian is not supported by the current app translator. No substitute translation has been generated.</td>
+<td lang="ru"><span class="segment">Excerpt 1</span>Между тем, внеочередное общее собрание акционеров одобрило увеличение уставного капитала до 300 миллионов евро для поддержки чисто производственных инвестиций плана на общую сумму 455 миллионов евро.</td>
+<td lang="ru"><span class="segment">Excerpt 1</span>Тем временем, внеочередное общее собрание акционеров утвердило увеличение акционерного капитала до 300 миллионов евро для поддержки чисто производственных инвестиций плана на общую сумму 455 миллионов евро.</td>
+</tr>
+<tr>
+<td lang="ru"><span class="segment">Excerpt 2</span>Увеличение капитала будет осуществлено посредством публичного предложения в Греции и международного процесса создания книг за рубежом посредством частного размещения, при этом существующие акционеры будут освобождены от преимущественных прав.</td>
+<td lang="ru"><span class="segment">Excerpt 2</span>Увеличение капитала будет осуществлено путем публичного размещения акций в Греции и международного процесса составления букинга за рубежом путем частного размещения, при этом существующие преференциальные права акционеров будут отменены.</td>
+</tr>
+</tbody></table></div>
+<details><summary>Observations — open after your review</summary><p>Both mistranslate bookbuilding. NLLB misstates the waiver; MADLAD conveys cancellation but uses imprecise rights terminology.</p></details>
+</section>
+<footer><p>Review each column for factual fidelity and fluency. Suggested verdicts: acceptable / minor wording issue / material error. Mention the company, model, excerpt number and wording you would change.</p>
+<p>This small comparison does not establish a winning model or justify switching the app. It does not test date translation. Human review is pending. All translation inference was offline; no GNews or TheNewsAPI requests were made.</p></footer></main></body></html>

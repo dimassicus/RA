@@ -1,0 +1,2812 @@
+{
+  "description": "Fictional translation evaluation; assistant observations are provisional.",
+  "reports": {
+    "baseline": {
+      "model": "baseline",
+      "corpus_sha256": "9d6abcaa603d96edfa1e51ecd41e178a80d91372116a70c5566c7cd8605c62c5",
+      "load_seconds": 0.015512624999246327,
+      "compute_type": "app-default",
+      "results": [
+        {
+          "id": "N1_ru_en",
+          "category": "Negation",
+          "title": "Denied filing; admitted default",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Volna Industries не отрицает, что допустила дефолт, но отрицает, что подала заявление о банкротстве.",
+            "Её дочерняя компания не является заёмщиком."
+          ],
+          "checks": [
+            "No denial of default; bankruptcy filing is denied.",
+            "The subsidiary is not the borrower."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries не отрицает, что допустила дефолт, но отрицает, что подала заявление о банкротстве.",
+              "text": "Volna Industries has not denied defaulting, but has denied filing for bankruptcy.",
+              "seconds": 0.19487974999719881,
+              "engine": "Argos offline model"
+            },
+            {
+              "source": "Её дочерняя компания не является заёмщиком.",
+              "text": "Its subsidiary is not a borrower.",
+              "seconds": 0.045623166999575915,
+              "engine": "Argos offline model"
+            }
+          ]
+        },
+        {
+          "id": "N1_en_ru",
+          "category": "Negation",
+          "title": "Denied filing; admitted default",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries does not deny that it defaulted, but denies that it filed for bankruptcy.",
+            "Its subsidiary is not the borrower."
+          ],
+          "checks": [
+            "No denial of default; bankruptcy filing is denied.",
+            "The subsidiary is not the borrower."
+          ],
+          "status": "unsupported_direction",
+          "outputs": []
+        },
+        {
+          "id": "N2_ru_en",
+          "category": "Negation",
+          "title": "Failure to pay versus absence of failure",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Volna Industries не выплатила проценты 2 ноября 2026 года.",
+            "При этом Volna Industries не допустила просрочки по заработной плате."
+          ],
+          "checks": [
+            "Interest was unpaid on 2 November 2026.",
+            "Wages were paid on time; the two obligations must remain distinct."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries не выплатила проценты 2 ноября 2026 года.",
+              "text": "Volna Industries did not pay interest on November 2, 2026.",
+              "seconds": 0.09318591700139223,
+              "engine": "Argos offline model"
+            },
+            {
+              "source": "При этом Volna Industries не допустила просрочки по заработной плате.",
+              "text": "At the same time, Volna Industries did not allow delays in wages.",
+              "seconds": 0.09607604200209607,
+              "engine": "Argos offline model"
+            }
+          ]
+        },
+        {
+          "id": "N2_en_ru",
+          "category": "Negation",
+          "title": "Failure to pay versus absence of failure",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries did not pay interest on 2 November 2026.",
+            "However, Volna Industries did not fail to pay wages on time."
+          ],
+          "checks": [
+            "Interest was unpaid on 2 November 2026.",
+            "Wages were paid on time; the two obligations must remain distinct."
+          ],
+          "status": "unsupported_direction",
+          "outputs": []
+        },
+        {
+          "id": "N3_ru_en",
+          "category": "Negation",
+          "title": "Conditional acceleration; no demand yet",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Если Volna Industries не погасит задолженность до 12 ноября 2026 года, банк сможет потребовать досрочного погашения кредита.",
+            "Банк пока не предъявил такое требование и не согласился продлить срок."
+          ],
+          "checks": [
+            "Acceleration is conditional, not already demanded.",
+            "Deadline: 12 November 2026; no extension has been agreed."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Если Volna Industries не погасит задолженность до 12 ноября 2026 года, банк сможет потребовать досрочного погашения кредита.",
+              "text": "If Volna Industries does not repay the debt by November 12, 2026, the bank will be able to demand early repayment of the loan.",
+              "seconds": 0.1603051249985583,
+              "engine": "Argos offline model"
+            },
+            {
+              "source": "Банк пока не предъявил такое требование и не согласился продлить срок.",
+              "text": "The bank has not yet made such a request and has not agreed to extend the deadline.",
+              "seconds": 0.08020391599711729,
+              "engine": "Argos offline model"
+            }
+          ]
+        },
+        {
+          "id": "N3_en_ru",
+          "category": "Negation",
+          "title": "Conditional acceleration; no demand yet",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "If Volna Industries does not repay the overdue amount by 12 November 2026, the bank may demand early repayment of the loan.",
+            "The bank has not yet made that demand and has not agreed to an extension."
+          ],
+          "checks": [
+            "Acceleration is conditional, not already demanded.",
+            "Deadline: 12 November 2026; no extension has been agreed."
+          ],
+          "status": "unsupported_direction",
+          "outputs": []
+        },
+        {
+          "id": "D1_ru_en",
+          "category": "Dates",
+          "title": "Signing, original maturity and revised maturity",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "1 ноября 2026 года Volna Industries подписала соглашение о продлении срока погашения с 30 июня 2027 года до 30 июня 2030 года.",
+            "Соглашение вступит в силу только после регистрации залога; регистрация ещё не завершена."
+          ],
+          "checks": [
+            "Signing: 1 November 2026; old maturity: 30 June 2027; proposed new maturity: 30 June 2030.",
+            "The extension is not yet effective because registration is incomplete."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "1 ноября 2026 года Volna Industries подписала соглашение о продлении срока погашения с 30 июня 2027 года до 30 июня 2030 года.",
+              "text": "On November 1, 2026, Volna Industries signed an agreement to extend the maturity from June 30, 2027 to June 30, 2030.",
+              "seconds": 0.15219695799896726,
+              "engine": "Argos offline model"
+            },
+            {
+              "source": "Соглашение вступит в силу только после регистрации залога; регистрация ещё не завершена.",
+              "text": "The agreement will only enter into force after registration of the pledge; registration is not yet completed.",
+              "seconds": 0.09515133300010348,
+              "engine": "Argos offline model"
+            }
+          ]
+        },
+        {
+          "id": "D1_en_ru",
+          "category": "Dates",
+          "title": "Signing, original maturity and revised maturity",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "On 1 November 2026, Volna Industries signed an agreement to extend maturity from 30 June 2027 to 30 June 2030.",
+            "The agreement takes effect only after the security interest is registered; registration is not yet complete."
+          ],
+          "checks": [
+            "Signing: 1 November 2026; old maturity: 30 June 2027; proposed new maturity: 30 June 2030.",
+            "The extension is not yet effective because registration is incomplete."
+          ],
+          "status": "unsupported_direction",
+          "outputs": []
+        },
+        {
+          "id": "D2_ru_en",
+          "category": "Dates",
+          "title": "Numeric date with an explicit locale",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "В уведомлении Volna Industries дата 03/04/2027 записана в формате день/месяц/год и означает 3 апреля 2027 года, а не 4 марта.",
+            "Платёж за 31 декабря 2026 года остаётся просроченным."
+          ],
+          "checks": [
+            "03/04/2027 means 3 April, explicitly not 4 March.",
+            "The separate overdue payment was due on 31 December 2026."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "В уведомлении Volna Industries дата 03/04/2027 записана в формате день/месяц/год и означает 3 апреля 2027 года, а не 4 марта.",
+              "text": "In the Volna Industries notification, the date 03/04/2027 is written in the day/month/year format and means April 3, 2027, not March 4.",
+              "seconds": 0.1976578329995391,
+              "engine": "Argos offline model"
+            },
+            {
+              "source": "Платёж за 31 декабря 2026 года остаётся просроченным.",
+              "text": "Payment for December 31, 2026 remains overdue.",
+              "seconds": 0.06038729099964257,
+              "engine": "Argos offline model"
+            }
+          ]
+        },
+        {
+          "id": "D2_en_ru",
+          "category": "Dates",
+          "title": "Numeric date with an explicit locale",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "In the Volna Industries notice, 03/04/2027 is written in day/month/year format and means 3 April 2027, not 4 March.",
+            "The payment due on 31 December 2026 remains overdue."
+          ],
+          "checks": [
+            "03/04/2027 means 3 April, explicitly not 4 March.",
+            "The separate overdue payment was due on 31 December 2026."
+          ],
+          "status": "unsupported_direction",
+          "outputs": []
+        },
+        {
+          "id": "D3_ru_en",
+          "category": "Dates",
+          "title": "Leap day and a rescheduled hearing",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Слушание по делу Volna Industries перенесено с 29 февраля 2028 года на 1 марта 2028 года.",
+            "Срок подачи возражений истекает 28 февраля 2028 года в 17:00 по московскому времени."
+          ],
+          "checks": [
+            "Old hearing: 29 February 2028; new hearing: 1 March 2028.",
+            "Objections: 28 February 2028, 17:00 Moscow time; do not merge with the hearing."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Слушание по делу Volna Industries перенесено с 29 февраля 2028 года на 1 марта 2028 года.",
+              "text": "The hearing in the Volna Industries case was postponed from February 29, 2028 to March 1, 2028.",
+              "seconds": 0.1287979999979143,
+              "engine": "Argos offline model"
+            },
+            {
+              "source": "Срок подачи возражений истекает 28 февраля 2028 года в 17:00 по московскому времени.",
+              "text": "The deadline for filing objections expires on February 28, 2028 at 17:00 Moscow time.",
+              "seconds": 0.09562016600102652,
+              "engine": "Argos offline model"
+            }
+          ]
+        },
+        {
+          "id": "D3_en_ru",
+          "category": "Dates",
+          "title": "Leap day and a rescheduled hearing",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The hearing in the Volna Industries case has been moved from 29 February 2028 to 1 March 2028.",
+            "The deadline for objections is 28 February 2028 at 17:00 Moscow time."
+          ],
+          "checks": [
+            "Old hearing: 29 February 2028; new hearing: 1 March 2028.",
+            "Objections: 28 February 2028, 17:00 Moscow time; do not merge with the hearing."
+          ],
+          "status": "unsupported_direction",
+          "outputs": []
+        },
+        {
+          "id": "A1_ru_en",
+          "category": "Debt amounts",
+          "title": "Coupon, principal and a limited guarantee",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Volna Industries не выплатила купон в размере 125,5 млн рублей по долгу в размере 2 млрд рублей.",
+            "Гарантия покрывает только 40% основной суммы долга и не распространяется на проценты."
+          ],
+          "checks": [
+            "Unpaid coupon: RUB 125.5 million; principal/debt: RUB 2 billion.",
+            "Guarantee: only 40% of principal, excluding interest."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries не выплатила купон в размере 125,5 млн рублей по долгу в размере 2 млрд рублей.",
+              "text": "Volna Industries did not pay a coupon in the amount of 125.5 million rubles on a debt of 2 billion rubles.",
+              "seconds": 0.13460383300116519,
+              "engine": "Argos offline model"
+            },
+            {
+              "source": "Гарантия покрывает только 40% основной суммы долга и не распространяется на проценты.",
+              "text": "The guarantee covers only 40% of the principal and does not apply to interest.",
+              "seconds": 0.08015937500022119,
+              "engine": "Argos offline model"
+            }
+          ]
+        },
+        {
+          "id": "A1_en_ru",
+          "category": "Debt amounts",
+          "title": "Coupon, principal and a limited guarantee",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries has not paid a RUB 125.5 million coupon on RUB 2 billion of debt.",
+            "The guarantee covers only 40% of the principal and does not cover interest."
+          ],
+          "checks": [
+            "Unpaid coupon: RUB 125.5 million; principal/debt: RUB 2 billion.",
+            "Guarantee: only 40% of principal, excluding interest."
+          ],
+          "status": "unsupported_direction",
+          "outputs": []
+        },
+        {
+          "id": "A2_ru_en",
+          "category": "Debt amounts",
+          "title": "Currency, units and cash availability",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Долг Volna Industries составляет 1,25 млрд донгов, а не 1,25 млн долларов США.",
+            "Из 900 000 евро денежных средств только 90 000 евро доступны для погашения долга."
+          ],
+          "checks": [
+            "Actual debt: VND 1.25 billion; USD 1.25 million is explicitly rejected.",
+            "Cash total: EUR 900,000; usable cash: EUR 90,000."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Долг Volna Industries составляет 1,25 млрд донгов, а не 1,25 млн долларов США.",
+              "text": "The debt of Volna Industries is VND 1.25 billion, not USD 1.25 million.",
+              "seconds": 0.11186616599661647,
+              "engine": "Argos offline model"
+            },
+            {
+              "source": "Из 900 000 евро денежных средств только 90 000 евро доступны для погашения долга.",
+              "text": "Of the 900,000 euros in cash, only 90,000 euros are available to repay the debt.",
+              "seconds": 0.08794375000070431,
+              "engine": "Argos offline model"
+            }
+          ]
+        },
+        {
+          "id": "A2_en_ru",
+          "category": "Debt amounts",
+          "title": "Currency, units and cash availability",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries owes VND 1.25 billion, not USD 1.25 million.",
+            "Of EUR 900,000 in cash, only EUR 90,000 is available to repay debt."
+          ],
+          "checks": [
+            "Actual debt: VND 1.25 billion; USD 1.25 million is explicitly rejected.",
+            "Cash total: EUR 900,000; usable cash: EUR 90,000."
+          ],
+          "status": "unsupported_direction",
+          "outputs": []
+        },
+        {
+          "id": "A3_ru_en",
+          "category": "Debt amounts",
+          "title": "Basis points and a partial repayment",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Ставка по кредиту Volna Industries выросла с 8,25% до 9,50% годовых, то есть на 125 базисных пунктов.",
+            "Компания погасила 0,5 млн долларов США из 5 млн долларов США основного долга; остаток составляет 4,5 млн долларов США."
+          ],
+          "checks": [
+            "8.25% → 9.50% annually; change: 125 basis points, not 125 percentage points.",
+            "USD 5 million principal minus USD 0.5 million repaid leaves USD 4.5 million."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Ставка по кредиту Volna Industries выросла с 8,25% до 9,50% годовых, то есть на 125 базисных пунктов.",
+              "text": "The interest rate on the Volna Industries loan increased from 8.25% to 9.50% per annum, that is, by 125 basis points.",
+              "seconds": 0.15525158300079056,
+              "engine": "Argos offline model"
+            },
+            {
+              "source": "Компания погасила 0,5 млн долларов США из 5 млн долларов США основного долга; остаток составляет 4,5 млн долларов США.",
+              "text": "The company repaid $0.5 million of the $5 million principal debt; the balance is $4.5 million.",
+              "seconds": 0.09656295800232328,
+              "engine": "Argos offline model"
+            }
+          ]
+        },
+        {
+          "id": "A3_en_ru",
+          "category": "Debt amounts",
+          "title": "Basis points and a partial repayment",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The annual interest rate on the Volna Industries loan rose from 8.25% to 9.50%, an increase of 125 basis points.",
+            "The company repaid USD 0.5 million of the USD 5 million principal; USD 4.5 million remains outstanding."
+          ],
+          "checks": [
+            "8.25% → 9.50% annually; change: 125 basis points, not 125 percentage points.",
+            "USD 5 million principal minus USD 0.5 million repaid leaves USD 4.5 million."
+          ],
+          "status": "unsupported_direction",
+          "outputs": []
+        },
+        {
+          "id": "L1_ru_en",
+          "category": "Legal terms",
+          "title": "Stay of enforcement versus debt cancellation",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Суд приостановил исполнительное производство в отношении Volna Industries на 60 дней, но не списал долг и не признал компанию банкротом.",
+            "Требование кредитора о взыскании 18,75 млн евро остаётся на рассмотрении."
+          ],
+          "checks": [
+            "60-day stay of enforcement; neither debt cancellation nor a bankruptcy declaration.",
+            "EUR 18.75 million claim is pending, not adjudicated or already recovered."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Суд приостановил исполнительное производство в отношении Volna Industries на 60 дней, но не списал долг и не признал компанию банкротом.",
+              "text": "The court suspended enforcement proceedings against Volna Industries for 60 days, but did not write off the debt or declare the company bankrupt.",
+              "seconds": 0.1400917080027284,
+              "engine": "Argos offline model"
+            },
+            {
+              "source": "Требование кредитора о взыскании 18,75 млн евро остаётся на рассмотрении.",
+              "text": "The creditor’s claim for the recovery of 18.75 million euros remains under consideration.",
+              "seconds": 0.07961004100070568,
+              "engine": "Argos offline model"
+            }
+          ]
+        },
+        {
+          "id": "L1_en_ru",
+          "category": "Legal terms",
+          "title": "Stay of enforcement versus debt cancellation",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The court stayed enforcement proceedings against Volna Industries for 60 days, but did not cancel the debt or declare the company bankrupt.",
+            "The creditor’s claim for EUR 18.75 million remains pending."
+          ],
+          "checks": [
+            "60-day stay of enforcement; neither debt cancellation nor a bankruptcy declaration.",
+            "EUR 18.75 million claim is pending, not adjudicated or already recovered."
+          ],
+          "status": "unsupported_direction",
+          "outputs": []
+        },
+        {
+          "id": "L2_ru_en",
+          "category": "Legal terms",
+          "title": "Covenant waiver versus forgiveness of principal",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Банк согласился не требовать досрочного погашения из-за нарушения финансового ковенанта Volna Industries до 31 марта 2027 года.",
+            "Это не означает прощения основного долга; гарантия остаётся в силе."
+          ],
+          "checks": [
+            "Temporary waiver of acceleration for a covenant breach, until 31 March 2027.",
+            "Principal is not forgiven; guarantee remains effective, not a product warranty."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Банк согласился не требовать досрочного погашения из-за нарушения финансового ковенанта Volna Industries до 31 марта 2027 года.",
+              "text": "The bank agreed not to demand early repayment due to a breach of the Volna Industries financial covenant until March 31, 2027.",
+              "seconds": 0.1557119999997667,
+              "engine": "Argos offline model"
+            },
+            {
+              "source": "Это не означает прощения основного долга; гарантия остаётся в силе.",
+              "text": "This does not mean forgiving the principal; the guarantee remains valid.",
+              "seconds": 0.06990175000100862,
+              "engine": "Argos offline model"
+            }
+          ]
+        },
+        {
+          "id": "L2_en_ru",
+          "category": "Legal terms",
+          "title": "Covenant waiver versus forgiveness of principal",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The bank agreed not to demand early repayment because of the Volna Industries financial covenant breach until 31 March 2027.",
+            "This is not forgiveness of principal; the guarantee remains in force."
+          ],
+          "checks": [
+            "Temporary waiver of acceleration for a covenant breach, until 31 March 2027.",
+            "Principal is not forgiven; guarantee remains effective, not a product warranty."
+          ],
+          "status": "unsupported_direction",
+          "outputs": []
+        },
+        {
+          "id": "L3_ru_en",
+          "category": "Legal terms",
+          "title": "Interim measures survive an appeal",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Volna Industries подала жалобу на определение суда, но это само по себе не отменяет обеспечительные меры.",
+            "Решение по существу спора ещё не принято, и мировое соглашение не заключено."
+          ],
+          "checks": [
+            "Appeal filed; interim measures are not automatically lifted.",
+            "No merits decision and no settlement; avoid translating settlement as world agreement."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries подала жалобу на определение суда, но это само по себе не отменяет обеспечительные меры.",
+              "text": "Volna Industries filed a complaint against the court's ruling, but that does not in itself override interim measures.",
+              "seconds": 0.14171095799974864,
+              "engine": "Argos offline model"
+            },
+            {
+              "source": "Решение по существу спора ещё не принято, и мировое соглашение не заключено.",
+              "text": "A decision on the merits of the dispute has not yet been made, and a settlement agreement has not been concluded.",
+              "seconds": 0.10050287500052946,
+              "engine": "Argos offline model"
+            }
+          ]
+        },
+        {
+          "id": "L3_en_ru",
+          "category": "Legal terms",
+          "title": "Interim measures survive an appeal",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries appealed the court order, but that does not by itself lift the interim measures.",
+            "No decision on the merits has yet been issued, and no settlement has been reached."
+          ],
+          "checks": [
+            "Appeal filed; interim measures are not automatically lifted.",
+            "No merits decision and no settlement; avoid translating settlement as world agreement."
+          ],
+          "status": "unsupported_direction",
+          "outputs": []
+        },
+        {
+          "id": "L4_en_ru",
+          "category": "Legal terms",
+          "title": "Dismissal without prejudice",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The claim against Volna Industries was dismissed without prejudice; the claimant may file it again.",
+            "This procedural dismissal does not establish that the debt has been repaid."
+          ],
+          "checks": [
+            "The claimant can refile; without prejudice is not a ruling about lack of harm or bias.",
+            "Dismissal does not prove repayment."
+          ],
+          "reference": "https://www.uscourts.gov/glossary",
+          "status": "unsupported_direction",
+          "outputs": []
+        },
+        {
+          "id": "L5_ru_en",
+          "category": "Legal terms",
+          "title": "Guarantee, security and issuer identity",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Гарантия материнской компании обеспечивает долг Volna Industries, но не является залогом имущества дочерней компании.",
+            "Гарант не освобождён от обязательств; гарантия не отозвана."
+          ],
+          "checks": [
+            "Parent guarantee supports Volna debt; it is not a pledge of subsidiary assets.",
+            "Guarantor remains liable and guarantee has not been withdrawn."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Гарантия материнской компании обеспечивает долг Volna Industries, но не является залогом имущества дочерней компании.",
+              "text": "The guarantee of the parent company provides the debt of Volna Industries, but is not a pledge of the property of the subsidiary.",
+              "seconds": 0.13967358299851185,
+              "engine": "Argos offline model"
+            },
+            {
+              "source": "Гарант не освобождён от обязательств; гарантия не отозвана.",
+              "text": "The guarantor is not exempt; the guarantee is not withdrawn.",
+              "seconds": 0.07966020800085971,
+              "engine": "Argos offline model"
+            }
+          ]
+        }
+      ]
+    },
+    "nllb": {
+      "model": "nllb",
+      "corpus_sha256": "9d6abcaa603d96edfa1e51ecd41e178a80d91372116a70c5566c7cd8605c62c5",
+      "load_seconds": 1.8735308750001423,
+      "compute_type": "int8_float32",
+      "results": [
+        {
+          "id": "N1_ru_en",
+          "category": "Negation",
+          "title": "Denied filing; admitted default",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Volna Industries не отрицает, что допустила дефолт, но отрицает, что подала заявление о банкротстве.",
+            "Её дочерняя компания не является заёмщиком."
+          ],
+          "checks": [
+            "No denial of default; bankruptcy filing is denied.",
+            "The subsidiary is not the borrower."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries не отрицает, что допустила дефолт, но отрицает, что подала заявление о банкротстве.",
+              "text": "Volna Industries does not deny default, but denies filing for bankruptcy.",
+              "seconds": 0.7920319170007133,
+              "source_tokens": 33,
+              "target_tokens": 18,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Её дочерняя компания не является заёмщиком.",
+              "text": "Her subsidiary is not a lender.",
+              "seconds": 0.4156689590017777,
+              "source_tokens": 15,
+              "target_tokens": 9,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "N1_en_ru",
+          "category": "Negation",
+          "title": "Denied filing; admitted default",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries does not deny that it defaulted, but denies that it filed for bankruptcy.",
+            "Its subsidiary is not the borrower."
+          ],
+          "checks": [
+            "No denial of default; bankruptcy filing is denied.",
+            "The subsidiary is not the borrower."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries does not deny that it defaulted, but denies that it filed for bankruptcy.",
+              "text": "Volna Industries не отрицает своего дефолта, но отрицает, что подала заявление о банкротстве.",
+              "seconds": 0.9703826250006387,
+              "source_tokens": 25,
+              "target_tokens": 28,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Its subsidiary is not the borrower.",
+              "text": "Ее дочерняя компания не является заемщиком.",
+              "seconds": 0.43516599999929895,
+              "source_tokens": 12,
+              "target_tokens": 12,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "N2_ru_en",
+          "category": "Negation",
+          "title": "Failure to pay versus absence of failure",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Volna Industries не выплатила проценты 2 ноября 2026 года.",
+            "При этом Volna Industries не допустила просрочки по заработной плате."
+          ],
+          "checks": [
+            "Interest was unpaid on 2 November 2026.",
+            "Wages were paid on time; the two obligations must remain distinct."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries не выплатила проценты 2 ноября 2026 года.",
+              "text": "Volna Industries did not pay the interest on November 2, 2026.",
+              "seconds": 0.482499417001236,
+              "source_tokens": 17,
+              "target_tokens": 13,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "При этом Volna Industries не допустила просрочки по заработной плате.",
+              "text": "At the same time, Volna Industries did not allow late payment of wages.",
+              "seconds": 0.6045663749973755,
+              "source_tokens": 18,
+              "target_tokens": 17,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "N2_en_ru",
+          "category": "Negation",
+          "title": "Failure to pay versus absence of failure",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries did not pay interest on 2 November 2026.",
+            "However, Volna Industries did not fail to pay wages on time."
+          ],
+          "checks": [
+            "Interest was unpaid on 2 November 2026.",
+            "Wages were paid on time; the two obligations must remain distinct."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries did not pay interest on 2 November 2026.",
+              "text": "На 2 ноября 2026 года компания Volna Industries не выплачивала проценты.",
+              "seconds": 0.6254337090031186,
+              "source_tokens": 14,
+              "target_tokens": 18,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "However, Volna Industries did not fail to pay wages on time.",
+              "text": "Тем не менее, Volna Industries не отказалась своевременно выплачивать заработную плату.",
+              "seconds": 0.743940083997586,
+              "source_tokens": 17,
+              "target_tokens": 22,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "N3_ru_en",
+          "category": "Negation",
+          "title": "Conditional acceleration; no demand yet",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Если Volna Industries не погасит задолженность до 12 ноября 2026 года, банк сможет потребовать досрочного погашения кредита.",
+            "Банк пока не предъявил такое требование и не согласился продлить срок."
+          ],
+          "checks": [
+            "Acceleration is conditional, not already demanded.",
+            "Deadline: 12 November 2026; no extension has been agreed."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Если Volna Industries не погасит задолженность до 12 ноября 2026 года, банк сможет потребовать досрочного погашения кредита.",
+              "text": "If Volna Industries does not repay the debt by November 12, 2026, the bank will be able to demand early repayment of the loan.",
+              "seconds": 1.0100927499988757,
+              "source_tokens": 36,
+              "target_tokens": 30,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Банк пока не предъявил такое требование и не согласился продлить срок.",
+              "text": "The bank has not yet made such a demand and has not agreed to extend the term.",
+              "seconds": 0.6542400830003317,
+              "source_tokens": 20,
+              "target_tokens": 19,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "N3_en_ru",
+          "category": "Negation",
+          "title": "Conditional acceleration; no demand yet",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "If Volna Industries does not repay the overdue amount by 12 November 2026, the bank may demand early repayment of the loan.",
+            "The bank has not yet made that demand and has not agreed to an extension."
+          ],
+          "checks": [
+            "Acceleration is conditional, not already demanded.",
+            "Deadline: 12 November 2026; no extension has been agreed."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "If Volna Industries does not repay the overdue amount by 12 November 2026, the bank may demand early repayment of the loan.",
+              "text": "Если Volna Industries не погасит просроченную сумму до 12 ноября 2026 года, банк может потребовать досрочного погашения кредита.",
+              "seconds": 1.1762562499970954,
+              "source_tokens": 31,
+              "target_tokens": 36,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "The bank has not yet made that demand and has not agreed to an extension.",
+              "text": "Банк еще не сделал этого требования и не согласился на продление.",
+              "seconds": 0.59341683400271,
+              "source_tokens": 18,
+              "target_tokens": 14,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "D1_ru_en",
+          "category": "Dates",
+          "title": "Signing, original maturity and revised maturity",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "1 ноября 2026 года Volna Industries подписала соглашение о продлении срока погашения с 30 июня 2027 года до 30 июня 2030 года.",
+            "Соглашение вступит в силу только после регистрации залога; регистрация ещё не завершена."
+          ],
+          "checks": [
+            "Signing: 1 November 2026; old maturity: 30 June 2027; proposed new maturity: 30 June 2030.",
+            "The extension is not yet effective because registration is incomplete."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "1 ноября 2026 года Volna Industries подписала соглашение о продлении срока погашения с 30 июня 2027 года до 30 июня 2030 года.",
+              "text": "On 1 November 2026, Volna Industries signed an agreement to extend the repayment period from 30 June 2027 to 30 June 2030.",
+              "seconds": 0.940762750000431,
+              "source_tokens": 36,
+              "target_tokens": 28,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Соглашение вступит в силу только после регистрации залога; регистрация ещё не завершена.",
+              "text": "The agreement will enter into force only after the deposit has been registered; the registration is not yet complete.",
+              "seconds": 0.7207774169983168,
+              "source_tokens": 21,
+              "target_tokens": 21,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "D1_en_ru",
+          "category": "Dates",
+          "title": "Signing, original maturity and revised maturity",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "On 1 November 2026, Volna Industries signed an agreement to extend maturity from 30 June 2027 to 30 June 2030.",
+            "The agreement takes effect only after the security interest is registered; registration is not yet complete."
+          ],
+          "checks": [
+            "Signing: 1 November 2026; old maturity: 30 June 2027; proposed new maturity: 30 June 2030.",
+            "The extension is not yet effective because registration is incomplete."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "On 1 November 2026, Volna Industries signed an agreement to extend maturity from 30 June 2027 to 30 June 2030.",
+              "text": "1 ноября 2026 года Volna Industries подписала соглашение о продлении срока погашения с 30 июня 2027 года до 30 июня 2030 года.",
+              "seconds": 1.138777416999801,
+              "source_tokens": 27,
+              "target_tokens": 34,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "The agreement takes effect only after the security interest is registered; registration is not yet complete.",
+              "text": "Соглашение вступает в силу только после регистрации гарантии; регистрация еще не завершена.",
+              "seconds": 0.7742725830030395,
+              "source_tokens": 20,
+              "target_tokens": 20,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "D2_ru_en",
+          "category": "Dates",
+          "title": "Numeric date with an explicit locale",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "В уведомлении Volna Industries дата 03/04/2027 записана в формате день/месяц/год и означает 3 апреля 2027 года, а не 4 марта.",
+            "Платёж за 31 декабря 2026 года остаётся просроченным."
+          ],
+          "checks": [
+            "03/04/2027 means 3 April, explicitly not 4 March.",
+            "The separate overdue payment was due on 31 December 2026."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "В уведомлении Volna Industries дата 03/04/2027 записана в формате день/месяц/год и означает 3 апреля 2027 года, а не 4 марта.",
+              "text": "In the Volna Industries notification, the date 03/04/2027 is written in a day/month/year format and means April 3, 2027, not March 4.",
+              "seconds": 1.2017849590010883,
+              "source_tokens": 42,
+              "target_tokens": 35,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Платёж за 31 декабря 2026 года остаётся просроченным.",
+              "text": "The payment for December 31, 2026 remains overdue.",
+              "seconds": 0.41933924999830197,
+              "source_tokens": 19,
+              "target_tokens": 11,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "D2_en_ru",
+          "category": "Dates",
+          "title": "Numeric date with an explicit locale",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "In the Volna Industries notice, 03/04/2027 is written in day/month/year format and means 3 April 2027, not 4 March.",
+            "The payment due on 31 December 2026 remains overdue."
+          ],
+          "checks": [
+            "03/04/2027 means 3 April, explicitly not 4 March.",
+            "The separate overdue payment was due on 31 December 2026."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "In the Volna Industries notice, 03/04/2027 is written in day/month/year format and means 3 April 2027, not 4 March.",
+              "text": "В уведомлении Volna Industries 03/04/2027 написан в формате день/месяц/год и означает 3 апреля 2027 года, а не 4 марта.",
+              "seconds": 1.2725677089983947,
+              "source_tokens": 35,
+              "target_tokens": 39,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "The payment due on 31 December 2026 remains overdue.",
+              "text": "Оплата, причитающаяся на 31 декабря 2026 года, остается в просрочке.",
+              "seconds": 0.7424386250022508,
+              "source_tokens": 14,
+              "target_tokens": 22,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "D3_ru_en",
+          "category": "Dates",
+          "title": "Leap day and a rescheduled hearing",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Слушание по делу Volna Industries перенесено с 29 февраля 2028 года на 1 марта 2028 года.",
+            "Срок подачи возражений истекает 28 февраля 2028 года в 17:00 по московскому времени."
+          ],
+          "checks": [
+            "Old hearing: 29 February 2028; new hearing: 1 March 2028.",
+            "Objections: 28 February 2028, 17:00 Moscow time; do not merge with the hearing."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Слушание по делу Volna Industries перенесено с 29 февраля 2028 года на 1 марта 2028 года.",
+              "text": "The Volna Industries hearing has been moved from February 29, 2028 to March 1, 2028.",
+              "seconds": 0.697704790996795,
+              "source_tokens": 27,
+              "target_tokens": 18,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Срок подачи возражений истекает 28 февраля 2028 года в 17:00 по московскому времени.",
+              "text": "The deadline to file objections expires on February 28, 2028 at 17:00 Moscow time.",
+              "seconds": 0.7339542089976021,
+              "source_tokens": 26,
+              "target_tokens": 20,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "D3_en_ru",
+          "category": "Dates",
+          "title": "Leap day and a rescheduled hearing",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The hearing in the Volna Industries case has been moved from 29 February 2028 to 1 March 2028.",
+            "The deadline for objections is 28 February 2028 at 17:00 Moscow time."
+          ],
+          "checks": [
+            "Old hearing: 29 February 2028; new hearing: 1 March 2028.",
+            "Objections: 28 February 2028, 17:00 Moscow time; do not merge with the hearing."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "The hearing in the Volna Industries case has been moved from 29 February 2028 to 1 March 2028.",
+              "text": "Слушание по делу Volna Industries перенесено с 29 февраля 2028 года на 1 марта 2028 года.",
+              "seconds": 0.8660716249978577,
+              "source_tokens": 23,
+              "target_tokens": 25,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "The deadline for objections is 28 February 2028 at 17:00 Moscow time.",
+              "text": "Срок подачи возражений истекает 28 февраля 2028 года в 17:00 по московскому времени.",
+              "seconds": 0.7945797499996843,
+              "source_tokens": 19,
+              "target_tokens": 24,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "A1_ru_en",
+          "category": "Debt amounts",
+          "title": "Coupon, principal and a limited guarantee",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Volna Industries не выплатила купон в размере 125,5 млн рублей по долгу в размере 2 млрд рублей.",
+            "Гарантия покрывает только 40% основной суммы долга и не распространяется на проценты."
+          ],
+          "checks": [
+            "Unpaid coupon: RUB 125.5 million; principal/debt: RUB 2 billion.",
+            "Guarantee: only 40% of principal, excluding interest."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries не выплатила купон в размере 125,5 млн рублей по долгу в размере 2 млрд рублей.",
+              "text": "Volna Industries did not pay the coupon in the amount of 125.5 million rubles on the debt in the amount of 2 billion rubles.",
+              "seconds": 1.0282006669986004,
+              "source_tokens": 30,
+              "target_tokens": 31,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Гарантия покрывает только 40% основной суммы долга и не распространяется на проценты.",
+              "text": "The guarantee covers only 40% of the principal amount of the debt and does not apply to interest.",
+              "seconds": 0.7042175839997071,
+              "source_tokens": 25,
+              "target_tokens": 20,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "A1_en_ru",
+          "category": "Debt amounts",
+          "title": "Coupon, principal and a limited guarantee",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries has not paid a RUB 125.5 million coupon on RUB 2 billion of debt.",
+            "The guarantee covers only 40% of the principal and does not cover interest."
+          ],
+          "checks": [
+            "Unpaid coupon: RUB 125.5 million; principal/debt: RUB 2 billion.",
+            "Guarantee: only 40% of principal, excluding interest."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries has not paid a RUB 125.5 million coupon on RUB 2 billion of debt.",
+              "text": "\"Волна Индустриз\" не выплатила 125,5 миллиона рублей на 2 миллиарда рублей долга.",
+              "seconds": 1.0461355419975007,
+              "source_tokens": 25,
+              "target_tokens": 29,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "The guarantee covers only 40% of the principal and does not cover interest.",
+              "text": "Гарантия покрывает только 40% основной суммы и не покрывает процентов.",
+              "seconds": 0.7227911670015601,
+              "source_tokens": 17,
+              "target_tokens": 20,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "A2_ru_en",
+          "category": "Debt amounts",
+          "title": "Currency, units and cash availability",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Долг Volna Industries составляет 1,25 млрд донгов, а не 1,25 млн долларов США.",
+            "Из 900 000 евро денежных средств только 90 000 евро доступны для погашения долга."
+          ],
+          "checks": [
+            "Actual debt: VND 1.25 billion; USD 1.25 million is explicitly rejected.",
+            "Cash total: EUR 900,000; usable cash: EUR 90,000."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Долг Volna Industries составляет 1,25 млрд донгов, а не 1,25 млн долларов США.",
+              "text": "Volna Industries' debt is 1.25 billion dong, not $1.25 million.",
+              "seconds": 0.693350042001839,
+              "source_tokens": 24,
+              "target_tokens": 17,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Из 900 000 евро денежных средств только 90 000 евро доступны для погашения долга.",
+              "text": "Of the 900,000 euros of cash, only 90,000 euros are available for debt repayment.",
+              "seconds": 0.700473624998267,
+              "source_tokens": 22,
+              "target_tokens": 20,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "A2_en_ru",
+          "category": "Debt amounts",
+          "title": "Currency, units and cash availability",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries owes VND 1.25 billion, not USD 1.25 million.",
+            "Of EUR 900,000 in cash, only EUR 90,000 is available to repay debt."
+          ],
+          "checks": [
+            "Actual debt: VND 1.25 billion; USD 1.25 million is explicitly rejected.",
+            "Cash total: EUR 900,000; usable cash: EUR 90,000."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries owes VND 1.25 billion, not USD 1.25 million.",
+              "text": "Volna Industries должна 1,25 миллиарда венг, а не 1,25 миллиона долларов США.",
+              "seconds": 0.8063429169997107,
+              "source_tokens": 19,
+              "target_tokens": 23,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Of EUR 900,000 in cash, only EUR 90,000 is available to repay debt.",
+              "text": "Из 900 000 евро наличными, только 90 000 евро доступны для погашения долга.",
+              "seconds": 0.7452134999984992,
+              "source_tokens": 20,
+              "target_tokens": 21,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "A3_ru_en",
+          "category": "Debt amounts",
+          "title": "Basis points and a partial repayment",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Ставка по кредиту Volna Industries выросла с 8,25% до 9,50% годовых, то есть на 125 базисных пунктов.",
+            "Компания погасила 0,5 млн долларов США из 5 млн долларов США основного долга; остаток составляет 4,5 млн долларов США."
+          ],
+          "checks": [
+            "8.25% → 9.50% annually; change: 125 basis points, not 125 percentage points.",
+            "USD 5 million principal minus USD 0.5 million repaid leaves USD 4.5 million."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Ставка по кредиту Volna Industries выросла с 8,25% до 9,50% годовых, то есть на 125 базисных пунктов.",
+              "text": "The interest rate on the Volna Industries loan increased from 8.25% to 9.50% per annum, or 125 basis points.",
+              "seconds": 0.8962994169996819,
+              "source_tokens": 33,
+              "target_tokens": 25,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Компания погасила 0,5 млн долларов США из 5 млн долларов США основного долга; остаток составляет 4,5 млн долларов США.",
+              "text": "The company has paid off 0.5 million U.S. dollars of the 5 million U.S. dollars of its principal debt; the balance is 4.5 million U.S. dollars.",
+              "seconds": 1.219371625000349,
+              "source_tokens": 32,
+              "target_tokens": 37,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "A3_en_ru",
+          "category": "Debt amounts",
+          "title": "Basis points and a partial repayment",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The annual interest rate on the Volna Industries loan rose from 8.25% to 9.50%, an increase of 125 basis points.",
+            "The company repaid USD 0.5 million of the USD 5 million principal; USD 4.5 million remains outstanding."
+          ],
+          "checks": [
+            "8.25% → 9.50% annually; change: 125 basis points, not 125 percentage points.",
+            "USD 5 million principal minus USD 0.5 million repaid leaves USD 4.5 million."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "The annual interest rate on the Volna Industries loan rose from 8.25% to 9.50%, an increase of 125 basis points.",
+              "text": "Годовая процентная ставка по кредиту Volna Industries выросла с 8,25% до 9,50%, увеличившись на 125 базисных пунктов.",
+              "seconds": 1.223539749997144,
+              "source_tokens": 27,
+              "target_tokens": 33,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "The company repaid USD 0.5 million of the USD 5 million principal; USD 4.5 million remains outstanding.",
+              "text": "Компания погасила 0,5 миллиона долларов США из основной суммы в 5 миллионов долларов США; 4,5 миллиона долларов США остаются непогашенными.",
+              "seconds": 1.2229436249981518,
+              "source_tokens": 23,
+              "target_tokens": 36,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L1_ru_en",
+          "category": "Legal terms",
+          "title": "Stay of enforcement versus debt cancellation",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Суд приостановил исполнительное производство в отношении Volna Industries на 60 дней, но не списал долг и не признал компанию банкротом.",
+            "Требование кредитора о взыскании 18,75 млн евро остаётся на рассмотрении."
+          ],
+          "checks": [
+            "60-day stay of enforcement; neither debt cancellation nor a bankruptcy declaration.",
+            "EUR 18.75 million claim is pending, not adjudicated or already recovered."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Суд приостановил исполнительное производство в отношении Volna Industries на 60 дней, но не списал долг и не признал компанию банкротом.",
+              "text": "The court suspended enforcement proceedings against Volna Industries for 60 days, but did not write off the debt or declare the company bankrupt.",
+              "seconds": 1.0539291669992963,
+              "source_tokens": 36,
+              "target_tokens": 31,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Требование кредитора о взыскании 18,75 млн евро остаётся на рассмотрении.",
+              "text": "The creditor's claim for €18.75 million remains pending.",
+              "seconds": 0.5810538330006239,
+              "source_tokens": 23,
+              "target_tokens": 15,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L1_en_ru",
+          "category": "Legal terms",
+          "title": "Stay of enforcement versus debt cancellation",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The court stayed enforcement proceedings against Volna Industries for 60 days, but did not cancel the debt or declare the company bankrupt.",
+            "The creditor’s claim for EUR 18.75 million remains pending."
+          ],
+          "checks": [
+            "60-day stay of enforcement; neither debt cancellation nor a bankruptcy declaration.",
+            "EUR 18.75 million claim is pending, not adjudicated or already recovered."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "The court stayed enforcement proceedings against Volna Industries for 60 days, but did not cancel the debt or declare the company bankrupt.",
+              "text": "Суд приостановил исполнительное производство против Volna Industries на 60 дней, но не отменил долг или не объявил компанию банкротом.",
+              "seconds": 1.223503166998853,
+              "source_tokens": 32,
+              "target_tokens": 35,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "The creditor’s claim for EUR 18.75 million remains pending.",
+              "text": "Требование кредитора в размере 18,75 млн. евро остается на рассмотрении.",
+              "seconds": 0.6863403750030557,
+              "source_tokens": 17,
+              "target_tokens": 20,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L2_ru_en",
+          "category": "Legal terms",
+          "title": "Covenant waiver versus forgiveness of principal",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Банк согласился не требовать досрочного погашения из-за нарушения финансового ковенанта Volna Industries до 31 марта 2027 года.",
+            "Это не означает прощения основного долга; гарантия остаётся в силе."
+          ],
+          "checks": [
+            "Temporary waiver of acceleration for a covenant breach, until 31 March 2027.",
+            "Principal is not forgiven; guarantee remains effective, not a product warranty."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Банк согласился не требовать досрочного погашения из-за нарушения финансового ковенанта Volna Industries до 31 марта 2027 года.",
+              "text": "The bank agreed not to demand early repayment due to Volna Industries' breach of financial covenant until March 31, 2027.",
+              "seconds": 0.936837082997954,
+              "source_tokens": 35,
+              "target_tokens": 27,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Это не означает прощения основного долга; гарантия остаётся в силе.",
+              "text": "This does not mean that the principal debt is forgiven; the guarantee remains in force.",
+              "seconds": 1.1202472920012951,
+              "source_tokens": 21,
+              "target_tokens": 18,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L2_en_ru",
+          "category": "Legal terms",
+          "title": "Covenant waiver versus forgiveness of principal",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The bank agreed not to demand early repayment because of the Volna Industries financial covenant breach until 31 March 2027.",
+            "This is not forgiveness of principal; the guarantee remains in force."
+          ],
+          "checks": [
+            "Temporary waiver of acceleration for a covenant breach, until 31 March 2027.",
+            "Principal is not forgiven; guarantee remains effective, not a product warranty."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "The bank agreed not to demand early repayment because of the Volna Industries financial covenant breach until 31 March 2027.",
+              "text": "Банк согласился не требовать досрочного погашения из-за нарушения финансового договора Volna Industries до 31 марта 2027 года.",
+              "seconds": 1.1461046659969725,
+              "source_tokens": 28,
+              "target_tokens": 30,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "This is not forgiveness of principal; the guarantee remains in force.",
+              "text": "Это не прощение основного долга, гарантия остается в силе.",
+              "seconds": 0.6401222499989672,
+              "source_tokens": 16,
+              "target_tokens": 17,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L3_ru_en",
+          "category": "Legal terms",
+          "title": "Interim measures survive an appeal",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Volna Industries подала жалобу на определение суда, но это само по себе не отменяет обеспечительные меры.",
+            "Решение по существу спора ещё не принято, и мировое соглашение не заключено."
+          ],
+          "checks": [
+            "Appeal filed; interim measures are not automatically lifted.",
+            "No merits decision and no settlement; avoid translating settlement as world agreement."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries подала жалобу на определение суда, но это само по себе не отменяет обеспечительные меры.",
+              "text": "Volna Industries has appealed the court's order, but that in itself does not overturn the restraining order.",
+              "seconds": 0.9814062079967698,
+              "source_tokens": 28,
+              "target_tokens": 28,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Решение по существу спора ещё не принято, и мировое соглашение не заключено.",
+              "text": "The dispute has not yet been settled, and no settlement has been reached.",
+              "seconds": 0.8118395419987792,
+              "source_tokens": 22,
+              "target_tokens": 18,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L3_en_ru",
+          "category": "Legal terms",
+          "title": "Interim measures survive an appeal",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries appealed the court order, but that does not by itself lift the interim measures.",
+            "No decision on the merits has yet been issued, and no settlement has been reached."
+          ],
+          "checks": [
+            "Appeal filed; interim measures are not automatically lifted.",
+            "No merits decision and no settlement; avoid translating settlement as world agreement."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries appealed the court order, but that does not by itself lift the interim measures.",
+              "text": "Volna Industries обжаловала решение суда, но это само по себе не отменяет временные меры.",
+              "seconds": 0.8992142909992253,
+              "source_tokens": 24,
+              "target_tokens": 23,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "No decision on the merits has yet been issued, and no settlement has been reached.",
+              "text": "Решение по существу пока не принято, и никакого урегулирования не достигнуто.",
+              "seconds": 0.8042752500005008,
+              "source_tokens": 21,
+              "target_tokens": 21,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L4_en_ru",
+          "category": "Legal terms",
+          "title": "Dismissal without prejudice",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The claim against Volna Industries was dismissed without prejudice; the claimant may file it again.",
+            "This procedural dismissal does not establish that the debt has been repaid."
+          ],
+          "checks": [
+            "The claimant can refile; without prejudice is not a ruling about lack of harm or bias.",
+            "Dismissal does not prove repayment."
+          ],
+          "reference": "https://www.uscourts.gov/glossary",
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "The claim against Volna Industries was dismissed without prejudice; the claimant may file it again.",
+              "text": "Иск против Volna Industries был отклонен без ущерба; заявитель может подать его снова.",
+              "seconds": 0.8405279580001661,
+              "source_tokens": 24,
+              "target_tokens": 23,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "This procedural dismissal does not establish that the debt has been repaid.",
+              "text": "Этот процессуальный отказ не является доказательством того, что долг был погашен.",
+              "seconds": 0.7033933329985302,
+              "source_tokens": 19,
+              "target_tokens": 20,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L5_ru_en",
+          "category": "Legal terms",
+          "title": "Guarantee, security and issuer identity",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Гарантия материнской компании обеспечивает долг Volna Industries, но не является залогом имущества дочерней компании.",
+            "Гарант не освобождён от обязательств; гарантия не отозвана."
+          ],
+          "checks": [
+            "Parent guarantee supports Volna debt; it is not a pledge of subsidiary assets.",
+            "Guarantor remains liable and guarantee has not been withdrawn."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Гарантия материнской компании обеспечивает долг Volna Industries, но не является залогом имущества дочерней компании.",
+              "text": "The guarantee of the parent company secures the debt of Volna Industries, but is not a pledge of the assets of the subsidiary.",
+              "seconds": 1.005205917001149,
+              "source_tokens": 30,
+              "target_tokens": 29,
+              "engine": "nllb CT2 INT8"
+            },
+            {
+              "source": "Гарант не освобождён от обязательств; гарантия не отозвана.",
+              "text": "The guarantor is not released; the guarantee is not revoked.",
+              "seconds": 0.6454712919985468,
+              "source_tokens": 19,
+              "target_tokens": 16,
+              "engine": "nllb CT2 INT8"
+            }
+          ]
+        }
+      ]
+    },
+    "madlad": {
+      "model": "madlad",
+      "corpus_sha256": "9d6abcaa603d96edfa1e51ecd41e178a80d91372116a70c5566c7cd8605c62c5",
+      "load_seconds": 2.0001014999979816,
+      "compute_type": "int8_float32",
+      "results": [
+        {
+          "id": "N1_ru_en",
+          "category": "Negation",
+          "title": "Denied filing; admitted default",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Volna Industries не отрицает, что допустила дефолт, но отрицает, что подала заявление о банкротстве.",
+            "Её дочерняя компания не является заёмщиком."
+          ],
+          "checks": [
+            "No denial of default; bankruptcy filing is denied.",
+            "The subsidiary is not the borrower."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries не отрицает, что допустила дефолт, но отрицает, что подала заявление о банкротстве.",
+              "text": "Volna Industries does not deny that it defaulted, but denies that it filed for bankruptcy.",
+              "seconds": 1.480442416999722,
+              "source_tokens": 34,
+              "target_tokens": 24,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Её дочерняя компания не является заёмщиком.",
+              "text": "Its subsidiary is not a borrower.",
+              "seconds": 0.6214918750010838,
+              "source_tokens": 16,
+              "target_tokens": 9,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "N1_en_ru",
+          "category": "Negation",
+          "title": "Denied filing; admitted default",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries does not deny that it defaulted, but denies that it filed for bankruptcy.",
+            "Its subsidiary is not the borrower."
+          ],
+          "checks": [
+            "No denial of default; bankruptcy filing is denied.",
+            "The subsidiary is not the borrower."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries does not deny that it defaulted, but denies that it filed for bankruptcy.",
+              "text": "Компания &quot; Волна индастриз &quot; не отрицает, что она не выполнила своих обязательств, но отрицает, что она подала заявление о банкротстве.",
+              "seconds": 2.4416920420007955,
+              "source_tokens": 27,
+              "target_tokens": 44,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Its subsidiary is not the borrower.",
+              "text": "Ее дочернее предприятие не является заемщиком.",
+              "seconds": 0.7529612920006912,
+              "source_tokens": 12,
+              "target_tokens": 13,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "N2_ru_en",
+          "category": "Negation",
+          "title": "Failure to pay versus absence of failure",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Volna Industries не выплатила проценты 2 ноября 2026 года.",
+            "При этом Volna Industries не допустила просрочки по заработной плате."
+          ],
+          "checks": [
+            "Interest was unpaid on 2 November 2026.",
+            "Wages were paid on time; the two obligations must remain distinct."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries не выплатила проценты 2 ноября 2026 года.",
+              "text": "Volna Industries did not pay interest on November 2, 2026.",
+              "seconds": 1.0508841249975376,
+              "source_tokens": 22,
+              "target_tokens": 18,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "При этом Volna Industries не допустила просрочки по заработной плате.",
+              "text": "At the same time, Volna Industries did not allow salary arrears.",
+              "seconds": 1.0004593750018103,
+              "source_tokens": 21,
+              "target_tokens": 16,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "N2_en_ru",
+          "category": "Negation",
+          "title": "Failure to pay versus absence of failure",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries did not pay interest on 2 November 2026.",
+            "However, Volna Industries did not fail to pay wages on time."
+          ],
+          "checks": [
+            "Interest was unpaid on 2 November 2026.",
+            "Wages were paid on time; the two obligations must remain distinct."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries did not pay interest on 2 November 2026.",
+              "text": "2 ноября 2026 года «Волна Индастриз» не выплатила проценты.",
+              "seconds": 1.335211875000823,
+              "source_tokens": 20,
+              "target_tokens": 24,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "However, Volna Industries did not fail to pay wages on time.",
+              "text": "Однако &quot; Волна индастриз &quot; своевременно выплачивала заработную плату.",
+              "seconds": 1.4915887079987442,
+              "source_tokens": 18,
+              "target_tokens": 25,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "N3_ru_en",
+          "category": "Negation",
+          "title": "Conditional acceleration; no demand yet",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Если Volna Industries не погасит задолженность до 12 ноября 2026 года, банк сможет потребовать досрочного погашения кредита.",
+            "Банк пока не предъявил такое требование и не согласился продлить срок."
+          ],
+          "checks": [
+            "Acceleration is conditional, not already demanded.",
+            "Deadline: 12 November 2026; no extension has been agreed."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Если Volna Industries не погасит задолженность до 12 ноября 2026 года, банк сможет потребовать досрочного погашения кредита.",
+              "text": "If Volna Industries does not repay the debt by November 12, 2026, the bank will be able to demand early repayment of the loan.",
+              "seconds": 3.1884963330012397,
+              "source_tokens": 40,
+              "target_tokens": 38,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Банк пока не предъявил такое требование и не согласился продлить срок.",
+              "text": "The Bank has not yet made such a claim and has not agreed to extend the deadline.",
+              "seconds": 1.1986509579983249,
+              "source_tokens": 21,
+              "target_tokens": 20,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "N3_en_ru",
+          "category": "Negation",
+          "title": "Conditional acceleration; no demand yet",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "If Volna Industries does not repay the overdue amount by 12 November 2026, the bank may demand early repayment of the loan.",
+            "The bank has not yet made that demand and has not agreed to an extension."
+          ],
+          "checks": [
+            "Acceleration is conditional, not already demanded.",
+            "Deadline: 12 November 2026; no extension has been agreed."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "If Volna Industries does not repay the overdue amount by 12 November 2026, the bank may demand early repayment of the loan.",
+              "text": "Если «Волна Индастриз» не возместит просроченную сумму до 12 ноября 2026 года, банк может потребовать досрочного погашения займа.",
+              "seconds": 2.421683625001606,
+              "source_tokens": 39,
+              "target_tokens": 43,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "The bank has not yet made that demand and has not agreed to an extension.",
+              "text": "Банк пока не выдвинул такого требования и не дал согласия на продление.",
+              "seconds": 1.2262035839994496,
+              "source_tokens": 20,
+              "target_tokens": 20,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "D1_ru_en",
+          "category": "Dates",
+          "title": "Signing, original maturity and revised maturity",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "1 ноября 2026 года Volna Industries подписала соглашение о продлении срока погашения с 30 июня 2027 года до 30 июня 2030 года.",
+            "Соглашение вступит в силу только после регистрации залога; регистрация ещё не завершена."
+          ],
+          "checks": [
+            "Signing: 1 November 2026; old maturity: 30 June 2027; proposed new maturity: 30 June 2030.",
+            "The extension is not yet effective because registration is incomplete."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "1 ноября 2026 года Volna Industries подписала соглашение о продлении срока погашения с 30 июня 2027 года до 30 июня 2030 года.",
+              "text": "On November 1, 2026, Volna Industries signed an agreement to extend the maturity from June 30, 2027 to June 30, 2030.",
+              "seconds": 2.5967575829999987,
+              "source_tokens": 52,
+              "target_tokens": 46,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Соглашение вступит в силу только после регистрации залога; регистрация ещё не завершена.",
+              "text": "The agreement will enter into force only after registration of the pledge; registration has not yet been completed.",
+              "seconds": 1.2854952909983695,
+              "source_tokens": 25,
+              "target_tokens": 22,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "D1_en_ru",
+          "category": "Dates",
+          "title": "Signing, original maturity and revised maturity",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "On 1 November 2026, Volna Industries signed an agreement to extend maturity from 30 June 2027 to 30 June 2030.",
+            "The agreement takes effect only after the security interest is registered; registration is not yet complete."
+          ],
+          "checks": [
+            "Signing: 1 November 2026; old maturity: 30 June 2027; proposed new maturity: 30 June 2030.",
+            "The extension is not yet effective because registration is incomplete."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "On 1 November 2026, Volna Industries signed an agreement to extend maturity from 30 June 2027 to 30 June 2030.",
+              "text": "1 ноября 2026 года Volna Industries подписала соглашение о продлении срока погашения с 30 июня 2027 года до 30 июня 2030 года.",
+              "seconds": 2.7974503340010415,
+              "source_tokens": 45,
+              "target_tokens": 49,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "The agreement takes effect only after the security interest is registered; registration is not yet complete.",
+              "text": "Соглашение вступает в силу только после регистрации обеспечительного интереса; регистрация еще не завершена.",
+              "seconds": 1.4640276670033927,
+              "source_tokens": 22,
+              "target_tokens": 25,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "D2_ru_en",
+          "category": "Dates",
+          "title": "Numeric date with an explicit locale",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "В уведомлении Volna Industries дата 03/04/2027 записана в формате день/месяц/год и означает 3 апреля 2027 года, а не 4 марта.",
+            "Платёж за 31 декабря 2026 года остаётся просроченным."
+          ],
+          "checks": [
+            "03/04/2027 means 3 April, explicitly not 4 March.",
+            "The separate overdue payment was due on 31 December 2026."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "В уведомлении Volna Industries дата 03/04/2027 записана в формате день/месяц/год и означает 3 апреля 2027 года, а не 4 марта.",
+              "text": "In the Volna Industries notification, the date 03/04/2027 is written in day/month/year format and means 3 April 2027, not 4 March.",
+              "seconds": 2.8433759580002516,
+              "source_tokens": 54,
+              "target_tokens": 47,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Платёж за 31 декабря 2026 года остаётся просроченным.",
+              "text": "Payment for December 31, 2026 remains overdue.",
+              "seconds": 1.075416583000333,
+              "source_tokens": 25,
+              "target_tokens": 18,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "D2_en_ru",
+          "category": "Dates",
+          "title": "Numeric date with an explicit locale",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "In the Volna Industries notice, 03/04/2027 is written in day/month/year format and means 3 April 2027, not 4 March.",
+            "The payment due on 31 December 2026 remains overdue."
+          ],
+          "checks": [
+            "03/04/2027 means 3 April, explicitly not 4 March.",
+            "The separate overdue payment was due on 31 December 2026."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "In the Volna Industries notice, 03/04/2027 is written in day/month/year format and means 3 April 2027, not 4 March.",
+              "text": "В уведомлении Volna Industries 03/04/2027 написано в формате день/месяц/год и означает 3 апреля 2027 года, а не 4 марта.",
+              "seconds": 3.828789458002575,
+              "source_tokens": 47,
+              "target_tokens": 49,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "The payment due on 31 December 2026 remains overdue.",
+              "text": "Платеж, причитающийся 31 декабря 2026 года, по-прежнему просрочен.",
+              "seconds": 1.7500650839974696,
+              "source_tokens": 22,
+              "target_tokens": 30,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "D3_ru_en",
+          "category": "Dates",
+          "title": "Leap day and a rescheduled hearing",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Слушание по делу Volna Industries перенесено с 29 февраля 2028 года на 1 марта 2028 года.",
+            "Срок подачи возражений истекает 28 февраля 2028 года в 17:00 по московскому времени."
+          ],
+          "checks": [
+            "Old hearing: 29 February 2028; new hearing: 1 March 2028.",
+            "Objections: 28 February 2028, 17:00 Moscow time; do not merge with the hearing."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Слушание по делу Volna Industries перенесено с 29 февраля 2028 года на 1 марта 2028 года.",
+              "text": "Volna Industries hearing postponed from 29 February 2028 to 1 March 2028.",
+              "seconds": 1.9264909999983502,
+              "source_tokens": 37,
+              "target_tokens": 28,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Срок подачи возражений истекает 28 февраля 2028 года в 17:00 по московскому времени.",
+              "text": "The deadline for filing objections expires on February 28, 2028 at 17:00 Moscow time.",
+              "seconds": 1.9743166659973213,
+              "source_tokens": 36,
+              "target_tokens": 30,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "D3_en_ru",
+          "category": "Dates",
+          "title": "Leap day and a rescheduled hearing",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The hearing in the Volna Industries case has been moved from 29 February 2028 to 1 March 2028.",
+            "The deadline for objections is 28 February 2028 at 17:00 Moscow time."
+          ],
+          "checks": [
+            "Old hearing: 29 February 2028; new hearing: 1 March 2028.",
+            "Objections: 28 February 2028, 17:00 Moscow time; do not merge with the hearing."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "The hearing in the Volna Industries case has been moved from 29 February 2028 to 1 March 2028.",
+              "text": "Слушание по делу Volna Industries перенесено с 29 февраля 2028 года на 1 марта 2028 года.",
+              "seconds": 1.9698668750024808,
+              "source_tokens": 35,
+              "target_tokens": 34,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "The deadline for objections is 28 February 2028 at 17:00 Moscow time.",
+              "text": "Срок подачи возражений – 28 февраля 2028 года, 17:00 по московскому времени.",
+              "seconds": 1.8812095829998725,
+              "source_tokens": 29,
+              "target_tokens": 31,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "A1_ru_en",
+          "category": "Debt amounts",
+          "title": "Coupon, principal and a limited guarantee",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Volna Industries не выплатила купон в размере 125,5 млн рублей по долгу в размере 2 млрд рублей.",
+            "Гарантия покрывает только 40% основной суммы долга и не распространяется на проценты."
+          ],
+          "checks": [
+            "Unpaid coupon: RUB 125.5 million; principal/debt: RUB 2 billion.",
+            "Guarantee: only 40% of principal, excluding interest."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries не выплатила купон в размере 125,5 млн рублей по долгу в размере 2 млрд рублей.",
+              "text": "Volna Industries did not pay a coupon of 125.5 million rubles on a debt of 2 billion rubles.",
+              "seconds": 1.7823213749979914,
+              "source_tokens": 34,
+              "target_tokens": 29,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Гарантия покрывает только 40% основной суммы долга и не распространяется на проценты.",
+              "text": "The guarantee covers only 40% of the principal amount of the debt and does not cover interest.",
+              "seconds": 1.3253482920008537,
+              "source_tokens": 29,
+              "target_tokens": 22,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "A1_en_ru",
+          "category": "Debt amounts",
+          "title": "Coupon, principal and a limited guarantee",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries has not paid a RUB 125.5 million coupon on RUB 2 billion of debt.",
+            "The guarantee covers only 40% of the principal and does not cover interest."
+          ],
+          "checks": [
+            "Unpaid coupon: RUB 125.5 million; principal/debt: RUB 2 billion.",
+            "Guarantee: only 40% of principal, excluding interest."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries has not paid a RUB 125.5 million coupon on RUB 2 billion of debt.",
+              "text": "Волна Индастриз не выплатила купон в размере 125,5 млн рублей по долгу в 2 млрд рублей.",
+              "seconds": 1.9109451670010458,
+              "source_tokens": 30,
+              "target_tokens": 32,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "The guarantee covers only 40% of the principal and does not cover interest.",
+              "text": "Гарантия покрывает только 40% основной суммы и не покрывает проценты.",
+              "seconds": 2.319040332997247,
+              "source_tokens": 20,
+              "target_tokens": 23,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "A2_ru_en",
+          "category": "Debt amounts",
+          "title": "Currency, units and cash availability",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Долг Volna Industries составляет 1,25 млрд донгов, а не 1,25 млн долларов США.",
+            "Из 900 000 евро денежных средств только 90 000 евро доступны для погашения долга."
+          ],
+          "checks": [
+            "Actual debt: VND 1.25 billion; USD 1.25 million is explicitly rejected.",
+            "Cash total: EUR 900,000; usable cash: EUR 90,000."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Долг Volna Industries составляет 1,25 млрд донгов, а не 1,25 млн долларов США.",
+              "text": "The debt of Volna Industries is 1.25 billion VND, not 1.25 million USD.",
+              "seconds": 1.6968918339989614,
+              "source_tokens": 31,
+              "target_tokens": 26,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Из 900 000 евро денежных средств только 90 000 евро доступны для погашения долга.",
+              "text": "Of the 900,000 euros in cash, only 90,000 euros are available for debt repayment.",
+              "seconds": 1.841696542000136,
+              "source_tokens": 34,
+              "target_tokens": 32,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "A2_en_ru",
+          "category": "Debt amounts",
+          "title": "Currency, units and cash availability",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries owes VND 1.25 billion, not USD 1.25 million.",
+            "Of EUR 900,000 in cash, only EUR 90,000 is available to repay debt."
+          ],
+          "checks": [
+            "Actual debt: VND 1.25 billion; USD 1.25 million is explicitly rejected.",
+            "Cash total: EUR 900,000; usable cash: EUR 90,000."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries owes VND 1.25 billion, not USD 1.25 million.",
+              "text": "Задолженность Volna Industries составляет 1,25 млрд. донгов, а не 1,25 млн. долл. США.",
+              "seconds": 1.9242502090019116,
+              "source_tokens": 26,
+              "target_tokens": 32,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Of EUR 900,000 in cash, only EUR 90,000 is available to repay debt.",
+              "text": "Из 900 000 евро наличными для погашения задолженности имеется только 90 000 евро.",
+              "seconds": 1.905188624998118,
+              "source_tokens": 33,
+              "target_tokens": 33,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "A3_ru_en",
+          "category": "Debt amounts",
+          "title": "Basis points and a partial repayment",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Ставка по кредиту Volna Industries выросла с 8,25% до 9,50% годовых, то есть на 125 базисных пунктов.",
+            "Компания погасила 0,5 млн долларов США из 5 млн долларов США основного долга; остаток составляет 4,5 млн долларов США."
+          ],
+          "checks": [
+            "8.25% → 9.50% annually; change: 125 basis points, not 125 percentage points.",
+            "USD 5 million principal minus USD 0.5 million repaid leaves USD 4.5 million."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Ставка по кредиту Volna Industries выросла с 8,25% до 9,50% годовых, то есть на 125 базисных пунктов.",
+              "text": "The interest rate on Volna Industries' loan increased from 8.25% to 9.50% p.a., i.e. by 125 basis points.",
+              "seconds": 2.363909166000667,
+              "source_tokens": 44,
+              "target_tokens": 41,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Компания погасила 0,5 млн долларов США из 5 млн долларов США основного долга; остаток составляет 4,5 млн долларов США.",
+              "text": "The Company has repaid $0.5 million of the $5 million principal debt; the balance is $4.5 million.",
+              "seconds": 1.8307352919982804,
+              "source_tokens": 40,
+              "target_tokens": 28,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "A3_en_ru",
+          "category": "Debt amounts",
+          "title": "Basis points and a partial repayment",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The annual interest rate on the Volna Industries loan rose from 8.25% to 9.50%, an increase of 125 basis points.",
+            "The company repaid USD 0.5 million of the USD 5 million principal; USD 4.5 million remains outstanding."
+          ],
+          "checks": [
+            "8.25% → 9.50% annually; change: 125 basis points, not 125 percentage points.",
+            "USD 5 million principal minus USD 0.5 million repaid leaves USD 4.5 million."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "The annual interest rate on the Volna Industries loan rose from 8.25% to 9.50%, an increase of 125 basis points.",
+              "text": "Годовая процентная ставка по кредиту компании «Волна Индастриз» выросла с 8,25% до 9,50%, что на 125 базисных пунктов выше.",
+              "seconds": 2.8784247910007252,
+              "source_tokens": 38,
+              "target_tokens": 50,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "The company repaid USD 0.5 million of the USD 5 million principal; USD 4.5 million remains outstanding.",
+              "text": "Компания выплатила 0,5 млн. долл. США из основной суммы в 5 млн. долл. США; 4,5 млн. долл. США остаются непогашенными.",
+              "seconds": 3.5029579580004793,
+              "source_tokens": 32,
+              "target_tokens": 46,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L1_ru_en",
+          "category": "Legal terms",
+          "title": "Stay of enforcement versus debt cancellation",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Суд приостановил исполнительное производство в отношении Volna Industries на 60 дней, но не списал долг и не признал компанию банкротом.",
+            "Требование кредитора о взыскании 18,75 млн евро остаётся на рассмотрении."
+          ],
+          "checks": [
+            "60-day stay of enforcement; neither debt cancellation nor a bankruptcy declaration.",
+            "EUR 18.75 million claim is pending, not adjudicated or already recovered."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Суд приостановил исполнительное производство в отношении Volna Industries на 60 дней, но не списал долг и не признал компанию банкротом.",
+              "text": "The court suspended the enforcement proceedings against Volna Industries for 60 days, but did not write off the debt or declare the company bankrupt.",
+              "seconds": 2.1920146660013415,
+              "source_tokens": 40,
+              "target_tokens": 36,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Требование кредитора о взыскании 18,75 млн евро остаётся на рассмотрении.",
+              "text": "The creditor's claim for recovery of 18.75 million euros remains pending.",
+              "seconds": 1.3901554580006632,
+              "source_tokens": 29,
+              "target_tokens": 22,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L1_en_ru",
+          "category": "Legal terms",
+          "title": "Stay of enforcement versus debt cancellation",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The court stayed enforcement proceedings against Volna Industries for 60 days, but did not cancel the debt or declare the company bankrupt.",
+            "The creditor’s claim for EUR 18.75 million remains pending."
+          ],
+          "checks": [
+            "60-day stay of enforcement; neither debt cancellation nor a bankruptcy declaration.",
+            "EUR 18.75 million claim is pending, not adjudicated or already recovered."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "The court stayed enforcement proceedings against Volna Industries for 60 days, but did not cancel the debt or declare the company bankrupt.",
+              "text": "Суд приостановил исполнительное производство в отношении компании &quot; Волна индастриз &quot; на 60 дней, но не аннулировал задолженность и не объявил компанию банкротом.",
+              "seconds": 3.024516792000213,
+              "source_tokens": 37,
+              "target_tokens": 53,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "The creditor’s claim for EUR 18.75 million remains pending.",
+              "text": "Требование кредитора в размере 18,75 млн. евро остается неудовлетворенным.",
+              "seconds": 1.4678510000012466,
+              "source_tokens": 23,
+              "target_tokens": 25,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L2_ru_en",
+          "category": "Legal terms",
+          "title": "Covenant waiver versus forgiveness of principal",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Банк согласился не требовать досрочного погашения из-за нарушения финансового ковенанта Volna Industries до 31 марта 2027 года.",
+            "Это не означает прощения основного долга; гарантия остаётся в силе."
+          ],
+          "checks": [
+            "Temporary waiver of acceleration for a covenant breach, until 31 March 2027.",
+            "Principal is not forgiven; guarantee remains effective, not a product warranty."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Банк согласился не требовать досрочного погашения из-за нарушения финансового ковенанта Volna Industries до 31 марта 2027 года.",
+              "text": "The bank agreed not to require early repayment due to violation of the financial covenant of Volna Industries until March 31, 2027.",
+              "seconds": 2.2684153750014957,
+              "source_tokens": 40,
+              "target_tokens": 37,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Это не означает прощения основного долга; гарантия остаётся в силе.",
+              "text": "This does not mean forgiveness of the principal debt; the guarantee remains in force.",
+              "seconds": 1.2609329170009005,
+              "source_tokens": 23,
+              "target_tokens": 21,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L2_en_ru",
+          "category": "Legal terms",
+          "title": "Covenant waiver versus forgiveness of principal",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The bank agreed not to demand early repayment because of the Volna Industries financial covenant breach until 31 March 2027.",
+            "This is not forgiveness of principal; the guarantee remains in force."
+          ],
+          "checks": [
+            "Temporary waiver of acceleration for a covenant breach, until 31 March 2027.",
+            "Principal is not forgiven; guarantee remains effective, not a product warranty."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "The bank agreed not to demand early repayment because of the Volna Industries financial covenant breach until 31 March 2027.",
+              "text": "Банк согласился не требовать досрочного погашения из-за нарушения финансового пакта Volna Industries до 31 марта 2027 года.",
+              "seconds": 2.3446830840002804,
+              "source_tokens": 37,
+              "target_tokens": 36,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "This is not forgiveness of principal; the guarantee remains in force.",
+              "text": "Это не означает погашения основной суммы; гарантия остается в силе.",
+              "seconds": 1.1755162919980648,
+              "source_tokens": 20,
+              "target_tokens": 20,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L3_ru_en",
+          "category": "Legal terms",
+          "title": "Interim measures survive an appeal",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Volna Industries подала жалобу на определение суда, но это само по себе не отменяет обеспечительные меры.",
+            "Решение по существу спора ещё не принято, и мировое соглашение не заключено."
+          ],
+          "checks": [
+            "Appeal filed; interim measures are not automatically lifted.",
+            "No merits decision and no settlement; avoid translating settlement as world agreement."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries подала жалобу на определение суда, но это само по себе не отменяет обеспечительные меры.",
+              "text": "Volna Industries filed an appeal against the court &apos; s decision, but this in itself does not lift the interim measures.",
+              "seconds": 1.7160417919985775,
+              "source_tokens": 32,
+              "target_tokens": 29,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Решение по существу спора ещё не принято, и мировое соглашение не заключено.",
+              "text": "A decision on the substance of the dispute has not yet been taken and no settlement agreement has been concluded.",
+              "seconds": 2.459447083001578,
+              "source_tokens": 25,
+              "target_tokens": 24,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L3_en_ru",
+          "category": "Legal terms",
+          "title": "Interim measures survive an appeal",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "Volna Industries appealed the court order, but that does not by itself lift the interim measures.",
+            "No decision on the merits has yet been issued, and no settlement has been reached."
+          ],
+          "checks": [
+            "Appeal filed; interim measures are not automatically lifted.",
+            "No merits decision and no settlement; avoid translating settlement as world agreement."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Volna Industries appealed the court order, but that does not by itself lift the interim measures.",
+              "text": "Компания &quot; Волна индастриз &quot; обжаловала постановление суда, однако это само по себе не отменяет временные меры.",
+              "seconds": 2.385005000000092,
+              "source_tokens": 25,
+              "target_tokens": 37,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "No decision on the merits has yet been issued, and no settlement has been reached.",
+              "text": "Решение по существу дела еще не вынесено, и никакого урегулирования достигнуто не было.",
+              "seconds": 1.3501017080016027,
+              "source_tokens": 22,
+              "target_tokens": 22,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L4_en_ru",
+          "category": "Legal terms",
+          "title": "Dismissal without prejudice",
+          "company": "Volna Industries",
+          "source_lang": "en",
+          "target_lang": "ru",
+          "units": [
+            "The claim against Volna Industries was dismissed without prejudice; the claimant may file it again.",
+            "This procedural dismissal does not establish that the debt has been repaid."
+          ],
+          "checks": [
+            "The claimant can refile; without prejudice is not a ruling about lack of harm or bias.",
+            "Dismissal does not prove repayment."
+          ],
+          "reference": "https://www.uscourts.gov/glossary",
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "The claim against Volna Industries was dismissed without prejudice; the claimant may file it again.",
+              "text": "Иск против компании &quot; Волна индастриз &quot; был отклонен без ущерба; истец может подать его вновь.",
+              "seconds": 1.9267221670015715,
+              "source_tokens": 25,
+              "target_tokens": 34,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "This procedural dismissal does not establish that the debt has been repaid.",
+              "text": "Такое процедурное прекращение дела не свидетельствует о том, что долг был погашен.",
+              "seconds": 1.3535161670006346,
+              "source_tokens": 22,
+              "target_tokens": 23,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        },
+        {
+          "id": "L5_ru_en",
+          "category": "Legal terms",
+          "title": "Guarantee, security and issuer identity",
+          "company": "Volna Industries",
+          "source_lang": "ru",
+          "target_lang": "en",
+          "units": [
+            "Гарантия материнской компании обеспечивает долг Volna Industries, но не является залогом имущества дочерней компании.",
+            "Гарант не освобождён от обязательств; гарантия не отозвана."
+          ],
+          "checks": [
+            "Parent guarantee supports Volna debt; it is not a pledge of subsidiary assets.",
+            "Guarantor remains liable and guarantee has not been withdrawn."
+          ],
+          "status": "ok",
+          "outputs": [
+            {
+              "source": "Гарантия материнской компании обеспечивает долг Volna Industries, но не является залогом имущества дочерней компании.",
+              "text": "The guarantee of the parent company secures the debt of Volna Industries, but does not pledge the assets of the subsidiary company.",
+              "seconds": 1.8291010419998202,
+              "source_tokens": 33,
+              "target_tokens": 31,
+              "engine": "madlad CT2 INT8"
+            },
+            {
+              "source": "Гарант не освобождён от обязательств; гарантия не отозвана.",
+              "text": "The guarantor is not relieved of its obligations; the guarantee is not revoked.",
+              "seconds": 1.331877083001018,
+              "source_tokens": 21,
+              "target_tokens": 22,
+              "engine": "madlad CT2 INT8"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "observations": {
+    "summary": [
+      "MADLAD was stronger than NLLB on several meaning-sensitive cases, but this set does not establish that it beats the current translator for Russian → English. The existing translator preserved the main negations, dates and amounts in the supported cases.",
+      "NLLB changed borrower to lender (N1_ru_en), confused a pledge/security interest with a deposit or guarantee (D1), omitted coupon (A1_en_ru), and produced an invalid currency name (A2_en_ru).",
+      "MADLAD still made material legal errors: pending became unsatisfied (L1_en_ru), and forgiveness of principal became repayment of principal (L2_en_ru). Literal HTML entities also appeared in several outputs.",
+      "All models preserved the main dates in the supplied examples. The date category still exposed legal terminology errors in NLLB. Correct digits alone do not prove the financial meaning survived.",
+      "These are provisional assistant observations on a small synthetic set, not a measured production error rate. Keep the running app unchanged; obtain human corrections, then test longer contexts and additional watchlist languages."
+    ],
+    "cases": {
+      "N1_ru_en": {
+        "baseline": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "nllb": {
+          "level": "material",
+          "note": "Borrower is changed to lender. That changes the subsidiary’s role. “Her subsidiary” is also unnatural for a company."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "N1_en_ru": {
+        "nllb": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "madlad": {
+          "level": "wording",
+          "note": "The negations and subsidiary role survive. Company-name transliteration and literal &quot; artifacts need attention; the latter are model output, not a report-rendering error."
+        }
+      },
+      "N2_ru_en": {
+        "baseline": {
+          "level": "wording",
+          "note": "The unpaid interest and timely wages survive; “did not allow delays in wages” is awkward and introduces an agency nuance."
+        },
+        "nllb": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "N2_en_ru": {
+        "nllb": {
+          "level": "material",
+          "note": "Did not fail to pay wages on time becomes did not refuse to pay wages on time: willingness does not establish actual timely payment."
+        },
+        "madlad": {
+          "level": "wording",
+          "note": "Correctly resolves the wage-payment double negation. Company spelling/capitalization varies between the two sentences and literal &quot; artifacts appear."
+        }
+      },
+      "N3_ru_en": {
+        "baseline": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "nllb": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "N3_en_ru": {
+        "nllb": {
+          "level": "wording",
+          "note": "Conditions and negations survive, but “не сделал этого требования” is unnatural; “не предъявил такого требования” would be clearer."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "D1_ru_en": {
+        "baseline": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "nllb": {
+          "level": "material",
+          "note": "Pledge/security registration becomes registration of a deposit. Dates survive, but the legal condition is misidentified."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "D1_en_ru": {
+        "nllb": {
+          "level": "material",
+          "note": "Security interest becomes guarantee. These are different forms of credit support; the dates and incomplete-registration condition survive."
+        },
+        "madlad": {
+          "level": "wording",
+          "note": "Dates and the conditional status survive. “Обеспечительный интерес” is a legal calque; terminology should be reviewed for the intended audience and jurisdiction."
+        }
+      },
+      "D2_ru_en": {
+        "baseline": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "nllb": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "D2_en_ru": {
+        "nllb": {
+          "level": "wording",
+          "note": "Both dates and the explicit day/month/year interpretation survive. “Остается в просрочке” and the payment phrasing are awkward."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "D3_ru_en": {
+        "baseline": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "nllb": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "D3_en_ru": {
+        "nllb": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "A1_ru_en": {
+        "baseline": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "nllb": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "A1_en_ru": {
+        "nllb": {
+          "level": "material",
+          "note": "The word coupon disappears. The amounts survive, but the unpaid obligation loses its identity. The company name is transliterated rather than retained literally."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "A2_ru_en": {
+        "baseline": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "nllb": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "A2_en_ru": {
+        "nllb": {
+          "level": "material",
+          "note": "VND becomes “венг”, an invalid currency rendering. The numeric magnitudes survive. “Наличными” may also over-specify physical cash rather than cash funds."
+        },
+        "madlad": {
+          "level": "wording",
+          "note": "Currency, magnitudes and available amount survive. “Наличными” can imply physical banknotes; “денежных средств” is safer for the intended cash-balance meaning."
+        }
+      },
+      "A3_ru_en": {
+        "baseline": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "nllb": {
+          "level": "wording",
+          "note": "Numbers survive, but “or 125 basis points” is less explicit than an increase of 125 basis points; the change must not be read as the rate itself."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "A3_en_ru": {
+        "nllb": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "L1_ru_en": {
+        "baseline": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "nllb": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "L1_en_ru": {
+        "nllb": {
+          "level": "wording",
+          "note": "The claim remains pending and the amount/duration survive. The “не ... или не ...” wording makes the paired negations awkward; “не ... и не ...” would be clearer here."
+        },
+        "madlad": {
+          "level": "material",
+          "note": "Remains pending becomes remains unsatisfied (“неудовлетворенным”), which does not preserve the procedural status and could imply an adverse disposition. Negations, amount and duration survive. Literal &quot; artifacts also appear."
+        }
+      },
+      "L2_ru_en": {
+        "baseline": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "nllb": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      },
+      "L2_en_ru": {
+        "nllb": {
+          "level": "material",
+          "note": "Financial covenant becomes financial contract, broadening what was breached. The temporary waiver, continuing guarantee and no-forgiveness distinction survive."
+        },
+        "madlad": {
+          "level": "material",
+          "note": "Forgiveness of principal becomes repayment of principal (“погашения”). This loses the distinction between waiver of a debt and payment of it. “Финансового пакта” is also poor terminology for a financial covenant."
+        }
+      },
+      "L3_ru_en": {
+        "baseline": {
+          "level": "wording",
+          "note": "“Filed a complaint” is less precise than appealed the order. The interim-measures and no-decision/no-settlement distinctions remain."
+        },
+        "nllb": {
+          "level": "material",
+          "note": "Interim measures are narrowed to a restraining order. No merits decision becomes the dispute has not been settled, losing the procedural distinction."
+        },
+        "madlad": {
+          "level": "wording",
+          "note": "The procedural distinctions survive, but literal &apos; markup appears in the court possessive. This was left uncorrected in the displayed output."
+        }
+      },
+      "L3_en_ru": {
+        "nllb": {
+          "level": "wording",
+          "note": "Core distinctions survive, but the generic “решение суда” and “временные меры” lose some precision compared with court order and interim protective measures."
+        },
+        "madlad": {
+          "level": "wording",
+          "note": "The core procedural facts survive. Literal &quot; artifacts and generic “временные меры” need cleanup/terminology review."
+        }
+      },
+      "L4_en_ru": {
+        "nllb": {
+          "level": "wording",
+          "note": "“Без ущерба” is a literal, unsuitable rendering of without prejudice. The explicit following clause does preserve the right to file again, so the core effect remains recoverable."
+        },
+        "madlad": {
+          "level": "wording",
+          "note": "“Без ущерба” is unsuitable legal terminology, although the explicit right to refile survives. Literal &quot; artifacts also appear."
+        }
+      },
+      "L5_ru_en": {
+        "baseline": {
+          "level": "wording",
+          "note": "“Provides the debt” is an awkward, ambiguous rendering of secures the debt. “Not exempt” omits the explicit reference to obligations. The guarantee/pledge distinction and negations remain."
+        },
+        "nllb": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        },
+        "madlad": {
+          "level": "clear",
+          "note": "The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation."
+        }
+      }
+    }
+  }
+}

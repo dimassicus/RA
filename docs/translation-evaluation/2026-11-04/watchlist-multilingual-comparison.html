@@ -1,0 +1,136 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RA — MADLAD versus current translator, four watchlist languages</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#f3f5f7;color:#172a3a;font:16px/1.65 system-ui,sans-serif}main{max-width:1250px;margin:auto;padding:34px}h1{font-size:32px;line-height:1.2}h2{font-size:23px}.intro{max-width:1020px}.muted{font-size:14px;color:#5b6d7b}.notice{border-left:4px solid #bd8c27;background:#fff7e7;padding:15px}section{background:white;border:1px solid #d9e1e8;border-radius:12px;padding:24px;margin:28px 0;scroll-margin-top:20px}nav{display:flex;gap:10px;flex-wrap:wrap}nav a{border:1px solid #c9d6e0;background:white;border-radius:7px;padding:7px 13px;text-decoration:none}a{color:#175d92}.scroll{overflow-x:auto}table{width:100%;min-width:650px;table-layout:fixed;border-collapse:collapse;margin:20px 0}th,td{border:1px solid #d5e0e8;padding:18px;vertical-align:top}th{text-align:left;background:#eaf0f5}td{font-size:17px;line-height:1.75}td p{margin:0 0 15px}td p:last-child{margin:0}.key{font:13px ui-monospace,monospace;color:#5b6d7b}details{border-top:1px solid #dbe3ea;padding-top:14px}summary{cursor:pointer;font-weight:600}footer{font-size:14px;color:#5b6d7b;margin:26px 0}@media(max-width:700px){main{padding:15px}section{padding:16px}h1{font-size:26px}}@media print{@page{size:A4 landscape;margin:12mm}body{background:white}main{padding:0}section{break-before:page;border:0;padding:0}nav{display:none}table{min-width:0}td{font-size:13px}details{display:block}}</style></head>
+<body><main id="top"><p class="muted">RA / Watchlist translation comparison / 4 November 2026</p>
+<h1>Eight articles across four watchlist languages</h1>
+<p class="intro">Existing Argos translator versus Google MADLAD 3B INT8, translating into English. Each column contains actual, unedited model output from identical short source excerpts. Original article links and excerpt locations are provided; full articles are not reproduced for copyright reasons.</p>
+<p class="notice">The existing translator remains active. Six sources correspond to saved Portuguese, Greek and Turkish records. No Vietnamese-language records were found: the two Vietnamese sources were obtained from the watchlist company’s website. One covers an event already saved in English; the other is an additional company report. Nothing was added to the app database.</p>
+<nav><a href="#portuguese">Portuguese</a><a href="#greek">Greek</a><a href="#turkish">Turkish</a><a href="#vietnamese">Vietnamese</a><a href="#method">Method</a></nav>
+<details style="margin-top:22px"><summary>Overall assessment — open after your review</summary>
+<p>Portuguese: mixed; the existing legal glossary remains useful. Greek and Turkish: MADLAD is stronger on these selected excerpts. Vietnamese: improved wording does not resolve serious factual errors. These findings do not justify an automatic switch.</p>
+<p>Assessments are preliminary assistant judgments, not native-speaker approval or production accuracy estimates. Two articles per language cannot establish coverage. The Turkish samples are an appointment and an incentive list, not a test of insolvency terminology.</p></details>
+<h2 id="portuguese">Portuguese → English</h2>
+<section id="PT1"><span class="key">PT1</span><h2>Heringer — restructuring and creditor coverage</h2>
+<p class="muted">AgFeed · 4 September 2026 · <a href="https://agfeed.com.br/negocios/conselho-da-fertilizantes-heringer-ja-ve-recuperacao-extrajudicial-como-opcao/" target="_blank" rel="noopener noreferrer">Original source</a></p>
+<p class="muted">Database record: <a href="http://127.0.0.1:8765/articles/169/score">169</a>. Publisher page checked for this comparison.</p>
+<p class="muted">Excerpt location: Opening sentence and the later sentence defining which creditors the stay covers; non-contiguous excerpts.</p><div class="scroll"><table><thead><tr><th scope="col">Existing translator · Argos</th><th scope="col">Google MADLAD · 3B INT8</th></tr></thead><tbody>
+<tr>
+<td>The Fertilizantes Heringer has already formally put the possibility of resorting to a out-of-court restructuring — and possibly judicial — to address its debt problem.</td>
+<td>Fertilizantes Heringer has already formally put on the table the possibility of resorting to an extrajudicial recovery — and, eventually, judicial — to solve its debt problem.</td>
+</tr>
+<tr>
+<td>The suspension applies exclusively to creditors invited to participate in the mediation, even if they have not accepted the invitation — uninvited creditors are not achieved by the measure.</td>
+<td>The suspension applies exclusively to creditors invited to participate in mediation, even if they have not accepted the invitation – uninvited creditors are not covered by the measure.</td>
+</tr>
+</tbody></table></div><details><summary>Translation observations</summary><p>MADLAD’s “eventually” turns possibility into timing; the existing glossary better distinguishes restructuring. Both retain creditor exclusions, though the existing wording is awkward.</p></details></section>
+<section id="PT2"><span class="key">PT2</span><h2>Heringer — loss reduction and revenue</h2>
+<p class="muted">AgFeed · 27 March 2026 · <a href="https://agfeed.com.br/negocios/ainda-no-vermelho-fertilizantes-heringer-diminui-prejuizo-em-2025/" target="_blank" rel="noopener noreferrer">Original source</a></p>
+<p class="muted">Database record: <a href="http://127.0.0.1:8765/articles/198/score">198</a>. Publisher page checked for this comparison.</p>
+<p class="muted">Excerpt location: Annual net-loss sentence and annual net-revenue sentence; non-contiguous excerpts.</p><div class="scroll"><table><thead><tr><th scope="col">Existing translator · Argos</th><th scope="col">Google MADLAD · 3B INT8</th></tr></thead><tbody>
+<tr>
+<td>In the accumulated year, the company belonging to Eurochem registered a net loss of R $ 172 million, reducing by 85% its net loss of 2024, of R $ 1.1 billion.</td>
+<td>In the cumulative year, the company belonging to Eurochem recorded a net loss of R$ 172 million, reducing by 85% its 2024 net loss of R$ 1.1 billion.</td>
+</tr>
+<tr>
+<td>Last year&#x27;s net revenue totaled R$ 4.09 billion, a 11% reduction from the previous year&#x27;s R$ 4.6 billion.</td>
+<td>Net revenue for the full year reached R$ 4.09 billion, a decrease of 11% compared to the previous year’s R$ 4.6 billion.</td>
+</tr>
+</tbody></table></div><details><summary>Translation observations</summary><p>Both preserve the losses, revenue, currencies and percentage changes. MADLAD reads more naturally; neither converts the smaller loss into a profit.</p></details></section>
+<h2 id="greek">Greek → English</h2>
+<section id="EL1"><span class="key">EL1</span><h2>ElvalHalcor — share offering</h2>
+<p class="muted">Fortune Greece · 17 July 2026 · <a href="https://www.fortunegreece.com/article/elvalhalcor-apodexthike-prosfores-250-ekat-evro-gia-tin-ekdosi-595-ekat-metoxon-sta-420-evro-i-timi-diathesis-tis-amk/" target="_blank" rel="noopener noreferrer">Original source</a></p>
+<p class="muted">Database record: <a href="http://127.0.0.1:8765/articles/339/score">339</a>. Publisher page checked for this comparison.</p>
+<p class="muted">Excerpt location: Two opening body sentences describing accepted offers and share terms.</p><div class="scroll"><table><thead><tr><th scope="col">Existing translator · Argos</th><th scope="col">Google MADLAD · 3B INT8</th></tr></thead><tbody>
+<tr>
+<td>As the company announced, after the completion of the bidding book process and the significant investment demand recorded, it will proceed with the acceptance of tenders totalling EUR 250,000.002.</td>
+<td>As announced by the company, after the completion of the bid book process and the significant investment demand recorded, it will proceed to accept bids totalling 250,000,002 euros.</td>
+</tr>
+<tr>
+<td>At the same time, it fixed the final selling price of the new common, nominal, with voting rights and intangible shares at 4,20 euros per share, while a total of 59,523,810 new shares are expected to be issued.</td>
+<td>At the same time, it determined the final sale price of the new ordinary, nominal, voting and intangible shares at EUR 4.20 per share, while a total of 59,523,810 new shares are expected to be issued.</td>
+</tr>
+</tbody></table></div><details><summary>Translation observations</summary><p>MADLAD preserves the large amount; the existing separator pattern is ambiguous. Both mishandle bookbuilding, registered shares and dematerialized shares.</p></details></section>
+<section id="EL2"><span class="key">EL2</span><h2>ElvalHalcor — debt and capital expenditure</h2>
+<p class="muted">Fortune Greece · 28 July 2026 · <a href="https://www.fortunegreece.com/article/elvalhalcor-ektinaxi-kerdon-sto-proto-examino-meionei-ton-daneismo-kai-epitaxinei-tis-ependiseis/" target="_blank" rel="noopener noreferrer">Original source</a></p>
+<p class="muted">Database record: <a href="http://127.0.0.1:8765/articles/338/score">338</a>. Publisher page checked for this comparison.</p>
+<p class="muted">Excerpt location: Cash-flow paragraph: first two sentences, ending with capital expenditure.</p><div class="scroll"><table><thead><tr><th scope="col">Existing translator · Argos</th><th scope="col">Google MADLAD · 3B INT8</th></tr></thead><tbody>
+<tr>
+<td>The strong operating cash flows allowed ElvalHalcor to finance its investments, meet increased working capital needs and distribute an increased dividend while maintaining its financial discipline.</td>
+<td>The strong operating cash flows allowed ElvalHalcor to finance its investments, meet increased working capital needs and distribute increased dividends while maintaining its financial discipline.</td>
+</tr>
+<tr>
+<td>As a result, net lending fell to EUR 547.9 million, from EUR 605,3 million at the end of 2025, while capital expenditure amounted to EUR 56 million.</td>
+<td>As a result, net borrowing decreased to EUR 547.9 million, from EUR 605.3 million at the end of 2025, while capital expenditures amounted to EUR 56 million.</td>
+</tr>
+</tbody></table></div><details><summary>Translation observations</summary><p>MADLAD correctly says borrowing; the existing translator changes it to lending. Both retain the numeric values, but existing decimal formatting is inconsistent.</p></details></section>
+<h2 id="turkish">Turkish → English</h2>
+<section id="TR1"><span class="key">TR1</span><h2>CMS Jant — executive appointment</h2>
+<p class="muted">Fortune Turkey · 8 December 2025 · <a href="https://www.fortuneturkey.com/gozde-avcioglu-avdel-cms-janta-cido-ot-it-direktoru-olarak-atandi" target="_blank" rel="noopener noreferrer">Original source</a></p>
+<p class="muted">Database record: <a href="http://127.0.0.1:8765/articles/327/score">327</a>. Publisher page checked for this comparison.</p>
+<p class="muted">Excerpt location: First two body sentences.</p><div class="scroll"><table><thead><tr><th scope="col">Existing translator · Argos</th><th scope="col">Google MADLAD · 3B INT8</th></tr></thead><tbody>
+<tr>
+<td>CMS Rim announces an important senior assignment in line with digital transformation and corporate technology strengthening strategy.</td>
+<td>CMS Jant announced a major top-level appointment in line with its strategy of digital transformation and strengthening its corporate technology structure.</td>
+</tr>
+<tr>
+<td>Gözde Avcıoğlu Avdel, CIDO – OT/IT Director, known for its strong accumulation in technology and innovation.</td>
+<td>Known for her strong track record in technology and innovation, Gözde Avcioglu Avdel has been appointed CIDO – OT/IT Director.</td>
+</tr>
+</tbody></table></div><details><summary>Translation observations</summary><p>MADLAD retains the company and appointment event. The existing translator changes the company name and loses the appointment verb. MADLAD simplifies personal-name diacritics.</p></details></section>
+<section id="TR2"><span class="key">TR2</span><h2>CMS Jant — incentive list and regional totals</h2>
+<p class="muted">Ege’de Sonsöz · 22 November 2022 · <a href="https://www.egedesonsoz.com/bakanlik-listeyi-acikladi-izmire-25-milyarlik-tesvik" target="_blank" rel="noopener noreferrer">Original source</a></p>
+<p class="muted">Database record: <a href="http://127.0.0.1:8765/articles/325/score">325</a>. Publisher page checked for this comparison.</p>
+<p class="muted">Excerpt location: First two sentences under the İzmir section, followed by the CMS table row. Regional totals are not CMS totals.</p><div class="scroll"><table><thead><tr><th scope="col">Existing translator · Argos</th><th scope="col">Google MADLAD · 3B INT8</th></tr></thead><tbody>
+<tr>
+<td>According to the announced list, İzmir-based 71 companies were awarded a 2 billion 437 million TL.</td>
+<td>According to the list, 71 companies based in Izmir received incentive documents worth 2 billion 437 million TL.</td>
+</tr>
+<tr>
+<td>In the event of incentive investments to be implemented, thousand 167 people will be employed.</td>
+<td>If the investments promoted are implemented, 1,167 people will be employed.</td>
+</tr>
+<tr>
+<td>CMS JANT AND MACHINE INDUSTRY ANONİM COMPANY 2.00 22.000.069</td>
+<td>CMS JANT VE MAKİNA SANAYİİ ANONİM ŞİRKETİ | 22.000.069</td>
+</tr>
+</tbody></table></div><details><summary>Translation observations</summary><p>MADLAD retains the table value; the existing translator adds an unexplained number. Regional totals must not be attributed to CMS alone. This is historical coverage.</p></details></section>
+<h2 id="vietnamese">Vietnamese → English</h2>
+<section id="VI1"><span class="key">VI1</span><h2>PVFCCo–Phú Mỹ — maintenance and safety</h2>
+<p class="muted">PVFCCo–Phú Mỹ website · Article date not displayed; event dated 24 January 2026 · <a href="https://dpm.vn/tin-tuc/nha-may-dam-phu-my-bao-duong-tong-the-thanh-cong-vuot-tien-do-hon-4-ngay-hoat-dong-tro-lai-vuot-cong-suat-5418" target="_blank" rel="noopener noreferrer">Original source</a></p>
+<p class="muted">Vietnamese company report on the maintenance event saved in English as article 380; this Vietnamese source was not in the database.</p>
+<p class="muted">Excerpt location: Opening sentence and the later safety clause; non-contiguous excerpts.</p><div class="scroll"><table><thead><tr><th scope="col">Existing translator · Argos</th><th scope="col">Google MADLAD · 3B INT8</th></tr></thead><tbody>
+<tr>
+<td>The total waste and gas chemicals company (PVFCCo – Fuji, the stock code: DPM) states that the United States Futuristic Park Plant had successfully completed the overall maintenance (BDTT) and resumed activity on 24/01/2026, four days earlier than the plan.</td>
+<td>General Company of Fertilizers and Petroleum Chemicals (PVFCCo – Phu My, stock code: DPM) said that the Phu My starch plant has successfully completed the general maintenance (BDTT) and returned to operation on 24/01/2026, four days earlier than planned.</td>
+</tr>
+<tr>
+<td>The plant does not record any labor accidents or safety loss.</td>
+<td>The plant has not recorded any workplace accidents or safety incidents.</td>
+</tr>
+</tbody></table></div><details><summary>Translation observations</summary><p>MADLAD improves identity but mistranslates fertilizer as starch. Existing output invents unrelated names. Both preserve the date and safety negation.</p></details></section>
+<section id="VI2"><span class="key">VI2</span><h2>PVFCCo–Phú Mỹ — profit targets and financing</h2>
+<p class="muted">PVFCCo–Phú Mỹ website · Article date not displayed; plan for 2026 · <a href="https://dpm.vn/tin-tuc/pvfcco---phu-my-dpm-sets-double-digit-growth-plan-for-2026-5410" target="_blank" rel="noopener noreferrer">Original source</a></p>
+<p class="muted">Additional Vietnamese company-hosted report for the watchlist company; not a previously saved database article.</p>
+<p class="muted">Excerpt location: Projected profits, debt/equity ratio, and final investment-funding sentence; non-contiguous excerpts.</p><div class="scroll"><table><thead><tr><th scope="col">Existing translator · Argos</th><th scope="col">Google MADLAD · 3B INT8</th></tr></thead><tbody>
+<tr>
+<td>The previous tax revenues were 850 billion and the following tax revenues amounted to $680 billion.</td>
+<td>It is expected that profit before tax is 850 billion won and profit after tax reaches 680 billion won.</td>
+</tr>
+<tr>
+<td>In terms of the financial structure, the liability on equity is maintained at a relatively safe level of 0.55 times.</td>
+<td>In terms of financial structure, the debt-to-equity ratio was maintained at a relatively safe level of 0.55 times.</td>
+</tr>
+<tr>
+<td>The total need for investment uses equity, no capital loans.</td>
+<td>The total investment requirement is using equity capital, with no borrowing plans.</td>
+</tr>
+</tbody></table></div><details><summary>Translation observations</summary><p>Currency must be VND. MADLAD invents won; the existing translator invents dollars and misreads profit/tax timing. MADLAD better preserves projected profits and no-borrowing plans.</p></details></section>
+<section id="method"><h2>Method and limits</h2><ul>
+<li>All eight sources were selected before inference. All outputs are included, including errors in both engines. No translations were corrected, retries tuned or currency/name substitutions applied after inference.</li>
+<li>Identical manually selected sentences or clauses were sent independently to each engine. The Turkish incentive case also includes one table row. This is not a full-document or automatic-extraction benchmark.</li>
+<li>The current translator kept its existing pipeline: Argos model, company-name protection and Portuguese legal glossary. Company-name arguments use saved record names; the Vietnamese cases use the watchlist name. Thus this compares prospective pipelines, not bare models.</li>
+<li>MADLAD used the pinned Google-hosted checkpoint already downloaded and hash-verified, converted to CTranslate2 INT8; CPU, four threads, beam size four. Sources fitted within model limits. Fallback model downloads were disabled for the existing translator.</li>
+<li>Inference was offline and sequential. Public web sources were read for sample selection; no GNews or TheNewsAPI requests were made. The live app, its translation configuration and database were not changed.</li>
+<li>Numbers surviving unchanged does not prove meaning survived. Review currencies, direction of debt, conditional wording, names and event attribution against the original source. These checks do not verify that a publisher’s factual claims are true.</li>
+<li>The original text is accessible through the publisher links. The excerpts are intentionally short; long-article omissions, extraction reliability and downstream risk scoring require separate validation.</li>
+</ul></section><footer>Feedback format: sample ID / engine / wording you would change. The existing translator remains in use. Human review is pending.</footer></main></body></html>

@@ -1,0 +1,716 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RA translation fidelity — 26-case comparison</title><style>
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f3f5f8;color:#172a3a;font:16px/1.65 system-ui,sans-serif}main{max-width:1500px;margin:auto;padding:32px}
+h1{font-size:34px;line-height:1.2}h2{font-size:23px;line-height:1.4}h3{font-size:18px}.muted{color:#586b7e;font-size:14px}.intro{max-width:1050px}
+nav{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0}nav a,.top{border:1px solid #cbd6df;border-radius:7px;padding:6px 12px;text-decoration:none;color:#185983;background:white}
+section{margin-top:30px;background:white;border:1px solid #dbe2e8;border-radius:12px;padding:24px;scroll-margin-top:20px}.source{border-left:4px solid #447da5;padding:10px 20px;background:#f1f6fa}.source p{margin:8px 0}
+.checks{font-size:15px}.scroll{overflow-x:auto}table{border-collapse:collapse;table-layout:fixed;width:100%;min-width:850px;margin:20px 0}th,td{border:1px solid #d8e0e8;padding:17px;vertical-align:top}th{background:#eaf0f5;text-align:left;font-size:15px}td p{margin:0 0 12px}td p:last-child{margin:0}.unsupported{color:#627184;background:#f6f7f9}
+details{margin-top:16px;border-top:1px solid #e2e8ed;padding-top:14px}summary{cursor:pointer;font-weight:600}.badge{font-weight:600}.notice{padding:15px;background:#fff7e7;border-left:4px solid #bd8c27}
+a{color:#185983}.key{font:13px ui-monospace,monospace;color:#546d80}.review{border:1px solid #d8e0e8;border-radius:7px;padding:12px;margin-top:10px}footer{margin:30px 0;color:#586b7e;font-size:14px}
+@media(max-width:700px){main{padding:16px}section{padding:16px}h1{font-size:27px}}@media print{@page{size:A4 landscape;margin:12mm}body{background:white}main{padding:0}section{break-before:page;border:0;padding:0}table{min-width:0}td,th{font-size:12px;padding:9px}nav,.top{display:none}details{display:block}}
+</style></head><body><main id="top"><p class="muted">RA / Translation review / 4 November 2026</p>
+<h1>Negation, dates, debt amounts and legal terms</h1>
+<p class="intro">26 controlled fictional cases: 13 Russian → English and 13 English → Russian. Original inputs and model outputs are shown in full. Outputs are unedited. Each case contains two sentences, translated separately in their original order. These are new tests, not translations of real company events.</p>
+<p class="notice">The current app translates into English only. It completed 13 Russian → English cases; its other 13 cells are marked unsupported. NLLB and MADLAD completed all 26. Unsupported directions are not translation failures or zero scores.</p>
+<p class="intro">The factual checklists were written before inference and were never supplied to the models. My assessments are preliminary assistant judgments, not independent analyst labels or a validated accuracy score. Open the observations after making your own assessment.</p>
+<nav><a href="#negation">Negation</a><a href="#dates">Dates</a><a href="#debt-amounts">Debt amounts</a><a href="#legal-terms">Legal terms</a><a href="#method">Method and limits</a></nav>
+
+<details><summary>Overall observations — open after reviewing the outputs</summary>
+<p>MADLAD was stronger than NLLB on several meaning-sensitive cases, but this set does not establish that it beats the current translator for Russian → English. The existing translator preserved the main negations, dates and amounts in the supported cases.</p>
+<p>NLLB changed borrower to lender (N1_ru_en), confused a pledge/security interest with a deposit or guarantee (D1), omitted coupon (A1_en_ru), and produced an invalid currency name (A2_en_ru).</p>
+<p>MADLAD still made material legal errors: pending became unsatisfied (L1_en_ru), and forgiveness of principal became repayment of principal (L2_en_ru). Literal HTML entities also appeared in several outputs.</p>
+<p>All models preserved the main dates in the supplied examples. The date category still exposed legal terminology errors in NLLB. Correct digits alone do not prove the financial meaning survived.</p>
+<p>These are provisional assistant observations on a small synthetic set, not a measured production error rate. Keep the running app unchanged; obtain human corrections, then test longer contexts and additional watchlist languages.</p>
+</details>
+<h2 id="negation">Negation</h2>
+<section id="N1_ru_en"><span class="key">N1_ru_en</span><h2>Default not denied; filing denied · Russian → English</h2><h3>Original input</h3><div class="source" lang="ru">
+<p>Volna Industries не отрицает, что допустила дефолт, но отрицает, что подала заявление о банкротстве.</p>
+<p>Её дочерняя компания не является заёмщиком.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>No denial of default; bankruptcy filing is denied.</li>
+<li>The subsidiary is not the borrower.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td lang="en">
+<p>Volna Industries has not denied defaulting, but has denied filing for bankruptcy.</p>
+<p>Its subsidiary is not a borrower.</p>
+</td>
+<td lang="en">
+<p>Volna Industries does not deny default, but denies filing for bankruptcy.</p>
+<p>Her subsidiary is not a lender.</p>
+</td>
+<td lang="en">
+<p>Volna Industries does not deny that it defaulted, but denies that it filed for bankruptcy.</p>
+<p>Its subsidiary is not a borrower.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">Existing translator (Argos) — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">NLLB 1.3B · INT8 — Material meaning issue.</span> Borrower is changed to lender. That changes the subsidiary’s role. “Her subsidiary” is also unnatural for a company.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="N1_en_ru"><span class="key">N1_en_ru</span><h2>Default not denied; filing denied · English → Russian</h2><h3>Original input</h3><div class="source" lang="en">
+<p>Volna Industries does not deny that it defaulted, but denies that it filed for bankruptcy.</p>
+<p>Its subsidiary is not the borrower.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>No denial of default; bankruptcy filing is denied.</li>
+<li>The subsidiary is not the borrower.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td class="unsupported">English → Russian is not supported by the existing app translator.</td>
+<td lang="ru">
+<p>Volna Industries не отрицает своего дефолта, но отрицает, что подала заявление о банкротстве.</p>
+<p>Ее дочерняя компания не является заемщиком.</p>
+</td>
+<td lang="ru">
+<p>Компания &amp;quot; Волна индастриз &amp;quot; не отрицает, что она не выполнила своих обязательств, но отрицает, что она подала заявление о банкротстве.</p>
+<p>Ее дочернее предприятие не является заемщиком.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">NLLB 1.3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">MADLAD 3B · INT8 — Wording / precision issue.</span> The negations and subsidiary role survive. Company-name transliteration and literal &amp;quot; artifacts need attention; the latter are model output, not a report-rendering error.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="N2_ru_en"><span class="key">N2_ru_en</span><h2>Failure to pay versus absence of failure · Russian → English</h2><h3>Original input</h3><div class="source" lang="ru">
+<p>Volna Industries не выплатила проценты 2 ноября 2026 года.</p>
+<p>При этом Volna Industries не допустила просрочки по заработной плате.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Interest was unpaid on 2 November 2026.</li>
+<li>Wages were paid on time; the two obligations must remain distinct.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td lang="en">
+<p>Volna Industries did not pay interest on November 2, 2026.</p>
+<p>At the same time, Volna Industries did not allow delays in wages.</p>
+</td>
+<td lang="en">
+<p>Volna Industries did not pay the interest on November 2, 2026.</p>
+<p>At the same time, Volna Industries did not allow late payment of wages.</p>
+</td>
+<td lang="en">
+<p>Volna Industries did not pay interest on November 2, 2026.</p>
+<p>At the same time, Volna Industries did not allow salary arrears.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">Existing translator (Argos) — Wording / precision issue.</span> The unpaid interest and timely wages survive; “did not allow delays in wages” is awkward and introduces an agency nuance.</p>
+<p><span class="badge">NLLB 1.3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="N2_en_ru"><span class="key">N2_en_ru</span><h2>Failure to pay versus absence of failure · English → Russian</h2><h3>Original input</h3><div class="source" lang="en">
+<p>Volna Industries did not pay interest on 2 November 2026.</p>
+<p>However, Volna Industries did not fail to pay wages on time.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Interest was unpaid on 2 November 2026.</li>
+<li>Wages were paid on time; the two obligations must remain distinct.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td class="unsupported">English → Russian is not supported by the existing app translator.</td>
+<td lang="ru">
+<p>На 2 ноября 2026 года компания Volna Industries не выплачивала проценты.</p>
+<p>Тем не менее, Volna Industries не отказалась своевременно выплачивать заработную плату.</p>
+</td>
+<td lang="ru">
+<p>2 ноября 2026 года «Волна Индастриз» не выплатила проценты.</p>
+<p>Однако &amp;quot; Волна индастриз &amp;quot; своевременно выплачивала заработную плату.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">NLLB 1.3B · INT8 — Material meaning issue.</span> Did not fail to pay wages on time becomes did not refuse to pay wages on time: willingness does not establish actual timely payment.</p>
+<p><span class="badge">MADLAD 3B · INT8 — Wording / precision issue.</span> Correctly resolves the wage-payment double negation. Company spelling/capitalization varies between the two sentences and literal &amp;quot; artifacts appear.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="N3_ru_en"><span class="key">N3_ru_en</span><h2>Conditional acceleration; no demand yet · Russian → English</h2><h3>Original input</h3><div class="source" lang="ru">
+<p>Если Volna Industries не погасит задолженность до 12 ноября 2026 года, банк сможет потребовать досрочного погашения кредита.</p>
+<p>Банк пока не предъявил такое требование и не согласился продлить срок.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Acceleration is conditional, not already demanded.</li>
+<li>Deadline: 12 November 2026; no extension has been agreed.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td lang="en">
+<p>If Volna Industries does not repay the debt by November 12, 2026, the bank will be able to demand early repayment of the loan.</p>
+<p>The bank has not yet made such a request and has not agreed to extend the deadline.</p>
+</td>
+<td lang="en">
+<p>If Volna Industries does not repay the debt by November 12, 2026, the bank will be able to demand early repayment of the loan.</p>
+<p>The bank has not yet made such a demand and has not agreed to extend the term.</p>
+</td>
+<td lang="en">
+<p>If Volna Industries does not repay the debt by November 12, 2026, the bank will be able to demand early repayment of the loan.</p>
+<p>The Bank has not yet made such a claim and has not agreed to extend the deadline.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">Existing translator (Argos) — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">NLLB 1.3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="N3_en_ru"><span class="key">N3_en_ru</span><h2>Conditional acceleration; no demand yet · English → Russian</h2><h3>Original input</h3><div class="source" lang="en">
+<p>If Volna Industries does not repay the overdue amount by 12 November 2026, the bank may demand early repayment of the loan.</p>
+<p>The bank has not yet made that demand and has not agreed to an extension.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Acceleration is conditional, not already demanded.</li>
+<li>Deadline: 12 November 2026; no extension has been agreed.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td class="unsupported">English → Russian is not supported by the existing app translator.</td>
+<td lang="ru">
+<p>Если Volna Industries не погасит просроченную сумму до 12 ноября 2026 года, банк может потребовать досрочного погашения кредита.</p>
+<p>Банк еще не сделал этого требования и не согласился на продление.</p>
+</td>
+<td lang="ru">
+<p>Если «Волна Индастриз» не возместит просроченную сумму до 12 ноября 2026 года, банк может потребовать досрочного погашения займа.</p>
+<p>Банк пока не выдвинул такого требования и не дал согласия на продление.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">NLLB 1.3B · INT8 — Wording / precision issue.</span> Conditions and negations survive, but “не сделал этого требования” is unnatural; “не предъявил такого требования” would be clearer.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<h2 id="dates">Dates</h2>
+<section id="D1_ru_en"><span class="key">D1_ru_en</span><h2>Signing, original maturity and revised maturity · Russian → English</h2><h3>Original input</h3><div class="source" lang="ru">
+<p>1 ноября 2026 года Volna Industries подписала соглашение о продлении срока погашения с 30 июня 2027 года до 30 июня 2030 года.</p>
+<p>Соглашение вступит в силу только после регистрации залога; регистрация ещё не завершена.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Signing: 1 November 2026; old maturity: 30 June 2027; proposed new maturity: 30 June 2030.</li>
+<li>The extension is not yet effective because registration is incomplete.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td lang="en">
+<p>On November 1, 2026, Volna Industries signed an agreement to extend the maturity from June 30, 2027 to June 30, 2030.</p>
+<p>The agreement will only enter into force after registration of the pledge; registration is not yet completed.</p>
+</td>
+<td lang="en">
+<p>On 1 November 2026, Volna Industries signed an agreement to extend the repayment period from 30 June 2027 to 30 June 2030.</p>
+<p>The agreement will enter into force only after the deposit has been registered; the registration is not yet complete.</p>
+</td>
+<td lang="en">
+<p>On November 1, 2026, Volna Industries signed an agreement to extend the maturity from June 30, 2027 to June 30, 2030.</p>
+<p>The agreement will enter into force only after registration of the pledge; registration has not yet been completed.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">Existing translator (Argos) — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">NLLB 1.3B · INT8 — Material meaning issue.</span> Pledge/security registration becomes registration of a deposit. Dates survive, but the legal condition is misidentified.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="D1_en_ru"><span class="key">D1_en_ru</span><h2>Signing, original maturity and revised maturity · English → Russian</h2><h3>Original input</h3><div class="source" lang="en">
+<p>On 1 November 2026, Volna Industries signed an agreement to extend maturity from 30 June 2027 to 30 June 2030.</p>
+<p>The agreement takes effect only after the security interest is registered; registration is not yet complete.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Signing: 1 November 2026; old maturity: 30 June 2027; proposed new maturity: 30 June 2030.</li>
+<li>The extension is not yet effective because registration is incomplete.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td class="unsupported">English → Russian is not supported by the existing app translator.</td>
+<td lang="ru">
+<p>1 ноября 2026 года Volna Industries подписала соглашение о продлении срока погашения с 30 июня 2027 года до 30 июня 2030 года.</p>
+<p>Соглашение вступает в силу только после регистрации гарантии; регистрация еще не завершена.</p>
+</td>
+<td lang="ru">
+<p>1 ноября 2026 года Volna Industries подписала соглашение о продлении срока погашения с 30 июня 2027 года до 30 июня 2030 года.</p>
+<p>Соглашение вступает в силу только после регистрации обеспечительного интереса; регистрация еще не завершена.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">NLLB 1.3B · INT8 — Material meaning issue.</span> Security interest becomes guarantee. These are different forms of credit support; the dates and incomplete-registration condition survive.</p>
+<p><span class="badge">MADLAD 3B · INT8 — Wording / precision issue.</span> Dates and the conditional status survive. “Обеспечительный интерес” is a legal calque; terminology should be reviewed for the intended audience and jurisdiction.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="D2_ru_en"><span class="key">D2_ru_en</span><h2>Numeric date with an explicit locale · Russian → English</h2><h3>Original input</h3><div class="source" lang="ru">
+<p>В уведомлении Volna Industries дата 03/04/2027 записана в формате день/месяц/год и означает 3 апреля 2027 года, а не 4 марта.</p>
+<p>Платёж за 31 декабря 2026 года остаётся просроченным.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>03/04/2027 means 3 April, explicitly not 4 March.</li>
+<li>The separate overdue payment was due on 31 December 2026.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td lang="en">
+<p>In the Volna Industries notification, the date 03/04/2027 is written in the day/month/year format and means April 3, 2027, not March 4.</p>
+<p>Payment for December 31, 2026 remains overdue.</p>
+</td>
+<td lang="en">
+<p>In the Volna Industries notification, the date 03/04/2027 is written in a day/month/year format and means April 3, 2027, not March 4.</p>
+<p>The payment for December 31, 2026 remains overdue.</p>
+</td>
+<td lang="en">
+<p>In the Volna Industries notification, the date 03/04/2027 is written in day/month/year format and means 3 April 2027, not 4 March.</p>
+<p>Payment for December 31, 2026 remains overdue.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">Existing translator (Argos) — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">NLLB 1.3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="D2_en_ru"><span class="key">D2_en_ru</span><h2>Numeric date with an explicit locale · English → Russian</h2><h3>Original input</h3><div class="source" lang="en">
+<p>In the Volna Industries notice, 03/04/2027 is written in day/month/year format and means 3 April 2027, not 4 March.</p>
+<p>The payment due on 31 December 2026 remains overdue.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>03/04/2027 means 3 April, explicitly not 4 March.</li>
+<li>The separate overdue payment was due on 31 December 2026.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td class="unsupported">English → Russian is not supported by the existing app translator.</td>
+<td lang="ru">
+<p>В уведомлении Volna Industries 03/04/2027 написан в формате день/месяц/год и означает 3 апреля 2027 года, а не 4 марта.</p>
+<p>Оплата, причитающаяся на 31 декабря 2026 года, остается в просрочке.</p>
+</td>
+<td lang="ru">
+<p>В уведомлении Volna Industries 03/04/2027 написано в формате день/месяц/год и означает 3 апреля 2027 года, а не 4 марта.</p>
+<p>Платеж, причитающийся 31 декабря 2026 года, по-прежнему просрочен.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">NLLB 1.3B · INT8 — Wording / precision issue.</span> Both dates and the explicit day/month/year interpretation survive. “Остается в просрочке” and the payment phrasing are awkward.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="D3_ru_en"><span class="key">D3_ru_en</span><h2>Leap day and a rescheduled hearing · Russian → English</h2><h3>Original input</h3><div class="source" lang="ru">
+<p>Слушание по делу Volna Industries перенесено с 29 февраля 2028 года на 1 марта 2028 года.</p>
+<p>Срок подачи возражений истекает 28 февраля 2028 года в 17:00 по московскому времени.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Old hearing: 29 February 2028; new hearing: 1 March 2028.</li>
+<li>Objections: 28 February 2028, 17:00 Moscow time; do not merge with the hearing.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td lang="en">
+<p>The hearing in the Volna Industries case was postponed from February 29, 2028 to March 1, 2028.</p>
+<p>The deadline for filing objections expires on February 28, 2028 at 17:00 Moscow time.</p>
+</td>
+<td lang="en">
+<p>The Volna Industries hearing has been moved from February 29, 2028 to March 1, 2028.</p>
+<p>The deadline to file objections expires on February 28, 2028 at 17:00 Moscow time.</p>
+</td>
+<td lang="en">
+<p>Volna Industries hearing postponed from 29 February 2028 to 1 March 2028.</p>
+<p>The deadline for filing objections expires on February 28, 2028 at 17:00 Moscow time.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">Existing translator (Argos) — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">NLLB 1.3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="D3_en_ru"><span class="key">D3_en_ru</span><h2>Leap day and a rescheduled hearing · English → Russian</h2><h3>Original input</h3><div class="source" lang="en">
+<p>The hearing in the Volna Industries case has been moved from 29 February 2028 to 1 March 2028.</p>
+<p>The deadline for objections is 28 February 2028 at 17:00 Moscow time.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Old hearing: 29 February 2028; new hearing: 1 March 2028.</li>
+<li>Objections: 28 February 2028, 17:00 Moscow time; do not merge with the hearing.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td class="unsupported">English → Russian is not supported by the existing app translator.</td>
+<td lang="ru">
+<p>Слушание по делу Volna Industries перенесено с 29 февраля 2028 года на 1 марта 2028 года.</p>
+<p>Срок подачи возражений истекает 28 февраля 2028 года в 17:00 по московскому времени.</p>
+</td>
+<td lang="ru">
+<p>Слушание по делу Volna Industries перенесено с 29 февраля 2028 года на 1 марта 2028 года.</p>
+<p>Срок подачи возражений – 28 февраля 2028 года, 17:00 по московскому времени.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">NLLB 1.3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<h2 id="debt-amounts">Debt amounts</h2>
+<section id="A1_ru_en"><span class="key">A1_ru_en</span><h2>Coupon, principal and a limited guarantee · Russian → English</h2><h3>Original input</h3><div class="source" lang="ru">
+<p>Volna Industries не выплатила купон в размере 125,5 млн рублей по долгу в размере 2 млрд рублей.</p>
+<p>Гарантия покрывает только 40% основной суммы долга и не распространяется на проценты.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Unpaid coupon: RUB 125.5 million; principal/debt: RUB 2 billion.</li>
+<li>Guarantee: only 40% of principal, excluding interest.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td lang="en">
+<p>Volna Industries did not pay a coupon in the amount of 125.5 million rubles on a debt of 2 billion rubles.</p>
+<p>The guarantee covers only 40% of the principal and does not apply to interest.</p>
+</td>
+<td lang="en">
+<p>Volna Industries did not pay the coupon in the amount of 125.5 million rubles on the debt in the amount of 2 billion rubles.</p>
+<p>The guarantee covers only 40% of the principal amount of the debt and does not apply to interest.</p>
+</td>
+<td lang="en">
+<p>Volna Industries did not pay a coupon of 125.5 million rubles on a debt of 2 billion rubles.</p>
+<p>The guarantee covers only 40% of the principal amount of the debt and does not cover interest.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">Existing translator (Argos) — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">NLLB 1.3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="A1_en_ru"><span class="key">A1_en_ru</span><h2>Coupon, principal and a limited guarantee · English → Russian</h2><h3>Original input</h3><div class="source" lang="en">
+<p>Volna Industries has not paid a RUB 125.5 million coupon on RUB 2 billion of debt.</p>
+<p>The guarantee covers only 40% of the principal and does not cover interest.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Unpaid coupon: RUB 125.5 million; principal/debt: RUB 2 billion.</li>
+<li>Guarantee: only 40% of principal, excluding interest.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td class="unsupported">English → Russian is not supported by the existing app translator.</td>
+<td lang="ru">
+<p>&quot;Волна Индустриз&quot; не выплатила 125,5 миллиона рублей на 2 миллиарда рублей долга.</p>
+<p>Гарантия покрывает только 40% основной суммы и не покрывает процентов.</p>
+</td>
+<td lang="ru">
+<p>Волна Индастриз не выплатила купон в размере 125,5 млн рублей по долгу в 2 млрд рублей.</p>
+<p>Гарантия покрывает только 40% основной суммы и не покрывает проценты.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">NLLB 1.3B · INT8 — Material meaning issue.</span> The word coupon disappears. The amounts survive, but the unpaid obligation loses its identity. The company name is transliterated rather than retained literally.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="A2_ru_en"><span class="key">A2_ru_en</span><h2>Currency, units and cash availability · Russian → English</h2><h3>Original input</h3><div class="source" lang="ru">
+<p>Долг Volna Industries составляет 1,25 млрд донгов, а не 1,25 млн долларов США.</p>
+<p>Из 900 000 евро денежных средств только 90 000 евро доступны для погашения долга.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Actual debt: VND 1.25 billion; USD 1.25 million is explicitly rejected.</li>
+<li>Cash total: EUR 900,000; usable cash: EUR 90,000.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td lang="en">
+<p>The debt of Volna Industries is VND 1.25 billion, not USD 1.25 million.</p>
+<p>Of the 900,000 euros in cash, only 90,000 euros are available to repay the debt.</p>
+</td>
+<td lang="en">
+<p>Volna Industries&#x27; debt is 1.25 billion dong, not $1.25 million.</p>
+<p>Of the 900,000 euros of cash, only 90,000 euros are available for debt repayment.</p>
+</td>
+<td lang="en">
+<p>The debt of Volna Industries is 1.25 billion VND, not 1.25 million USD.</p>
+<p>Of the 900,000 euros in cash, only 90,000 euros are available for debt repayment.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">Existing translator (Argos) — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">NLLB 1.3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="A2_en_ru"><span class="key">A2_en_ru</span><h2>Currency, units and cash availability · English → Russian</h2><h3>Original input</h3><div class="source" lang="en">
+<p>Volna Industries owes VND 1.25 billion, not USD 1.25 million.</p>
+<p>Of EUR 900,000 in cash, only EUR 90,000 is available to repay debt.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Actual debt: VND 1.25 billion; USD 1.25 million is explicitly rejected.</li>
+<li>Cash total: EUR 900,000; usable cash: EUR 90,000.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td class="unsupported">English → Russian is not supported by the existing app translator.</td>
+<td lang="ru">
+<p>Volna Industries должна 1,25 миллиарда венг, а не 1,25 миллиона долларов США.</p>
+<p>Из 900 000 евро наличными, только 90 000 евро доступны для погашения долга.</p>
+</td>
+<td lang="ru">
+<p>Задолженность Volna Industries составляет 1,25 млрд. донгов, а не 1,25 млн. долл. США.</p>
+<p>Из 900 000 евро наличными для погашения задолженности имеется только 90 000 евро.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">NLLB 1.3B · INT8 — Material meaning issue.</span> VND becomes “венг”, an invalid currency rendering. The numeric magnitudes survive. “Наличными” may also over-specify physical cash rather than cash funds.</p>
+<p><span class="badge">MADLAD 3B · INT8 — Wording / precision issue.</span> Currency, magnitudes and available amount survive. “Наличными” can imply physical banknotes; “денежных средств” is safer for the intended cash-balance meaning.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="A3_ru_en"><span class="key">A3_ru_en</span><h2>Basis points and a partial repayment · Russian → English</h2><h3>Original input</h3><div class="source" lang="ru">
+<p>Ставка по кредиту Volna Industries выросла с 8,25% до 9,50% годовых, то есть на 125 базисных пунктов.</p>
+<p>Компания погасила 0,5 млн долларов США из 5 млн долларов США основного долга; остаток составляет 4,5 млн долларов США.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>8.25% → 9.50% annually; change: 125 basis points, not 125 percentage points.</li>
+<li>USD 5 million principal minus USD 0.5 million repaid leaves USD 4.5 million.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td lang="en">
+<p>The interest rate on the Volna Industries loan increased from 8.25% to 9.50% per annum, that is, by 125 basis points.</p>
+<p>The company repaid $0.5 million of the $5 million principal debt; the balance is $4.5 million.</p>
+</td>
+<td lang="en">
+<p>The interest rate on the Volna Industries loan increased from 8.25% to 9.50% per annum, or 125 basis points.</p>
+<p>The company has paid off 0.5 million U.S. dollars of the 5 million U.S. dollars of its principal debt; the balance is 4.5 million U.S. dollars.</p>
+</td>
+<td lang="en">
+<p>The interest rate on Volna Industries&#x27; loan increased from 8.25% to 9.50% p.a., i.e. by 125 basis points.</p>
+<p>The Company has repaid $0.5 million of the $5 million principal debt; the balance is $4.5 million.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">Existing translator (Argos) — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">NLLB 1.3B · INT8 — Wording / precision issue.</span> Numbers survive, but “or 125 basis points” is less explicit than an increase of 125 basis points; the change must not be read as the rate itself.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="A3_en_ru"><span class="key">A3_en_ru</span><h2>Basis points and a partial repayment · English → Russian</h2><h3>Original input</h3><div class="source" lang="en">
+<p>The annual interest rate on the Volna Industries loan rose from 8.25% to 9.50%, an increase of 125 basis points.</p>
+<p>The company repaid USD 0.5 million of the USD 5 million principal; USD 4.5 million remains outstanding.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>8.25% → 9.50% annually; change: 125 basis points, not 125 percentage points.</li>
+<li>USD 5 million principal minus USD 0.5 million repaid leaves USD 4.5 million.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td class="unsupported">English → Russian is not supported by the existing app translator.</td>
+<td lang="ru">
+<p>Годовая процентная ставка по кредиту Volna Industries выросла с 8,25% до 9,50%, увеличившись на 125 базисных пунктов.</p>
+<p>Компания погасила 0,5 миллиона долларов США из основной суммы в 5 миллионов долларов США; 4,5 миллиона долларов США остаются непогашенными.</p>
+</td>
+<td lang="ru">
+<p>Годовая процентная ставка по кредиту компании «Волна Индастриз» выросла с 8,25% до 9,50%, что на 125 базисных пунктов выше.</p>
+<p>Компания выплатила 0,5 млн. долл. США из основной суммы в 5 млн. долл. США; 4,5 млн. долл. США остаются непогашенными.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">NLLB 1.3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<h2 id="legal-terms">Legal terms</h2>
+<section id="L1_ru_en"><span class="key">L1_ru_en</span><h2>Stay of enforcement versus debt cancellation · Russian → English</h2><h3>Original input</h3><div class="source" lang="ru">
+<p>Суд приостановил исполнительное производство в отношении Volna Industries на 60 дней, но не списал долг и не признал компанию банкротом.</p>
+<p>Требование кредитора о взыскании 18,75 млн евро остаётся на рассмотрении.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>60-day stay of enforcement; neither debt cancellation nor a bankruptcy declaration.</li>
+<li>EUR 18.75 million claim is pending, not adjudicated or already recovered.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td lang="en">
+<p>The court suspended enforcement proceedings against Volna Industries for 60 days, but did not write off the debt or declare the company bankrupt.</p>
+<p>The creditor’s claim for the recovery of 18.75 million euros remains under consideration.</p>
+</td>
+<td lang="en">
+<p>The court suspended enforcement proceedings against Volna Industries for 60 days, but did not write off the debt or declare the company bankrupt.</p>
+<p>The creditor&#x27;s claim for €18.75 million remains pending.</p>
+</td>
+<td lang="en">
+<p>The court suspended the enforcement proceedings against Volna Industries for 60 days, but did not write off the debt or declare the company bankrupt.</p>
+<p>The creditor&#x27;s claim for recovery of 18.75 million euros remains pending.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">Existing translator (Argos) — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">NLLB 1.3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="L1_en_ru"><span class="key">L1_en_ru</span><h2>Stay of enforcement versus debt cancellation · English → Russian</h2><h3>Original input</h3><div class="source" lang="en">
+<p>The court stayed enforcement proceedings against Volna Industries for 60 days, but did not cancel the debt or declare the company bankrupt.</p>
+<p>The creditor’s claim for EUR 18.75 million remains pending.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>60-day stay of enforcement; neither debt cancellation nor a bankruptcy declaration.</li>
+<li>EUR 18.75 million claim is pending, not adjudicated or already recovered.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td class="unsupported">English → Russian is not supported by the existing app translator.</td>
+<td lang="ru">
+<p>Суд приостановил исполнительное производство против Volna Industries на 60 дней, но не отменил долг или не объявил компанию банкротом.</p>
+<p>Требование кредитора в размере 18,75 млн. евро остается на рассмотрении.</p>
+</td>
+<td lang="ru">
+<p>Суд приостановил исполнительное производство в отношении компании &amp;quot; Волна индастриз &amp;quot; на 60 дней, но не аннулировал задолженность и не объявил компанию банкротом.</p>
+<p>Требование кредитора в размере 18,75 млн. евро остается неудовлетворенным.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">NLLB 1.3B · INT8 — Wording / precision issue.</span> The claim remains pending and the amount/duration survive. The “не ... или не ...” wording makes the paired negations awkward; “не ... и не ...” would be clearer here.</p>
+<p><span class="badge">MADLAD 3B · INT8 — Material meaning issue.</span> Remains pending becomes remains unsatisfied (“неудовлетворенным”), which does not preserve the procedural status and could imply an adverse disposition. Negations, amount and duration survive. Literal &amp;quot; artifacts also appear.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="L2_ru_en"><span class="key">L2_ru_en</span><h2>Covenant waiver versus forgiveness of principal · Russian → English</h2><h3>Original input</h3><div class="source" lang="ru">
+<p>Банк согласился не требовать досрочного погашения из-за нарушения финансового ковенанта Volna Industries до 31 марта 2027 года.</p>
+<p>Это не означает прощения основного долга; гарантия остаётся в силе.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Temporary waiver of acceleration for a covenant breach, until 31 March 2027.</li>
+<li>Principal is not forgiven; guarantee remains effective, not a product warranty.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td lang="en">
+<p>The bank agreed not to demand early repayment due to a breach of the Volna Industries financial covenant until March 31, 2027.</p>
+<p>This does not mean forgiving the principal; the guarantee remains valid.</p>
+</td>
+<td lang="en">
+<p>The bank agreed not to demand early repayment due to Volna Industries&#x27; breach of financial covenant until March 31, 2027.</p>
+<p>This does not mean that the principal debt is forgiven; the guarantee remains in force.</p>
+</td>
+<td lang="en">
+<p>The bank agreed not to require early repayment due to violation of the financial covenant of Volna Industries until March 31, 2027.</p>
+<p>This does not mean forgiveness of the principal debt; the guarantee remains in force.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">Existing translator (Argos) — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">NLLB 1.3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="L2_en_ru"><span class="key">L2_en_ru</span><h2>Covenant waiver versus forgiveness of principal · English → Russian</h2><h3>Original input</h3><div class="source" lang="en">
+<p>The bank agreed not to demand early repayment because of the Volna Industries financial covenant breach until 31 March 2027.</p>
+<p>This is not forgiveness of principal; the guarantee remains in force.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Temporary waiver of acceleration for a covenant breach, until 31 March 2027.</li>
+<li>Principal is not forgiven; guarantee remains effective, not a product warranty.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td class="unsupported">English → Russian is not supported by the existing app translator.</td>
+<td lang="ru">
+<p>Банк согласился не требовать досрочного погашения из-за нарушения финансового договора Volna Industries до 31 марта 2027 года.</p>
+<p>Это не прощение основного долга, гарантия остается в силе.</p>
+</td>
+<td lang="ru">
+<p>Банк согласился не требовать досрочного погашения из-за нарушения финансового пакта Volna Industries до 31 марта 2027 года.</p>
+<p>Это не означает погашения основной суммы; гарантия остается в силе.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">NLLB 1.3B · INT8 — Material meaning issue.</span> Financial covenant becomes financial contract, broadening what was breached. The temporary waiver, continuing guarantee and no-forgiveness distinction survive.</p>
+<p><span class="badge">MADLAD 3B · INT8 — Material meaning issue.</span> Forgiveness of principal becomes repayment of principal (“погашения”). This loses the distinction between waiver of a debt and payment of it. “Финансового пакта” is also poor terminology for a financial covenant.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="L3_ru_en"><span class="key">L3_ru_en</span><h2>Interim measures survive an appeal · Russian → English</h2><h3>Original input</h3><div class="source" lang="ru">
+<p>Volna Industries подала жалобу на определение суда, но это само по себе не отменяет обеспечительные меры.</p>
+<p>Решение по существу спора ещё не принято, и мировое соглашение не заключено.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Appeal filed; interim measures are not automatically lifted.</li>
+<li>No merits decision and no settlement; avoid translating settlement as world agreement.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td lang="en">
+<p>Volna Industries filed a complaint against the court&#x27;s ruling, but that does not in itself override interim measures.</p>
+<p>A decision on the merits of the dispute has not yet been made, and a settlement agreement has not been concluded.</p>
+</td>
+<td lang="en">
+<p>Volna Industries has appealed the court&#x27;s order, but that in itself does not overturn the restraining order.</p>
+<p>The dispute has not yet been settled, and no settlement has been reached.</p>
+</td>
+<td lang="en">
+<p>Volna Industries filed an appeal against the court &amp;apos; s decision, but this in itself does not lift the interim measures.</p>
+<p>A decision on the substance of the dispute has not yet been taken and no settlement agreement has been concluded.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">Existing translator (Argos) — Wording / precision issue.</span> “Filed a complaint” is less precise than appealed the order. The interim-measures and no-decision/no-settlement distinctions remain.</p>
+<p><span class="badge">NLLB 1.3B · INT8 — Material meaning issue.</span> Interim measures are narrowed to a restraining order. No merits decision becomes the dispute has not been settled, losing the procedural distinction.</p>
+<p><span class="badge">MADLAD 3B · INT8 — Wording / precision issue.</span> The procedural distinctions survive, but literal &amp;apos; markup appears in the court possessive. This was left uncorrected in the displayed output.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="L3_en_ru"><span class="key">L3_en_ru</span><h2>Interim measures survive an appeal · English → Russian</h2><h3>Original input</h3><div class="source" lang="en">
+<p>Volna Industries appealed the court order, but that does not by itself lift the interim measures.</p>
+<p>No decision on the merits has yet been issued, and no settlement has been reached.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Appeal filed; interim measures are not automatically lifted.</li>
+<li>No merits decision and no settlement; avoid translating settlement as world agreement.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td class="unsupported">English → Russian is not supported by the existing app translator.</td>
+<td lang="ru">
+<p>Volna Industries обжаловала решение суда, но это само по себе не отменяет временные меры.</p>
+<p>Решение по существу пока не принято, и никакого урегулирования не достигнуто.</p>
+</td>
+<td lang="ru">
+<p>Компания &amp;quot; Волна индастриз &amp;quot; обжаловала постановление суда, однако это само по себе не отменяет временные меры.</p>
+<p>Решение по существу дела еще не вынесено, и никакого урегулирования достигнуто не было.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">NLLB 1.3B · INT8 — Wording / precision issue.</span> Core distinctions survive, but the generic “решение суда” and “временные меры” lose some precision compared with court order and interim protective measures.</p>
+<p><span class="badge">MADLAD 3B · INT8 — Wording / precision issue.</span> The core procedural facts survive. Literal &amp;quot; artifacts and generic “временные меры” need cleanup/terminology review.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="L4_en_ru"><span class="key">L4_en_ru</span><h2>Dismissal without prejudice · English → Russian</h2><h3>Original input</h3><div class="source" lang="en">
+<p>The claim against Volna Industries was dismissed without prejudice; the claimant may file it again.</p>
+<p>This procedural dismissal does not establish that the debt has been repaid.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>The claimant can refile; without prejudice is not a ruling about lack of harm or bias.</li>
+<li>Dismissal does not prove repayment.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td class="unsupported">English → Russian is not supported by the existing app translator.</td>
+<td lang="ru">
+<p>Иск против Volna Industries был отклонен без ущерба; заявитель может подать его снова.</p>
+<p>Этот процессуальный отказ не является доказательством того, что долг был погашен.</p>
+</td>
+<td lang="ru">
+<p>Иск против компании &amp;quot; Волна индастриз &amp;quot; был отклонен без ущерба; истец может подать его вновь.</p>
+<p>Такое процедурное прекращение дела не свидетельствует о том, что долг был погашен.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">NLLB 1.3B · INT8 — Wording / precision issue.</span> “Без ущерба” is a literal, unsuitable rendering of without prejudice. The explicit following clause does preserve the right to file again, so the core effect remains recoverable.</p>
+<p><span class="badge">MADLAD 3B · INT8 — Wording / precision issue.</span> “Без ущерба” is unsuitable legal terminology, although the explicit right to refile survives. Literal &amp;quot; artifacts also appear.</p>
+<p class="muted">Terminology reference: <a href="https://www.uscourts.gov/glossary">U.S. Courts glossary</a>, dismissal without prejudice.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="L5_ru_en"><span class="key">L5_ru_en</span><h2>Guarantee, security and issuer identity · Russian → English</h2><h3>Original input</h3><div class="source" lang="ru">
+<p>Гарантия материнской компании обеспечивает долг Volna Industries, но не является залогом имущества дочерней компании.</p>
+<p>Гарант не освобождён от обязательств; гарантия не отозвана.</p>
+</div><h3>Facts and distinctions to preserve</h3><ul class="checks">
+<li>Parent guarantee supports Volna debt; it is not a pledge of subsidiary assets.</li>
+<li>Guarantor remains liable and guarantee has not been withdrawn.</li>
+</ul><div class="scroll"><table><thead><tr>
+<th scope="col">Existing translator (Argos)</th>
+<th scope="col">NLLB 1.3B · INT8</th>
+<th scope="col">MADLAD 3B · INT8</th>
+</tr></thead><tbody><tr>
+<td lang="en">
+<p>The guarantee of the parent company provides the debt of Volna Industries, but is not a pledge of the property of the subsidiary.</p>
+<p>The guarantor is not exempt; the guarantee is not withdrawn.</p>
+</td>
+<td lang="en">
+<p>The guarantee of the parent company secures the debt of Volna Industries, but is not a pledge of the assets of the subsidiary.</p>
+<p>The guarantor is not released; the guarantee is not revoked.</p>
+</td>
+<td lang="en">
+<p>The guarantee of the parent company secures the debt of Volna Industries, but does not pledge the assets of the subsidiary company.</p>
+<p>The guarantor is not relieved of its obligations; the guarantee is not revoked.</p>
+</td>
+</tr></tbody></table></div><details><summary>Assistant observations for this case</summary>
+<p><span class="badge">Existing translator (Argos) — Wording / precision issue.</span> “Provides the debt” is an awkward, ambiguous rendering of secures the debt. “Not exempt” omits the explicit reference to obligations. The guarantee/pledge distinction and negations remain.</p>
+<p><span class="badge">NLLB 1.3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+<p><span class="badge">MADLAD 3B · INT8 — No material error spotted.</span> The listed facts and distinctions appear preserved in this output. This is a provisional reading, not independent validation.</p>
+</details><p class="muted">Feedback format: case ID / model / acceptable, minor issue or material error / your correction.</p><a class="top" href="#top">Back to top</a></section>
+<section id="method"><h2>Method and limits</h2><ul>
+<li>Local inference only. No news-provider requests, app restart, translation configuration change or database write.</li>
+<li>NLLB: facebook/nllb-200-distilled-1.3B; MADLAD: google/madlad400-3b-mt. Both use the previously hash-verified pinned checkpoints converted to CTranslate2 INT8.</li>
+<li>Candidate models: CPU, four threads, beam size four, source limit 480 tokens. Each input sentence fitted without truncation. Decoding-limit hits would be errors; none occurred.</li>
+<li>Existing translator: the app’s current Argos pipeline and settings, including company-name protection. Its 1,000-character per-call cap was respected. Fallback downloads were disabled.</li>
+<li>Every supported model received the identical source units. Matching corpus hashes and exact source coverage were checked. Complete input submission does not establish semantic completeness.</li>
+<li>Russian and English cases were independently supplied source inputs, not round-trip translations. Neither model saw the other-language version or the checklist.</li>
+<li>This tests short, deliberately selected sentences, not long documents or production sentence splitting. It does not establish coverage in Portuguese, Greek, Turkish or Vietnamese, or performance of downstream company attribution.</li>
+<li>Models ran sequentially. Baseline settings differ, so runtime is not used to rank quality or throughput. No decoding parameters were tuned after seeing results.</li>
+<li>The borrower and events are fictional. A translation judgment is not a credit score. Further analyst review and representative real-document tests are needed before changing the app.</li>
+</ul></section><footer>Generated from saved local inference results. The running app and its configuration were preserved. Human review remains pending.</footer></main></body></html>
