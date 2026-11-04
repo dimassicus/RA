@@ -42,7 +42,7 @@ nano .env
 
 Put your two keys after `RA_GNEWS_API_KEY=` and `RA_THENEWSAPI_API_KEY=`. Save, then restart the app with `.venv/bin/python scripts/serve_local.py stop` and `.venv/bin/python scripts/serve_local.py start`. The launcher reads `.env` when it starts; the dashboard shows **configured** without revealing either value. The file is ignored by Git. You can instead set those two environment variables in the shell before starting the app.
 
-RA makes at most one seven-day, exact-name request per provider and company. Its default cap is 95 requests per provider per UTC day, tracked in PostgreSQL. For a watchlist above 95 companies, it divides and rotates provider coverage; the free-tier caps cannot check every one of 200 companies twice per day. See [provider access, limits and pricing](sources/news-api-providers.md). GNews's free tier permits development and evaluation but requires a paid plan for business production.
+RA makes at most one seven-day, exact-phrase request per provider and company. It uses the first reviewed alias of at least six letters/digits, falling back to the legal name. Its default cap is 95 requests per provider per UTC day, tracked in PostgreSQL. For a watchlist above 95 companies, it divides and rotates provider coverage; the free-tier caps cannot check every one of 200 companies twice per day. See [provider access, limits and pricing](sources/news-api-providers.md). GNews's free tier permits development and evaluation but requires a paid plan for business production.
 
 Offline translation models download automatically from the official Argos package index when a watchlist country needs them or a new article language is encountered. The initial download can take several minutes and uses local disk space. To translate older saved leads after models finish installing, run `.venv/bin/python -m ra.translation`.
 
@@ -52,11 +52,11 @@ The pilot currently collects public Google News RSS leads, optional GNews and Th
 
 ## Risk relevance and review
 
-Saved run pages default to **Recent risk leads**. A lead needs a legal/short-name match in the headline (or a company-specific official source), an adverse-event cue in the original or English headline, and a date within 30 days of that run. Short ambiguous names need country or industry context. Signals cover distress, restructuring, litigation, operational disruption, financial deterioration and resignations; normal promotional coverage and routine notices do not automatically qualify. These are explainable headline rules, not document-level conclusions or verified entity matches.
+Saved run pages default to **Recent risk leads**. A lead needs a legal/short-name or reviewed-alias match in the headline (or a company-specific official source), an adverse-event cue in the original or English headline, and a date within 30 days of that run. Short ambiguous names need country or industry context. Signals cover distress, restructuring, litigation, operational disruption, financial deterioration and resignations; normal promotional coverage and routine notices do not automatically qualify. These are explainable headline rules, not document-level conclusions or verified entity matches.
 
 **Needs verification**, **Older risks**, **Background**, and **All collected** keep the other leads accessible. Each row explains its classification. This also applies to historical runs without rewriting or deleting saved leads. Selecting or clearing visible leads preserves saved selections in other views. The automatic PDF uses new recent risk leads; all-lead Excel and manually selected reports remain available. New Google News queries use a seven-day window, matching the API lookback; official notices retain their historical context.
 
-The current pilot still needs reviewed local-language names and aliases (especially the Vietnam entry), full-source entity/event verification, and analyst feedback on false positives and missed events. A blank risk view does not mean a company is risk-free. No scheduled watchlist searches or email delivery are enabled by login startup.
+The current pilot still needs full-source entity/event verification and analyst feedback on false positives and missed events. The first sourced alias review is recorded below; ambiguous group/brand names and the MARS-A identity remain unresolved. A blank risk view does not mean a company is risk-free. No scheduled watchlist searches or email delivery are enabled by login startup.
 
 ## Local verification — 4 November 2026
 
@@ -85,3 +85,23 @@ RA_TEST_DATABASE_URL=postgresql://localhost/RA .venv/bin/python -m pytest -q
 ```
 
 Without that explicit test URL, the database tests are skipped. Each database test uses a unique schema in a transaction and rolls it back; it does not change the watchlist.
+
+
+## Reviewed aliases — 4 November 2026
+
+Company edit forms now have separate **Reviewed company aliases / local-language names** and **Alias sources and review notes** fields, plus a preview of the next saved-name search. Use one same-entity name per line (up to eight, 3–150 characters each); do not place owners, subsidiaries or product brands here. Existing mixed workbook affiliate/brand columns remain affiliate context. A dedicated `Aliases` or `Company aliases` workbook column imports into the new field, and `Alias sources` imports the notes. Blank new fields preserve existing intake fingerprints, so an unchanged workbook is not restaged after upgrade.
+
+Google News uses at most three queries: the legal name and up to two aliases, with the short name/legal-suffix fallback where there is space. Short ambiguous aliases require country context in discovery and country/industry context in headline matching. Both news APIs use one preferred alias phrase, retaining the same limits and seven-day lookback. The relevance filter and scorer share the alias matcher; Vietnamese đ/d and Turkish dotless ı/i are normalized. Publisher names and affiliate fields are not company-identity evidence. Scoring version `headline-credit-v2` records this matcher change; analyst overrides remain protected.
+
+The [sourced watchlist review](sources/company-alias-review.json) covers all nine entries. Eight have explicit aliases; MARS-A has an unresolved-identity note only. Vietnam now uses **PVFCCo** and **Phân bón và Hóa chất Dầu khí**, and its English name spacing and current tax ID were corrected from the company's official reports. Its previous `4103007696` value is preserved in notes as an older registration certificate. CMS's short name was narrowed to **CMS Jant ve Makina** to avoid conflating a separate group entity. Greek and Arabic names were added where supported. Cibra, DPM, parent names and product brands were deliberately not approved as equivalent names; source notes explain the remaining attribution risks.
+
+The review can be inspected without changing records, then applied explicitly:
+
+```bash
+.venv/bin/python scripts/review_company_aliases.py
+.venv/bin/python scripts/review_company_aliases.py --apply
+```
+
+The script checks company/country/registration identity and expected old values, preserves existing aliases and notes, saves exact before/after values under `.local/before-aliases/`, and is idempotent. The local database was backed up there before applying. Past search-run snapshots retain their original names; alias edits affect future searches. No new news requests are needed to preview names, edit aliases or refresh saved scores. Full-article attribution and duplicate-event grouping remain the next implementation priority, followed by analyst-labelled calibration before scheduled monitoring.
+
+Validation: **80 tests passed**, including eight rollback-only PostgreSQL tests. Alias form persistence, old-run snapshots, unchanged-workbook intake hashes, short-name ambiguity and exactly one mocked request per API are covered. The running Vietnam edit page and search preview were checked visually; dashboard, scores, weekly JSON and saved-run endpoints returned HTTP 200. All 411 existing article scores/inclusion decisions remained unchanged after the version upgrade, historical run snapshots were unchanged, and a second score refresh and alias preview changed zero rows. GNews and TheNewsAPI usage stayed at one request each for 4 November; this alias review made no news-provider requests.

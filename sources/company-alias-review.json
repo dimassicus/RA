@@ -1,0 +1,72 @@
+[
+  {
+    "country": "Vietnam", "registration_number": "0303165480",
+    "expected_name": "PETROVIETNAM FERTILIZER AND CHEMICALSCORPORATION",
+    "changes": {
+      "name": ["PETROVIETNAM FERTILIZER AND CHEMICALSCORPORATION", "PetroVietnam Fertilizer and Chemicals Corporation"],
+      "short_name": ["PETROVIETNAM Fertilizer", "PVFCCo"],
+      "tax_id": ["4103007696", "0303165480"]
+    },
+    "aliases": ["PVFCCo", "Phân bón và Hóa chất Dầu khí"],
+    "note": "2026-11-04: Official 2024 reports confirm English/Vietnamese names, PVFCCo, and tax/registration number 0303165480. Previously saved tax ID 4103007696 is the historical business registration certificate (2007/2008), not the current tax ID. DPM is the stock ticker; omitted as ambiguous. Đạm Phú Mỹ is a product brand; omitted. PetroVietnam alone denotes the parent group. Subsidiaries PVFCCo-North/Central/South/Southwest require legal-entity verification.",
+    "sources": ["https://dpm.vn/public/SR-DPM-2024/thong-tin-chung-ve-pvfcco.html", "https://dpm.vn/BCTN-DPM-2024/gioi-thieu-tong-cong-ty-EN.html"]
+  },
+  {
+    "country": "Brazil", "registration_number": "35.300.632.168",
+    "expected_name": "FERTILIZANTES HERINGER SOCIEDADE ANÔNIMA",
+    "changes": {"short_name": ["Fertilizantes Heringer A.S.", "Fertilizantes Heringer"]},
+    "aliases": ["Fertilizantes Heringer"],
+    "note": "2026-11-04: Company IR uses Fertilizantes Heringer S.A.; removed the erroneous A.S. suffix from the short name. Heringer alone can be a surname; use the two-word company name for automatic identity matching.",
+    "sources": ["https://ri.heringer.com.br/fale-com-ri/"]
+  },
+  {
+    "country": "Greece", "registration_number": "0303401000",
+    "expected_name": "ELVALHALCOR HELLENIC COPPER AND ALUMINIUM INDUSTRY S.A.",
+    "changes": {}, "aliases": ["ElvalHalcor", "ΕΛΒΑΛΧΑΛΚΟΡ"],
+    "note": "2026-11-04: Official Greek site confirms the local-script company name; contact page matches registration/VAT. Elval and Halcor are divisions and are not added as interchangeable legal-entity names.",
+    "sources": ["https://www.elvalhalcor.com/el/", "https://www.elvalhalcor.com/contact/"]
+  },
+  {
+    "country": "Turkey", "registration_number": "BORN-1287",
+    "expected_name": "CMS JANT VE MAKINA SANAYII ANONIM SIRKETI",
+    "changes": {"short_name": ["CMS JANT", "CMS Jant ve Makina"]},
+    "aliases": ["CMS Jant ve Makina", "CMS Jant ve Makina Sanayii A.Ş."],
+    "note": "2026-11-04: Official certification uses CMS Jant ve Makina Sanayii A.Ş. Narrowed the old CMS JANT short name: CMS Jant Sanayi A.Ş. is a separately listed group company (registry 151554). CMS alone is ambiguous. Certificate confirms name spelling, not the saved tax/registry numbers.",
+    "sources": ["https://www.cms.com.tr/upload/docs/CMS-Jant-ve-Makina-45001-TR.pdf", "https://www.cms.com.tr/tr/kurumsal/grup-sirketleri/cms-jant-san"]
+  },
+  {
+    "country": "Turkey", "registration_number": "15868",
+    "expected_name": "TIRYAKI AGRO GIDA SANAYI VE TICARET ANONIM SIRKETI",
+    "changes": {}, "aliases": ["Tiryaki Agro", "TİRYAKİ AGRO GIDA SANAYİ VE TİCARET A.Ş."],
+    "note": "2026-11-04: Company site and KAP issuer page corroborate short and Turkish names. Subsidiary/product brands are omitted. Group-level coverage still requires entity/event review.",
+    "sources": ["https://tiryaki.com.tr/hakkimizda/tiryaki-agro", "https://www.kap.org.tr/tr/sirket-bilgileri/ozet/2433-tiryaki-agro-gida-sanayi-ve-ticaret-a-s"]
+  },
+  {
+    "country": "Uzbekistan", "registration_number": "ИП-00121",
+    "expected_name": "BALTON TRADING (ASIA) MAS'ULIYATI CHEKLANGAN JAMIYATI XORIJIY KORXONA",
+    "changes": {}, "aliases": ["Balton Trading Asia", "Balton Trading (Asia)"],
+    "note": "2026-11-04: Official Russian and Uzbek pages use the Latin-script Balton Trading (Asia) name. No invented Cyrillic transliteration added. Official pages confirm the trading name, not the saved identifiers.",
+    "sources": ["https://www.balton.uz/", "https://www.balton.uz/uz/distribyucziya/"]
+  },
+  {
+    "country": "Egypt", "registration_number": "36360",
+    "expected_name": "DELEMAR ALUMINIUM PROFILES PRODUCTION SHARIKAT AL-MOSSAHAMAH",
+    "changes": {}, "aliases": ["Delemar Aluminium Profiles Production", "دلمار لإنتاج قطاعات الألومنيوم"],
+    "note": "2026-11-04: Company profile gives the English and Arabic profiles-production entity names. Delemar Industrial Group and glass/coating companies are not added as equivalent entity names. Source confirms name spelling, not the saved registration number.",
+    "sources": ["https://delemargroup.com/wp-content/uploads/2025/04/COMPANY-PROFILE-2025.pdf", "https://delemargroup.com/ar/عن-دلمار/"]
+  },
+  {
+    "country": "Brazil", "registration_number": "29.300.018.864",
+    "expected_name": "CIBRAFERTIL COMPANHIA BRASILEIRA DE FERTILIZANTES SOCIEDADE ANÔNIMA FECHADA",
+    "changes": {}, "aliases": ["Cibrafértil"],
+    "note": "2026-11-04: Privacy policy matches CNPJ 00.117.842/0001-28. Accented Cibrafértil is confirmed. Cibra is deliberately omitted: the policy defines CIBRA collectively as Cibrafértil and Agro Industrial São Luiz (different CNPJ). Brand-only stories need full-article attribution before inclusion.",
+    "sources": ["https://www.cibra.com/politica-de-privacidade/", "https://www.cibra.com/quem-somos/"]
+  },
+  {
+    "country": "Azerbaijan", "registration_number": "1500091001",
+    "expected_name": "MARS-A MƏHDUD MƏSULİYYƏTLİ CƏMİYYƏTİ",
+    "changes": {}, "aliases": [],
+    "note": "2026-11-04: No additional aliases approved. A candidate retail site uses Mars A for Baku construction supplies, but its relationship to registration 1500091001 and the watched pipe producer is not established. Keep existing MARS-A context requirement; do not assume Mars or Mars A is the same entity.",
+    "sources": ["https://www.marsaretail.com/about-us"]
+  }
+]

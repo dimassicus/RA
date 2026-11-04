@@ -166,3 +166,6 @@ CREATE TABLE IF NOT EXISTS weekly_score_history (
 );
 CREATE INDEX IF NOT EXISTS weekly_score_history_company_week_idx
     ON weekly_score_history (company_id, week_start, id DESC);
+
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS aliases TEXT NOT NULL DEFAULT '';
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS alias_notes TEXT NOT NULL DEFAULT '';

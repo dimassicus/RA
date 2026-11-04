@@ -20,7 +20,7 @@ DATABASE_URL = os.environ.get("RA_DATABASE_URL", "postgresql://localhost/RA")
 FIELDS = (
     "name", "short_name", "country_registration", "registration_number", "tax_id", "key_owners",
     "top_management", "primary_countries", "affiliates", "primary_industries",
-    "legal_address", "comment",
+    "legal_address", "comment", "aliases", "alias_notes",
 )
 
 
@@ -88,11 +88,11 @@ def init_schema():
                 if not legacy:
                     continue
                 current = {field: str(imported.get(field, "")).strip() for field in FIELDS}
-                old = {field: value for field, value in current.items() if field != "tax_id"}
+                old = {field: value for field, value in current.items() if field not in ("tax_id", "aliases", "alias_notes")}
                 old["registration_number"] = legacy
                 old_key = hashlib.sha256(json.dumps(["workbook", old], sort_keys=True,
                                                     ensure_ascii=False).encode()).hexdigest()
-                new_key = hashlib.sha256(json.dumps(["workbook", current], sort_keys=True,
+                new_key = hashlib.sha256(json.dumps(["workbook", intake_hash_data(current)], sort_keys=True,
                                                     ensure_ascii=False).encode()).hexdigest()
                 conn.execute("UPDATE company_intake SET source_key = %s "
                              "WHERE source_key = %s AND source = 'workbook'", (new_key, old_key))
@@ -183,6 +183,12 @@ def find_company_match(data: dict):
     return None
 
 
+def intake_hash_data(data: dict) -> dict:
+    # Preserve pre-alias workbook fingerprints when the new fields are empty.
+    return {key: value for key, value in data.items()
+            if key not in ("aliases", "alias_notes") or value}
+
+
 def stage_company(data: dict, source: str, workbook_row: int | None = None) -> int | None:
     """Store a draft only. Reimporting the same row is idempotent."""
     from psycopg.types.json import Jsonb
@@ -190,11 +196,11 @@ def stage_company(data: dict, source: str, workbook_row: int | None = None) -> i
     clean = {field: str(data.get(field, "")).strip() for field in FIELDS}
     if not clean["name"] or not clean["country_registration"]:
         raise ValueError("Company name and country of registration are required")
-    digest = hashlib.sha256(json.dumps([source, clean], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    digest = hashlib.sha256(json.dumps([source, intake_hash_data(clean)], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     # Recognize drafts staged from the old combined-ID workbook after migration.
     old_digest = None
     if data.get("_legacy_identifier"):
-        old_clean = {key: value for key, value in clean.items() if key != "tax_id"}
+        old_clean = {key: value for key, value in clean.items() if key not in ("tax_id", "aliases", "alias_notes")}
         old_clean["registration_number"] = data["_legacy_identifier"]
         old_digest = hashlib.sha256(json.dumps([source, old_clean], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     match = find_company_match(clean)

@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
 from . import news_apis
+from .aliases import discovery_names, ambiguous, company_names, normalized as identity_normalized
 
 
 LOCALES = {
@@ -65,11 +66,15 @@ def signal_terms(title: str) -> list[str]:
 def search_queries(subject: dict) -> list[str]:
     name = subject["name"].strip().replace('"', "")
     queries = [f'"{name}"']
-    alias = subject.get("short_name", "").strip().replace('"', "")
-    if len(alias) >= 4 and normalized(alias) != normalized(name):
-        queries.append(f'"{alias}" "{subject["country_registration"]}"')
+    for alias in discovery_names(subject)[1:]:
+        context = subject.get("country_registration", "").replace('"', "")
+        if ambiguous(alias):
+            if context:
+                queries.append(f'"{alias}" "{context}"')
+        else:
+            queries.append(f'"{alias}"')
     short_name = re.sub(r"\s+(S\.?A\.?|S/A|A\.?S\.?|LTDA\.?)$", "", name, flags=re.I)
-    if short_name != name and len(short_name) >= 4:
+    if short_name != name and len(short_name) >= 4 and f'"{short_name}"' not in queries:
         queries.append(f'"{short_name}"')
     related = [part.strip() for part in re.split(r"[,;\n]", subject.get("affiliates", "") + ";" + subject.get("key_owners", ""))
                if part.strip()]
@@ -152,8 +157,7 @@ def has_uk_presence(subject: dict) -> bool:
 
 def fca_warning_list(subject: dict, fetcher=fetch_feed) -> list[dict]:
     """Find possible name matches in the FCA's current warning RSS; analyst review is required."""
-    names = [subject.get("name", ""), subject.get("short_name", "")]
-    names = [normalized(name.strip()) for name in names if len(name.strip()) >= 4]
+    names = company_names(subject)
     if not names:
         return []
     warnings = parse_feed(fetcher(FCA_WARNINGS_RSS_URL), "FCA Warning List", "en-GB", limit=1000)
@@ -161,7 +165,7 @@ def fca_warning_list(subject: dict, fetcher=fetch_feed) -> list[dict]:
     for warning in warnings:
         if urlparse(warning["url"]).hostname not in {"fca.org.uk", "www.fca.org.uk"}:
             continue
-        title = normalized(warning["title"])
+        title = identity_normalized(warning["title"])
         if any(re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", title) for name in names):
             warning["publisher"] = "Financial Conduct Authority"
             warning["source_kind"] = "official"

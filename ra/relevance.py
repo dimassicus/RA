@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import re
-import unicodedata
 from datetime import timedelta, timezone
 
 
-def normalized(value: str) -> str:
-    value = unicodedata.normalize("NFKD", value.casefold())
-    value = "".join(c for c in value if not unicodedata.combining(c))
-    return " ".join(re.findall(r"\w+", value))
+from .aliases import company_names, contains, headline_identity, normalized
 
 
 # Whole words/explicit stems avoid 'loss' in 'gloss' and 'multa' in 'simultaneous'.
@@ -32,26 +28,6 @@ def risk_signals(text: str) -> list[str]:
     return [label for label, pattern in PATTERNS.items() if pattern.search(folded)]
 
 
-LEGAL_SUFFIX = re.compile(
-    r"\s+(?:s\s*a|s\s*a\s*s|a\s*s|s\s*a\s*r\s*l|ltda|limited|ltd|inc|plc|llc|corporation|"
-    r"sociedade anonima(?: fechada)?|anonim sirketi)$"
-)
-
-
-def company_names(subject: dict) -> list[str]:
-    names = []
-    for value in (subject.get("name", ""), subject.get("short_name", "")):
-        name = normalized(value)
-        for candidate in (name, LEGAL_SUFFIX.sub("", name)):
-            if len(candidate) >= 4 and candidate not in names:
-                names.append(candidate)
-    return names
-
-
-def contains(text: str, phrase: str) -> bool:
-    return bool(phrase and re.search(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", text))
-
-
 def headline(article: dict, field: str) -> str:
     text = article.get(field) or ""
     # Google appends publisher names, which are not evidence of the subject.
@@ -69,13 +45,7 @@ def classify(article: dict, subject: dict, as_of=None) -> dict:
     official = article.get("source_kind") == "official"
     if article.get("discovery_service") == "FCA Warning RSS":
         signals = sorted(set(signals + ["regulatory warning / possible clone"]))
-    matches = [name for name in company_names(subject) if contains(text, name)]
-    identity = official or bool(matches)
-    # Short one-token aliases and very short brands need contextual corroboration.
-    if not official and matches and all(len(name.replace(" ", "")) < 6 for name in matches):
-        contexts = [subject.get("country_registration", "")]
-        contexts += re.split(r"[,;\n]", subject.get("primary_industries", ""))
-        identity = any(contains(text, normalized(context)) for context in contexts)
+    identity = official or headline_identity(text, subject)
     if not signals:
         category, reason = "background", "No adverse-event cue in the available headline or translation"
         if identity and article.get("language", "").split("-")[0] not in ("", "en") and not english:

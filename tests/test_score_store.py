@@ -150,3 +150,45 @@ def test_scoring_pages_api_and_csrf_protected_correction(database):
         detail = client.get(f"/scores/{company['id']}/{start}")
         assert detail.status_code == 200
         assert b'Saved weekly revisions' in detail.data
+
+
+def test_alias_edit_persists_without_rewriting_existing_run_snapshot(database, monkeypatch):
+    from ra.app import form_company
+    from ra.search import search_queries
+    company, old_run, article = seed(database)
+    client = create_app().test_client()
+    monkeypatch.setattr("ra.app.model_store.schedule_countries", lambda countries: None)
+    with client.session_transaction() as session:
+        session["csrf_token"] = "aliases-test"
+    response = client.post(f"/companies/{company['id']}/edit", data={
+        **company, "csrf_token": "aliases-test", "aliases": "Acme Local; Акме Производство",
+        "alias_notes": "Confirmed against the company website"})
+    assert response.status_code == 302
+    saved = db.get_company(company["id"])
+    assert saved["aliases"] == "Acme Local\nАкме Производство"
+    assert saved["alias_notes"] == "Confirmed against the company website"
+    assert b"Acme Local" in client.get(f"/companies/{company['id']}/edit").data
+    old_subject = database.execute("SELECT subjects FROM search_runs WHERE id=%s", (old_run,)).fetchone()["subjects"][0]
+    assert old_subject["aliases"] == ""
+    snapshot = db.company_snapshot(saved)
+    assert snapshot["aliases"] == saved["aliases"]
+    assert '"Акме Производство"' in search_queries(snapshot)
+    invalid = client.post(f"/companies/{company['id']}/edit", data={
+        **saved, "csrf_token": "aliases-test", "aliases": "x" * 151})
+    assert invalid.status_code == 302
+    assert db.get_company(company["id"])["aliases"] == saved["aliases"]
+
+
+def test_alias_schema_upgrade_and_legacy_intake_hash_are_idempotent(database):
+    import hashlib
+    import json
+    from psycopg.types.json import Jsonb
+    # Model a draft staged before aliases were introduced.
+    company = {field: "" for field in db.FIELDS if field not in ("aliases", "alias_notes")}
+    company.update(name="Legacy Name", country_registration="Brazil")
+    fingerprint = hashlib.sha256(json.dumps(["manual", company], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    database.execute("INSERT INTO company_intake (source,source_key,draft_data,status) VALUES ('manual',%s,%s,'ready')",
+                     (fingerprint, Jsonb(company)))
+    database.execute(Path("ra/schema.sql").read_text())
+    assert db.stage_company(company, source="manual") is None
+    assert database.execute("SELECT count(*) AS n FROM company_intake").fetchone()["n"] == 1

@@ -119,12 +119,13 @@ def parse_articles(provider: str, payload: dict, query: str) -> list[dict]:
 
 def search(provider: str, subject: dict, fetcher=fetch_json,
            reserve=db.reserve_news_api_request, now: datetime | None = None) -> list[dict]:
-    """One exact-name request per provider; leave entity verification to the analyst."""
+    """One preferred-name request per provider; leave entity verification to the analyst."""
     key_env, _, _ = PROVIDERS[provider]
     key = os.environ.get(key_env, "").strip()
     if not key:
         return []
-    name = subject["name"].strip().replace('"', "")
+    from .aliases import provider_name
+    name = provider_name(subject)
     if not name:
         return []
     now = now or datetime.now(timezone.utc)

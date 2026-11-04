@@ -13,9 +13,10 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
-from .relevance import company_names, contains, headline, normalized
+from .relevance import headline
+from .aliases import headline_identity, normalized
 
-VERSION = "headline-credit-v1"
+VERSION = "headline-credit-v2"
 WEEK_TIMEZONE = ZoneInfo("Europe/Moscow")
 LABELS = {-3: "Severe negativity", -2: "Strong negativity", -1: "Limited negativity",
           0: "Neutral / no directional evidence", 1: "Limited positivity",
@@ -69,12 +70,7 @@ def score_article(article: dict, subject: dict, now: datetime | None = None) -> 
     original, english = headline(article, "title"), headline(article, "title_en")
     text = normalized(original + " " + english)
     official = article.get("source_kind") == "official"
-    names = [name for name in company_names(subject) if contains(text, name)]
-    identity = official or bool(names)
-    if not official and names and all(len(name.replace(" ", "")) < 6 for name in names):
-        contexts = [subject.get("country_registration", "")]
-        contexts += re.split(r"[,;\n]", subject.get("primary_industries", ""))
-        identity = any(contains(text, normalized(context)) for context in contexts)
+    identity = official or headline_identity(text, subject)
     evidence = []
     for field, raw in (("original headline", original), ("English headline", english)):
         folded = normalized(raw)

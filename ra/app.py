@@ -13,6 +13,8 @@ from psycopg.errors import UniqueViolation
 
 from . import db, intake_worker, model_store, news_apis, preliminary, worker
 from .importer import stage_workbook
+from .aliases import provider_name, validate_aliases
+from .search import search_queries
 from .reports import make_pdf, make_xlsx
 from .relevance import classify_results
 from . import score_store
@@ -21,7 +23,7 @@ from .scoring import LABELS, RUBRIC, VERSION, week_start
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_FIELD = {"name": 300, "short_name": 300, "country_registration": 150,
-             "registration_number": 150, "tax_id": 150, "legal_address": 1500, "comment": 5000}
+             "registration_number": 150, "tax_id": 150, "legal_address": 1500, "comment": 5000, "alias_notes": 5000}
 
 
 def form_company(form) -> dict:
@@ -31,6 +33,7 @@ def form_company(form) -> dict:
         if len(value) > MAX_FIELD.get(field, 1500):
             raise ValueError(f"{field.replace('_', ' ').title()} is too long")
         data[field] = value
+    data["aliases"] = validate_aliases(data["aliases"])
     if not data["name"] or not data["country_registration"]:
         raise ValueError("Company name and country of registration are required")
     return data
@@ -156,6 +159,7 @@ def create_app() -> Flask:
             abort(404)
         return render_template(
             "edit.html", company=company,
+            search_queries=search_queries(company), provider_name=provider_name(company),
             identity_evidence=db.get_identity_evidence(
                 company_id, company["registration_number"], company["tax_id"], company["country_registration"]),
         )
