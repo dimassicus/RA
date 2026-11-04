@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS search_results (
     title TEXT NOT NULL,
     url TEXT NOT NULL,
     publisher TEXT NOT NULL DEFAULT '',
+    discovery_service TEXT NOT NULL DEFAULT '',
     source_kind TEXT NOT NULL DEFAULT 'news',
     published_at TIMESTAMPTZ,
     query TEXT NOT NULL,
@@ -103,6 +104,7 @@ CREATE INDEX IF NOT EXISTS search_results_run_date_idx
 CREATE INDEX IF NOT EXISTS search_results_history_idx
     ON search_results (subject_key, url);
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS source_kind TEXT NOT NULL DEFAULT 'news';
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS discovery_service TEXT NOT NULL DEFAULT '';
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS seen_before BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS title_en TEXT NOT NULL DEFAULT '';
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS publisher_en TEXT NOT NULL DEFAULT '';
@@ -116,3 +118,51 @@ CREATE TABLE IF NOT EXISTS search_errors (
     message TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS news_api_usage (
+    provider TEXT NOT NULL,
+    usage_date DATE NOT NULL,
+    request_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (provider, usage_date)
+);
+
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score SMALLINT CHECK (score BETWEEN -3 AND 3);
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_auto SMALLINT CHECK (score_auto BETWEEN -3 AND 3);
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_evidence JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (score_status IN ('pending', 'provisional', 'needs_review', 'reviewed'));
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_included BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_input_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_updated_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS article_score_history (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    result_id BIGINT REFERENCES search_results(id) ON DELETE SET NULL,
+    company_id BIGINT REFERENCES companies(id) ON DELETE SET NULL,
+    url TEXT NOT NULL,
+    previous JSONB NOT NULL,
+    assessment JSONB NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS company_weekly_scores (
+    company_id BIGINT NOT NULL REFERENCES companies(id),
+    week_start DATE NOT NULL,
+    score SMALLINT CHECK (score BETWEEN -3 AND 3),
+    mean_score NUMERIC(4,2) CHECK (mean_score BETWEEN -3 AND 3),
+    metrics JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (company_id, week_start)
+);
+CREATE TABLE IF NOT EXISTS weekly_score_history (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id),
+    week_start DATE NOT NULL,
+    snapshot JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS weekly_score_history_company_week_idx
+    ON weekly_score_history (company_id, week_start, id DESC);

@@ -8,8 +8,10 @@ import time
 
 from . import db
 from .search import search_company
+from .news_apis import plan_subjects
 from .translation import translate_text
 from .language import detect_language
+from .score_store import refresh_scores
 
 
 _queue: queue.Queue[int] = queue.Queue()
@@ -63,7 +65,7 @@ def process_run(run_id: int, searcher=search_company):
         )
         conn.execute("DELETE FROM search_results WHERE run_id = %s", (run_id,))
         conn.execute("DELETE FROM search_errors WHERE run_id = %s", (run_id,))
-    for subject in run["subjects"]:
+    for subject in plan_subjects(run["subjects"], run_id):
         subject_key = str(subject.get("id") or f"one-off:{run_id}")
         name = subject["name"]
         try:
@@ -83,13 +85,14 @@ def process_run(run_id: int, searcher=search_company):
                 ).fetchone()["exists"]
                 conn.execute(
                     "INSERT INTO search_results "
-                    "(run_id, company_id, subject_key, subject_name, title, url, publisher, source_kind, "
+                    "(run_id, company_id, subject_key, subject_name, title, url, publisher, discovery_service, source_kind, "
                     "published_at, query, language, title_en, publisher_en, translation_provider, "
                     "signal_terms, seen_before) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT (run_id, subject_key, url) DO NOTHING",
                     (run_id, subject.get("id"), subject_key, name, article["title"],
-                     article["url"], article["publisher"], article.get("source_kind", "news"), article["published_at"],
+                     article["url"], article["publisher"], article.get("discovery_service", ""),
+                     article.get("source_kind", "news"), article["published_at"],
                      article["query"], language, title_en, publisher_en, provider,
                      article["signal_terms"], seen_before),
                 )
@@ -113,3 +116,4 @@ def process_run(run_id: int, searcher=search_company):
             "UPDATE search_runs SET status = %s, finished_at = now() WHERE id = %s",
             (status, run_id),
         )
+    refresh_scores(run_id)

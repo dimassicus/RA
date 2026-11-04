@@ -5,14 +5,18 @@ from __future__ import annotations
 import hmac
 import os
 import secrets
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from psycopg.errors import UniqueViolation
 
-from . import db, intake_worker, model_store, preliminary, worker
+from . import db, intake_worker, model_store, news_apis, preliminary, worker
 from .importer import stage_workbook
 from .reports import make_pdf, make_xlsx
+from .relevance import classify_results
+from . import score_store
+from .scoring import LABELS, RUBRIC, VERSION, week_start
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -58,7 +62,74 @@ def create_app() -> Flask:
             "index.html", companies=companies,
             archived=db.list_companies(False), runs=db.list_runs(), intake=db.list_intake(),
             model_coverage=model_store.coverage([company["country_registration"] for company in companies]),
+            news_api_providers=news_apis.configured_providers(),
         )
+
+    @app.get("/scores")
+    def scores():
+        weeks = request.args.get("weeks", "12")
+        if weeks not in ("12", "26", "52", "156"):
+            abort(400, "Choose 12, 26, 52 or 156 weeks")
+        current = week_start(datetime.now(timezone.utc))
+        dates = [current - timedelta(weeks=offset) for offset in reversed(range(int(weeks)))]
+        records = score_store.weekly_history()
+        lookup = {(row["company_id"], row["week_start"]): row for row in records}
+        return render_template("scores.html", companies=db.list_companies(True), dates=dates,
+                               lookup=lookup, labels=LABELS, rubric=RUBRIC, weeks=weeks,
+                               version=VERSION, current=current)
+
+    @app.post("/scores/refresh")
+    def refresh_scores():
+        result = score_store.refresh_scores()
+        flash(f"Scoring refreshed: {result['articles_updated']} articles and {result['weeks_updated']} weekly records updated. No news requests made.", "success")
+        return redirect(url_for("scores"))
+
+    @app.get("/api/scores/weekly")
+    def weekly_scores_api():
+        supplied = request.args.get("company_id")
+        try:
+            company_id = int(supplied) if supplied is not None else None
+        except ValueError:
+            abort(400, "Invalid company ID")
+        if company_id is not None and not db.get_company(company_id):
+            abort(404)
+        rows = score_store.weekly_history(company_id)
+        return jsonify({"timezone": "Europe/Moscow", "week_starts": "Monday", "version": VERSION,
+                        "weeks": [{"company_id": r["company_id"], "company_name": r["name"],
+                                   "week_start": r["week_start"].isoformat(), **r["metrics"],
+                                   "updated_at": r["updated_at"].isoformat()} for r in rows]})
+
+    @app.get("/scores/<int:company_id>/<start>")
+    def score_week(company_id: int, start: str):
+        try:
+            date_start = date.fromisoformat(start)
+        except ValueError:
+            abort(404)
+        company = db.get_company(company_id)
+        if not company:
+            abort(404)
+        record, articles, history = score_store.week_detail(company_id, date_start)
+        if not record:
+            abort(404)
+        return render_template("score_week.html", company=company, record=record, articles=articles,
+                               history=history, labels=LABELS)
+
+    @app.route("/articles/<int:result_id>/score", methods=["GET", "POST"])
+    def article_score(result_id: int):
+        article = score_store.get_article(result_id)
+        if not article:
+            abort(404)
+        if request.method == "POST":
+            try:
+                score_store.review_score(result_id, int(request.form.get("score", "")),
+                                         request.form.get("included") == "yes", request.form.get("reason", ""))
+            except ValueError as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("article_score", result_id=result_id))
+            flash("Article score saved. Weekly history updated and the decision recorded.", "success")
+            return redirect(url_for("article_score", result_id=result_id))
+        return render_template("article_score.html", article=article, history=score_store.article_history(result_id),
+                               labels=LABELS, rubric=RUBRIC)
 
     @app.post("/companies")
     def add_company():
@@ -175,8 +246,22 @@ def create_app() -> Flask:
         run = db.get_run(run_id)
         if not run:
             abort(404)
+        all_results = classify_results(run, db.get_results(run_id))
+        view = request.args.get("view", "risk")
+        if view not in ("risk", "review", "older", "background", "scored", "all"):
+            abort(400, "Unknown lead view")
+        results = [item for item in all_results if view == "all" or item["relevance"] == view
+                   or (view == "scored" and item.get("score_included"))]
         return render_template(
-            "run.html", run=run, results=db.get_results(run_id), errors=db.get_errors(run_id),
+            "run.html", run=run, results=results, errors=db.get_errors(run_id), view=view,
+            counts={**{key: sum(item["relevance"] == key for item in all_results)
+                    for key in ("risk", "review", "older", "background")},
+                    "scored": sum(bool(item.get("score_included")) for item in all_results)},
+            score_labels=LABELS,
+            all_count=len(all_results),
+            selected_count=sum(bool(item["report_selected"]) for item in all_results),
+            hidden_selected=[item["id"] for item in all_results
+                             if item["report_selected"] and item not in results],
         )
 
     @app.get("/api/runs/<int:run_id>/status")
@@ -217,6 +302,7 @@ def create_app() -> Flask:
                         request.form[title_key].strip(), request.form[publisher_key].strip()
                     )
             db.set_report_selection(run_id, selected_ids, edits)
+            score_store.refresh_scores(run_id)
             flash(f"Saved {len(set(selected_ids))} leads and any English corrections for the selected report.", "success")
         except ValueError as exc:
             flash(str(exc), "error")
@@ -309,6 +395,7 @@ def create_app() -> Flask:
 
 def main():
     db.init_schema()
+    score_store.refresh_scores()
     intake_worker.start()
     worker.start_worker()
     model_store.schedule_countries([company["country_registration"] for company in db.list_companies(True)])

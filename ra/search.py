@@ -11,6 +11,8 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
+from . import news_apis
+
 
 LOCALES = {
     "brazil": ("pt-BR", "BR", "BR:pt"),
@@ -56,9 +58,8 @@ def normalized(value: str) -> str:
 
 
 def signal_terms(title: str) -> list[str]:
-    folded = normalized(title)
-    return [label for label, words in SIGNALS.items()
-            if any(normalized(word) in folded for word in words)]
+    from .relevance import risk_signals
+    return risk_signals(title)
 
 
 def search_queries(subject: dict) -> list[str]:
@@ -80,7 +81,7 @@ def search_queries(subject: dict) -> list[str]:
 def feed_url(query: str, country: str) -> tuple[str, str]:
     language, region, edition = LOCALES.get(normalized(country), ("en-US", "US", "US:en"))
     return "https://news.google.com/rss/search?" + urlencode(
-        {"q": query, "hl": language, "gl": region, "ceid": edition}
+        {"q": query + " when:7d", "hl": language, "gl": region, "ceid": edition}
     ), language
 
 
@@ -117,6 +118,7 @@ def parse_feed(content: bytes, query: str, language: str, limit: int = 30) -> li
             "language": language,
             "signal_terms": signal_terms(title),
             "source_kind": "news",
+            "discovery_service": "Google News RSS",
         })
     return articles
 
@@ -163,6 +165,7 @@ def fca_warning_list(subject: dict, fetcher=fetch_feed) -> list[dict]:
         if any(re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", title) for name in names):
             warning["publisher"] = "Financial Conduct Authority"
             warning["source_kind"] = "official"
+            warning["discovery_service"] = "FCA Warning RSS"
             matches.append(warning)
     return matches
 
@@ -192,6 +195,7 @@ def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None) 
                 "published_at": published_at, "query": f"Official disclosures {filing_year}",
                 "language": "pt-BR", "signal_terms": signal_terms(title),
                 "source_kind": "official",
+                "discovery_service": "Heringer RI",
             })
     return articles
 
@@ -213,6 +217,22 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
                 articles.append(article)
         except Exception as exc:
             errors.append(f"FCA Warning List: {type(exc).__name__}: {exc}")
+    configured = news_apis.configured_providers()
+    selected = subject.get("_news_providers") if "_news_providers" in subject else configured
+    if configured and not selected:
+        errors.append("News APIs: daily request budget allocation unavailable for this company")
+    for provider in selected:
+        if provider not in configured:
+            continue
+        try:
+            for article in news_apis.search(provider, subject):
+                if article["url"] not in seen_urls:
+                    seen_urls.add(article["url"])
+                    articles.append(article)
+        except news_apis.ProviderError as exc:
+            errors.append(f"{provider}: {exc}")
+        except Exception as exc:
+            errors.append(f"{provider}: {type(exc).__name__}: request could not be completed")
     for query in search_queries(subject):
         url, language = feed_url(query, subject["country_registration"])
         try:

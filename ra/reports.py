@@ -73,7 +73,8 @@ def make_xlsx(run: dict, results: list[dict], errors: list[dict], selected: bool
     columns = [
         "Published", "Company", "Source type", "Publisher (original)", "Publisher (English)",
         "Headline (original)", "Headline (English, machine translation)", "Review cues",
-        "Discovery status", "Language", "Article / notice URL", "Search query",
+        "Discovery status", "Language", "Article / notice URL", "Search query", "Discovery service",
+        "Article score (-3 to +3)", "Score status", "Included in weekly score", "Score reason", "Scoring version",
     ]
     leads.append(columns)
     for cell in leads[1]:
@@ -89,6 +90,10 @@ def make_xlsx(run: dict, results: list[dict], errors: list[dict], selected: bool
             _safe_excel(item["title"]), _safe_excel(item.get("title_en")),
             ", ".join(item["signal_terms"]), "Seen before" if item["seen_before"] else "New to system",
             item["language"], item["url"], _safe_excel(item["query"]),
+            _safe_excel(item.get("discovery_service", "")),
+            item.get("score"), _safe_excel(item.get("score_status", "pending")),
+            "Yes" if item.get("score_included") else "No", _safe_excel(item.get("score_reason", "")),
+            _safe_excel(item.get("score_version", "")),
         ])
         row = leads.max_row
         link = leads.cell(row, 11)
@@ -99,8 +104,8 @@ def make_xlsx(run: dict, results: list[dict], errors: list[dict], selected: bool
         for cell in leads[row]:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
     leads.freeze_panes = "A2"
-    leads.auto_filter.ref = f"A1:L{max(1, leads.max_row)}"
-    for index, width in enumerate((15, 29, 18, 22, 22, 70, 70, 28, 19, 14, 55, 40), start=1):
+    leads.auto_filter.ref = f"A1:R{max(1, leads.max_row)}"
+    for index, width in enumerate((15, 29, 18, 22, 22, 70, 70, 28, 19, 14, 55, 40, 22, 15, 18, 20, 60, 22), start=1):
         leads.column_dimensions[get_column_letter(index)].width = width
     if errors:
         failure_sheet = book.create_sheet("Source errors")
@@ -143,8 +148,10 @@ def make_pdf(run: dict, results: list[dict], errors: list[dict], selected: bool 
     cell_style = ParagraphStyle("cell", fontName=font, fontSize=7.3, leading=10, alignment=TA_LEFT)
     head_style = ParagraphStyle("head", fontName=font, fontSize=7.3, leading=10, textColor=colors.white)
 
+    from .relevance import classify_results
+    results = classify_results(run, results)
     new_results = [item for item in results if not item["seen_before"]]
-    eligible = results if selected else [item for item in new_results if item["source_kind"] == "official" or item["signal_terms"]]
+    eligible = results if selected else [item for item in new_results if item["relevance"] == "risk"]
     pdf_rows = eligible[:300]
     story = [
         Paragraph("RA | Analyst-selected lead report" if selected else "RA | Search lead report", title_style), Spacer(1, 8),
@@ -158,8 +165,8 @@ def make_pdf(run: dict, results: list[dict], errors: list[dict], selected: bool 
         ), Spacer(1, 12), Paragraph(escape(WARNING), note_style), Spacer(1, 12),
         Paragraph(
             ("These leads were selected by an analyst. Selection does not establish that an event is verified."
-             if selected else "Selected new leads: official notices and headlines matching a review keyword. "
-             "The Excel download includes every search lead. A keyword is not a risk finding."), meta_style,
+             if selected else "New company-matched risk leads published within 30 days of the search. "
+             "The Excel download includes every search lead. Headline triage is not a verified risk finding."), meta_style,
         ), Spacer(1, 12),
     ]
     if len(eligible) > 300:
@@ -174,7 +181,11 @@ def make_pdf(run: dict, results: list[dict], errors: list[dict], selected: bool 
             rows.append([
                 Paragraph(_date(item["published_at"]) or "Unknown", cell_style),
                 Paragraph(escape(item["subject_name"]), cell_style),
-                Paragraph("Official" if item["source_kind"] == "official" else escape(item["publisher"]), cell_style),
+                Paragraph(
+                    ("Official" if item["source_kind"] == "official" else escape(item["publisher"]))
+                    + ("<br/>via " + escape(item["discovery_service"]) if item.get("discovery_service") else ""),
+                    cell_style,
+                ),
                 Paragraph(f"<link href={url} color='#0F6F69'>{bilingual}</link>", cell_style),
                 Paragraph(escape(", ".join(item["signal_terms"])) or "-", cell_style),
             ])

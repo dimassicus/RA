@@ -22,6 +22,14 @@ def test_queries_use_owner_context_without_losing_exact_name():
     assert len(queries) <= 3
 
 
+def test_google_news_queries_are_limited_to_seven_days():
+    from urllib.parse import parse_qs, urlparse
+    from ra.search import feed_url
+    url, language = feed_url('"Acme Manufacturing"', "Brazil")
+    assert parse_qs(urlparse(url).query)["q"] == ['"Acme Manufacturing" when:7d']
+    assert language == "pt-BR"
+
+
 def test_rss_parsing_keeps_publisher_date_and_rejects_insecure_links():
     feed = b'''<rss><channel>
       <item><title>Company announces creditor mediation</title><link>https://example.com/a</link><source>Publisher</source><pubDate>Tue, 13 Oct 2026 07:00:00 GMT</pubDate></item>

@@ -28,6 +28,22 @@ def connect():
     return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
 
+def reserve_news_api_request(provider: str, daily_limit: int) -> bool:
+    """Atomically reserve one request against the provider's UTC-day budget."""
+    if daily_limit < 1:
+        return False
+    with connect() as conn:
+        row = conn.execute(
+            "INSERT INTO news_api_usage (provider, usage_date, request_count) "
+            "VALUES (%s, (now() AT TIME ZONE 'UTC')::date, 1) "
+            "ON CONFLICT (provider, usage_date) DO UPDATE "
+            "SET request_count = news_api_usage.request_count + 1 "
+            "WHERE news_api_usage.request_count < %s RETURNING request_count",
+            (provider, daily_limit),
+        ).fetchone()
+    return row is not None
+
+
 def init_schema():
     with connect() as conn:
         conn.execute(Path(__file__).with_name("schema.sql").read_text())
