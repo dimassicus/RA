@@ -28,6 +28,8 @@ def article(title, **extra):
     ("Acme Manufacturing: recuperação judicial", -2),
     ("Acme Manufacturing encerra recuperação judicial", 3),
     ("Acme Manufacturing sues supplier", 0),
+    ("Acme Manufacturing announces a software upgrade", 0),
+    ("Acme Manufacturing rating downgraded", -2),
 ])
 def test_seven_steps_and_directional_context(title, expected):
     result = score_article(article(title), SUBJECT, NOW)

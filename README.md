@@ -65,3 +65,23 @@ The current pilot still needs reviewed local-language names and aliases (especia
 - One Heringer live search (run 9) completed with zero source errors. Both APIs accepted one request each and returned zero exact-legal-name hits in seven days; other sources supplied 34 leads. Daily usage was 1/95 for each provider after the check.
 - Existing watchlist run 8: 73 collected leads classify as 1 recent risk, 10 older risks and 62 background leads. This is triage, not a measured precision/recall result.
 - Validation: 36 offline tests passed; filtered/all-lead pages and PDF/Excel endpoints returned HTTP 200. The user LaunchAgent loaded successfully and recovered RA after a simulated server crash without additional API requests. Database-readiness retry is covered by an offline test; an actual Mac reboot was not performed.
+
+## Article sentiment and weekly history
+
+Open <http://127.0.0.1:8765/scores> for the watchlist heatmap. Each saved article has an integer score from **−3 to +3**: severe, strong and limited negativity; neutral; limited, strong and severe positivity. The scoring rubric is visible on that page. These are versioned, provisional headline assessments, not verified credit ratings. Both the original and English headline are checked, with matched evidence and the reason displayed. Company identity uncertainty, missing dates, unavailable translations and ambiguous or denied events are excluded from weekly averages pending review. A zero on an excluded article is not treated as neutral company coverage.
+
+Scoring runs locally with no AI or news API calls. New finished searches are scored automatically. Startup and **Refresh saved scores** backfill existing records, without overwriting analyst decisions. The refresh also fills elapsed no-data weeks. It does not schedule searches. The same operation is available as `.venv/bin/python -m ra.score_store`.
+
+Weekly records use **publication dates, Monday–Sunday in Europe/Moscow**. Each included exact article URL contributes once per company/week; an analyst-reviewed occurrence takes precedence over an automatic one. The weekly arithmetic mean is saved to two decimals, with a rounded integer for the colour scale (halves round away from zero). Worst/best scores, negative/neutral/positive counts, reviewed counts, exclusions and search/source-error coverage are saved alongside it. No usable articles means **no data**, not zero. Different articles covering the same event are not yet grouped.
+
+Click a heatmap cell for its articles and saved revisions. **Review score** lets an analyst change any article to an integer in the seven-step scale, decide whether it belongs in the company average, and explain the decision. Scores are recalculated atomically and prior weekly snapshots and article decisions are retained. Late discoveries can revise historical publication weeks; old snapshots remain available. One-off subjects without a saved company ID do not enter watchlist history. Excel lead downloads include scores, inclusion, status, reasons and rule versions. `/api/scores/weekly` exposes saved history as JSON, optionally filtered with `?company_id=1`.
+
+Validation on 4 November 2026: **70 tests passed**, including six real PostgreSQL integration tests in disposable schemas that rolled back. The existing 411 articles were backfilled into 96 company-week records across nine companies; 122 article assessments require review and 289 are provisional. The database was backed up to the Git-ignored `.local/before-scoring/RA-before-scoring.dump` first. Repeating the refresh changed no rows. Heatmap, weekly JSON and scored-run pages returned HTTP 200. No additional news requests were made.
+
+To run all tests including PostgreSQL integration checks:
+
+```bash
+RA_TEST_DATABASE_URL=postgresql://localhost/RA .venv/bin/python -m pytest -q
+```
+
+Without that explicit test URL, the database tests are skipped. Each database test uses a unique schema in a transaction and rolls it back; it does not change the watchlist.
