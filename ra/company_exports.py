@@ -40,8 +40,20 @@ def source_note(s):
     a = s["article"]
     v = a.get("verification") or {}
     status = s["state"].replace("_", " ")
-    notes = [status, review_note(a), v.get("reason") or "", *(a.get("exposure_paths") or [])]
+    notes = [*s.get("governance", []), status, review_note(a), v.get("reason") or "", *(a.get("exposure_paths") or [])]
     return " · ".join(n for n in notes if n)
+
+
+def roster_lines(report):
+    for row in report.get("rosters", []):
+        observed = row['observed_at'].astimezone(WEEK_TIMEZONE)
+        prior = row['previous_at']
+        label = f"{row['source_label']} · observed {observed:%d %b %Y}"
+        if prior:
+            label += f", compared with {prior.astimezone(WEEK_TIMEZONE):%d %b %Y}"
+        yield label, row['source_url']
+        for detail in row['notes']:
+            yield detail, ""
 
 
 def calendar_lines(report):
@@ -110,6 +122,13 @@ def company_xlsx(report):
     for branch, heading in BRANCHES.items():
         band(heading)
         stories([s for s in report["sources"] if branch in s["branches"]][:3])
+    governance = [s for s in report["sources"] if s.get("governance")]
+    if governance or report.get("rosters"):
+        band("Leadership and major ownership leads")
+        if governance:
+            stories(governance)
+        for line, link in roster_lines(report):
+            note(line, link)
     band("Risk and sentiment history")
     grid(RATINGS, rating_rows(report))
     note(BASIS)
@@ -215,6 +234,13 @@ def company_pdf(report):
             for path in dict.fromkeys(path for s in selected for path in s["article"]["exposure_paths"]
                                       if path.startswith(branch.split()[0] + " ·")):
                 story.append(para(path, 9, MUTED))
+    governance = [s for s in report["sources"] if s.get("governance")]
+    if governance or report.get("rosters"):
+        story.append(heading("Leadership and major ownership leads"))
+        if governance:
+            stories(governance)
+        for line, link in roster_lines(report):
+            story.append(para(line, 9, INK, 4, link))
     story.extend([heading("Evidence by branch"), grid(COVERAGE, evidence_rows(report), [131, 119, 125, 122]),
                   para("A source can appear in several branches.", 8, MUTED)])
     story.extend([heading("Sources and verification notes"),

@@ -418,3 +418,25 @@ def test_keyword_edit_translate_and_disable_in_review(database, monkeypatch):
     count = len(keywords.records())
     keywords.seed(database)
     assert count == len(keywords.records())
+
+
+def test_registry_history_is_per_issuer_idempotent_and_reported(database):
+    from ra import governance_roster as registry
+    from ra.company_report import load_report
+    company, first, _ = seed(database)
+    company = dict(company, tax_id='22266175000188')
+    key = str(company['id'])
+    member = {'nome_socio':'Jane Example', 'qualificacao_socio':'Diretor'}
+    def registry_data(url):
+        return {'razao_social':company['name'], 'cnpj':company['tax_id'], 'qsa':[member]}
+    registry.check(first, key, company, registry_data)
+    registry.check(first, key, company, lambda u: pytest.fail('duplicate fetch'))
+    assert registry.observations(first)[0]['notes'][0].startswith('First observation')
+    database.execute("UPDATE governance_rosters SET observed_at=now()-interval '7 days' WHERE run_id=%s",(first,))
+    _, second, _ = seed(database)
+    member['nome_socio'] = 'Another Example'
+    registry.check(second, key, company, registry_data)
+    notes = load_report(db.get_run(second), company)['rosters'][0]['notes']
+    assert notes == ['Newly listed · Another Example · Diretor', 'Previously listed · Jane Example · Diretor']
+    with create_app().test_client() as client:
+        assert 'Another Example' in client.get(f'/runs/{second}?view=governance').get_data(as_text=True)

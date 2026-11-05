@@ -11,14 +11,14 @@ from pathlib import Path
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from psycopg.errors import UniqueViolation
 
-from . import db, keywords, intake_worker, model_store, news_apis, preliminary, worker
+from . import db, governance_roster, keywords, intake_worker, model_store, news_apis, preliminary, worker
 from .importer import stage_workbook
 from .exposure import topic_links
 from .company_report import load_report
 from .company_exports import company_pdf, company_xlsx
 from .aliases import provider_name, validate_aliases
 from .publisher_lookup import original_title
-from .search import search_queries
+from .search import company_search_plan
 from .reports import make_pdf, make_xlsx
 from .relevance import classify_results
 from . import score_store, verification_store
@@ -211,7 +211,7 @@ def create_app() -> Flask:
             abort(404)
         return render_template(
             "edit.html", company=company,
-            search_queries=search_queries(company), provider_name=provider_name(company),
+            search_queries=[query for query, _ in company_search_plan(company)], provider_name=provider_name(company),
             identity_evidence=db.get_identity_evidence(
                 company_id, company["registration_number"], company["tax_id"], company["country_registration"]),
         )
@@ -309,11 +309,12 @@ def create_app() -> Flask:
             abort(404)
         all_results = classify_results(run, db.get_results(run_id))
         view = request.args.get("view", "risk")
-        if view not in ("risk", "review", "older", "background", "scored", "exposure", "all"):
+        if view not in ("risk", "review", "older", "background", "scored", "exposure", "governance", "all"):
             abort(400, "Unknown lead view")
         results = [item for item in all_results if view == "all" or item["relevance"] == view
                    or (view == "scored" and item.get("score_included"))
-                   or (view == "exposure" and item.get("exposure_paths"))]
+                   or (view == "exposure" and item.get("exposure_paths"))
+                   or (view == "governance" and item["governance"])]
         if view in ("risk", "older", "scored"):
             grouped = {}
             for item in results:
@@ -329,8 +330,10 @@ def create_app() -> Flask:
             "run.html", run=run, results=results, errors=db.get_errors(run_id), view=view,
             counts={**{key: sum(item["relevance"] == key for item in all_results)
                     for key in ("risk", "review", "older", "background")},
+                    "governance": sum(bool(item["governance"]) for item in all_results),
                     "exposure": sum(bool(item.get("exposure_paths")) for item in all_results),
                     "scored": sum(bool(item.get("score_included")) for item in all_results)},
+            rosters=governance_roster.observations(run_id) if view == "governance" else [],
             exposure_checks=db.exposure_coverage(run_id) if view == "exposure" else [],
             score_labels=LABELS, verification_jobs=verification_store.job_summary(run_id),
             all_count=len(all_results),

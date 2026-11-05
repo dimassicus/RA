@@ -40,6 +40,20 @@ GROUPS = {
         "profit warning": "", "downgrade": r"downgrad\w*", "negative outlook": "",
         "profit decline": r"lucro cai|queda (?:do|no|de) lucro"},
     "management change": {"resignation": r"resign\w*|renuncia\w*|istifa\w*|tu chuc"},
+    "executive role": {
+        "chief executive officer": r"ceo|chief executive|deputy general director|diretor presidente|διευθυνοντο[ςσ] συμβουλου",
+        "chief financial officer": r"cfo|finance director",
+        "board of directors": r"chairman|chairwoman|chairperson|board chair|board members?|board directors?|diretor(?:a)?"},
+    "leadership action": {
+        "appointment": r"appoint(?:s|ed|ment)?|nam(?:es|ed)|new (?:ceo|cfo|chairman|chief executive)|tong giam doc moi|novo (?:diretor|presidente)|νεο[ςσ] διευθυνων|elect(?:s|ed)|succeed(?:s|ed)|assum(?:e|iu)|αναλαμβανει|ανελαβε",
+        "dismissal": r"oust(?:s|ed)?|dismiss(?:es|ed|al)|steps? down|departs?|leaves|retires?"},
+    "ownership": {
+        "major shareholder": r"major shareholders?|substantial shareholder|largest shareholder|controlling shareholder|acionista controlador",
+        "change of control": r"change in control|transfer of control|takeover|alienacao de controle",
+        "voting rights": r"voting stake|voting power",
+        "controlling stake": r"majority stake|minority stake|participacao relevante",
+        "stake sale": r"(?:sell[s]?|sold|cuts?|reduces?|divests?) (?:its |a |an |the )?(?:[0-9]+(?: [0-9]+)? )?(?:equity )?stake",
+        "stake acquisition": r"(?:buys?|bought|acquires?|acquired|raises?|increases?) (?:its |a |an |the )?(?:[0-9]+(?: [0-9]+)? )?(?:equity )?stake"},
     "financial improvement": {"credit upgrade": "", "return to profit": "", "obtained refinancing": ""},
 }
 SEEDS = {term: (group, pattern) for group, concepts in GROUPS.items() for term, pattern in concepts.items()}
@@ -65,7 +79,8 @@ def starter_translations():
 
 
 def defaults():
-    return [dict(english=term, direction="favorable" if group == "financial improvement" else "adverse",
+    return [dict(english=term, direction=("neutral" if group in ("executive role", "leadership action", "ownership") else
+                                      "favorable" if group == "financial improvement" else "adverse"),
                  translations=starter_translations()[term], enabled=True) for term, (group, _) in SEEDS.items()]
 
 
@@ -93,7 +108,8 @@ def native_text(text):
     return " ".join(text.split())
 
 
-_rules = compile_terms(defaults())
+_rows = defaults()
+_rules = compile_terms(_rows)
 _refresh_lock = threading.Lock()
 
 
@@ -111,9 +127,10 @@ def records():
 
 
 def reload_rules():
-    global _rules
+    global _rules, _rows
     with _refresh_lock:
-        _rules = compile_terms(records())
+        _rows = records()
+        _rules = compile_terms(_rows)
 
 
 def seed(conn):
@@ -267,3 +284,10 @@ def _work():
                     reload_rules()
         except (ValueError, OSError, KeyError, TypeError, db.psycopg.Error) as exc:
             last_error = f"Translation interrupted ({type(exc).__name__}). Retry missing translations."
+
+def discovery_terms(groups, language):
+    terms = []
+    for row in _rows:
+        if row["enabled"] and SEEDS.get(row["english"], ("", ""))[0] in groups:
+            terms.append(row["english"] if language == "en" else row["translations"].get(language, ""))
+    return list(dict.fromkeys(t for t in terms if t))

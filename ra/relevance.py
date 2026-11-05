@@ -25,6 +25,25 @@ def headline(article: dict, field: str) -> str:
     return text
 
 
+def governance_cues(article, subject):
+    original = headline(article, "title")
+    trusted_english = (article.get("headline_review") or {}).get("status") == "faithful"
+    english = headline(article, "title_en") if trusted_english else ""
+    text = normalized(original + " " + english)
+    if ((article.get("verification") or {}).get("status") == "unmatched" or
+        (article.get("source_kind") != "official" and not headline_identity(text, subject))):
+        return []
+    hits = matches(original, article.get("language")) + matches(english, "en")
+    groups = {group for _, group, _ in hits}
+    labels = []
+    if groups & {"management change", "leadership action"} and (
+            "executive role" in groups or (article.get("source_kind") == "official" and "management change" in groups)):
+        labels.append("Leadership")
+    if "ownership" in groups:
+        labels.append("Major ownership")
+    return labels
+
+
 def classify(article: dict, subject: dict, as_of=None) -> dict:
     title = headline(article, "title")
     english = headline(article, "title_en")
@@ -68,7 +87,7 @@ def classify(article: dict, subject: dict, as_of=None) -> dict:
             category, reason = "review", "Missing or unexpected publication date; " + reason
         elif published < as_of - timedelta(days=30):
             category, reason = "older", "Older than 30 days at search time; " + reason
-    return {**article, "relevance": category, "relevance_reason": reason, "signal_terms": signals,
+    return {**article, "governance": governance_cues(article, subject), "relevance": category, "relevance_reason": reason, "signal_terms": signals,
             "keyword_hits": [{"term": term, "direction": direction} for term, _, direction in hits]}
 
 

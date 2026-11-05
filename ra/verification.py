@@ -59,6 +59,10 @@ def verify(document, subject, article):
             if any(start < b and end > a for a, b in accepted):
                 continue
             accepted.append((start, end))
+            # An executive departure alone does not establish a credit consequence.
+            if (re.fullmatch(r'resign\w*|renuncia\w*|istifa\w*|tu chuc', phrase)
+                    or (phrase.startswith('demiss') and not re.search(r'\b(?:funcionarios|empregados|trabalhadores)\b', folded))):
+                continue
             if (re.fullmatch(r'default(?:s|ed)?', phrase) and not re.search(r'\b(?:debt|payment|bond|creditor|loan|interest)\w*\b', folded)):
                 ambiguous = True
                 continue

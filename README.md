@@ -155,3 +155,7 @@ calls to that provider. The assessment page shows the recovered text for analyst
 Reader output can contain comments or related stories, so it cannot automatically change a
 company score. A new run uses this flow automatically. Use **Check full article** to retry a
 previously unavailable article.
+
+Company searches also check leadership and major ownership news in English and the registration-country language where configured. Azerbaijan and Uzbekistan get Russian queries too. The search uses issuer aliases, the enabled governance terms in the keyword editor, and separate issuer-plus-name queries for listed executives and owners. **Leadership and ownership** on the run page gathers matching leads. Company PDF and Excel briefs include relevant seven-day headlines and available roster comparisons.
+
+For Brazilian companies with a matching CNPJ and legal name, each run records the names and roles in the Receita Federal roster supplied by BrasilAPI. For Heringer it also compares the issuer’s dated shareholding table, including disclosed percentages and share counts. The first observation establishes a baseline. Later observations show differences since the preceding successful check. The issuer’s update date and RA’s observation date can differ. Partial rosters, missing dates on the issuer table and unreconciled totals are reported as coverage gaps. A leadership or ownership change needs separate evidence of credit impact to enter an automatic weekly score.

@@ -9,6 +9,16 @@
     "uz": "halokat",
     "vi": "tai nạn"
   },
+  "appointment": {
+    "ar": "تعيين",
+    "az": "təyinat",
+    "el": "διορισμός",
+    "pt": "nomeação",
+    "ru": "назначение",
+    "tr": "atama",
+    "uz": "tayinlash",
+    "vi": "bổ nhiệm"
+  },
   "arbitration": {
     "ar": "تحكيم",
     "az": "arbitraj",
@@ -28,6 +38,16 @@
     "tr": "iflas",
     "uz": "bankrotlik",
     "vi": "phá sản"
+  },
+  "board of directors": {
+    "ar": "مجلس الإدارة",
+    "az": "direktorlar şurası",
+    "el": "διοικητικό συμβούλιο",
+    "pt": "conselho de administração",
+    "ru": "совет директоров",
+    "tr": "yönetim kurulu",
+    "uz": "direktorlar kengashi",
+    "vi": "hội đồng quản trị"
   },
   "cash crisis": {
     "ar": "أزمة سيولة",
@@ -49,6 +69,36 @@
     "uz": "naqd pul yetishmasligi",
     "vi": "thiếu hụt tiền mặt"
   },
+  "change of control": {
+    "ar": "تغيير السيطرة",
+    "az": "nəzarətin dəyişməsi",
+    "el": "αλλαγή ελέγχου",
+    "pt": "mudança de controle",
+    "ru": "смена контроля",
+    "tr": "kontrol değişikliği",
+    "uz": "nazoratning o‘zgarishi",
+    "vi": "thay đổi quyền kiểm soát"
+  },
+  "chief executive officer": {
+    "ar": "الرئيس التنفيذي",
+    "az": "baş icraçı direktor",
+    "el": "διευθύνων σύμβουλος",
+    "pt": "diretor-presidente",
+    "ru": "генеральный директор",
+    "tr": "genel müdür",
+    "uz": "bosh direktor",
+    "vi": "tổng giám đốc"
+  },
+  "chief financial officer": {
+    "ar": "المدير المالي",
+    "az": "maliyyə direktoru",
+    "el": "οικονομικός διευθυντής",
+    "pt": "diretor financeiro",
+    "ru": "финансовый директор",
+    "tr": "finans direktörü",
+    "uz": "moliya direktori",
+    "vi": "giám đốc tài chính"
+  },
   "closure": {
     "ar": "إغلاق",
     "az": "bağlanma",
@@ -58,6 +108,16 @@
     "tr": "kapanış",
     "uz": "yopish",
     "vi": "đóng cửa"
+  },
+  "controlling stake": {
+    "ar": "حصة مسيطرة",
+    "az": "nəzarət səhm paketi",
+    "el": "πακέτο ελέγχου",
+    "pt": "participação controladora",
+    "ru": "контрольный пакет акций",
+    "tr": "kontrol hissesi",
+    "uz": "nazorat aksiyalari paketi",
+    "vi": "cổ phần chi phối"
   },
   "conviction": {
     "ar": "حكم جنائي",
@@ -118,6 +178,16 @@
     "tr": "temerrüt",
     "uz": "defolt",
     "vi": "vỡ nợ"
+  },
+  "dismissal": {
+    "ar": "إقالة",
+    "az": "vəzifədən azad edilmə",
+    "el": "παύση",
+    "pt": "destituição",
+    "ru": "увольнение",
+    "tr": "görevden alma",
+    "uz": "lavozimdan ozod etish",
+    "vi": "miễn nhiệm"
   },
   "downgrade": {
     "ar": "خفض التصنيف",
@@ -249,6 +319,16 @@
     "uz": "zarar",
     "vi": "thua lỗ"
   },
+  "major shareholder": {
+    "ar": "مساهم رئيسي",
+    "az": "əsas səhmdar",
+    "el": "βασικός μέτοχος",
+    "pt": "acionista relevante",
+    "ru": "крупный акционер",
+    "tr": "büyük hissedar",
+    "uz": "yirik aksiyador",
+    "vi": "cổ đông lớn"
+  },
   "mediation": {
     "ar": "وساطة",
     "az": "vasitəçilik",
@@ -379,6 +459,26 @@
     "uz": "to'xtatib qo'yish",
     "vi": "đình sản"
   },
+  "stake acquisition": {
+    "ar": "شراء حصة",
+    "az": "payın alınması",
+    "el": "απόκτηση συμμετοχής",
+    "pt": "aquisição de participação",
+    "ru": "приобретение доли",
+    "tr": "hisse alımı",
+    "uz": "ulushni sotib olish",
+    "vi": "mua cổ phần"
+  },
+  "stake sale": {
+    "ar": "بيع حصة",
+    "az": "payın satışı",
+    "el": "πώληση μεριδίου",
+    "pt": "venda de participação",
+    "ru": "продажа доли",
+    "tr": "hisse satışı",
+    "uz": "ulushni sotish",
+    "vi": "bán cổ phần"
+  },
   "strike": {
     "ar": "إضراب",
     "az": "strejk",
@@ -388,5 +488,15 @@
     "tr": "grev",
     "uz": "ish tashlash",
     "vi": "đình công"
+  },
+  "voting rights": {
+    "ar": "حقوق التصويت",
+    "az": "səsvermə hüquqları",
+    "el": "δικαιώματα ψήφου",
+    "pt": "direitos de voto",
+    "ru": "права голоса",
+    "tr": "oy hakları",
+    "uz": "ovoz berish huquqlari",
+    "vi": "quyền biểu quyết"
   }
 }

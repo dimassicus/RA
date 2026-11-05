@@ -2,10 +2,10 @@
 from calendar import monthrange
 from datetime import datetime, time, timedelta
 
-from . import db, watch_dates
+from . import db, governance_roster, watch_dates
 from .exposure import scope_sector_paths
 from .aliases import headline_identity, normalized
-from .relevance import headline
+from .relevance import governance_cues, headline
 from .keywords import matches
 from .scoring import WEEK_TIMEZONE, week_start
 
@@ -56,7 +56,9 @@ def load_report(run, subject):
                     prior_subject = next(s for s in prior["subjects"] if s.get("id") == subject["id"])
                     previous_runs[label] = (prior["finished_at"], relevant_sources(prior_subject, rows, prior["finished_at"]))
     errors = [e["message"] for e in db.get_errors(run["id"]) if e["subject_name"] in (subject["name"], "Run")]
-    return build_report(run, subject, articles, history, errors, previous_runs)
+    report = build_report(run, subject, articles, history, errors, previous_runs)
+    report["rosters"] = governance_roster.observations(run["id"], key)
+    return report
 
 
 def relevant_sources(subject, articles, end):
@@ -82,7 +84,8 @@ def relevant_sources(subject, articles, end):
             continue
         rank = (bool(a.get("score_included")), abs(a.get("score") or 0) if a.get("score_included") else 0,
                 bool(a.get("report_selected")), "Company" in branches, "Country / region" in branches, bool(matches(headline(a, "title"), a.get("language")) or matches(headline(a, "title_en"))), published, a["id"])
-        sources.append(dict(article=a, branches=branches, rank=rank, state=state))
+        sources.append(dict(article=a, branches=branches, rank=rank, state=state,
+                            governance=governance_cues(a, subject) if "Company" in branches else []))
     sources.sort(key=lambda s: s["rank"], reverse=True)
     return sources
 

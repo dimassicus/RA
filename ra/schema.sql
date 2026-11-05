@@ -222,3 +222,15 @@ CREATE TABLE IF NOT EXISTS monitor_keywords (
     enabled boolean NOT NULL DEFAULT true,
     translations jsonb NOT NULL DEFAULT '{}'
 );
+
+CREATE TABLE IF NOT EXISTS governance_rosters (
+    run_id BIGINT NOT NULL REFERENCES search_runs(id) ON DELETE CASCADE,
+    subject_key TEXT NOT NULL,
+    company_name TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    observed_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    source_label TEXT NOT NULL,
+    members JSONB NOT NULL,
+    PRIMARY KEY (run_id, subject_key, source_url)
+);
+CREATE INDEX IF NOT EXISTS governance_rosters_source_idx ON governance_rosters (source_url, observed_at DESC);

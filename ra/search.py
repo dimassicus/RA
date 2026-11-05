@@ -11,8 +11,8 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
-from . import news_apis
-from .aliases import discovery_names, ambiguous, company_names, normalized as identity_normalized
+from . import keywords, news_apis
+from .aliases import parse_aliases, provider_name, discovery_names, ambiguous, company_names, normalized as identity_normalized
 
 
 LOCALES = {
@@ -81,6 +81,45 @@ def search_queries(subject: dict) -> list[str]:
     if related:
         queries.append(f'"{name}" "{related[0].replace(chr(34), "")}"')
     return queries[:3]
+
+
+def governance_searches(subject):
+    """Short queries per language avoid the feed silently dropping long OR lists."""
+    country = subject.get("country_registration", "")
+    lang = LOCALES.get(normalized(country), ("en",))[0].split("-")[0]
+    editions = [("en", "")]
+    if lang != "en":
+        editions.append((lang, country))
+    if lang in ("az", "uz"):
+        editions.append(("ru", country))
+    names = [provider_name(subject), *parse_aliases(subject.get("aliases", ""))]
+    plans = []
+    for code, edition in editions:
+        # Prefer a reviewed local-script alias when the register uses another alphabet.
+        script = {"el": r"[Α-ω]", "ar": r"[ء-ي]", "ru": r"[А-я]"}.get(code)
+        anchor = next((n for n in names if script and re.search(script, n)), names[0])
+        for groups in (("executive role", "leadership action", "management change"), ("ownership",)):
+            terms = keywords.discovery_terms(groups, code)
+            if code == "en" and "chief executive officer" in terms:
+                terms.append("CEO")
+            if code == "en" and "chief financial officer" in terms:
+                terms.append("CFO")
+            if terms:
+                expression = " OR ".join(f'"{term}"' for term in terms)
+                plans.append((f'"{anchor}" ({expression})', edition))
+    # Keep name searches independent of vocabulary, including executives leaving for another issuer.
+    for field in ("top_management", "key_owners"):
+        names = [re.sub(r"\s*\([^)]*\)", "", part).strip().replace('"', '') for part in
+                 re.split(r"[,;\n]", subject.get(field) or "")]
+        persons = list(dict.fromkeys(n[:100] for n in names if len(n) >= 4))
+        for start in range(0, len(persons), 4):
+            expression = " OR ".join(f'"{n}"' for n in persons[start:start+4])
+            plans.append((f'"{provider_name(subject)}" ({expression})', country))
+    return list(dict.fromkeys(plans))
+
+
+def company_search_plan(subject):
+    return [(q, subject.get("country_registration", "")) for q in search_queries(subject)] + governance_searches(subject)
 
 
 def feed_url(query: str, country: str) -> tuple[str, str]:
@@ -237,8 +276,8 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
             errors.append(f"{provider}: {exc}")
         except Exception as exc:
             errors.append(f"{provider}: {type(exc).__name__}: request could not be completed")
-    for query in search_queries(subject):
-        url, language = feed_url(query, subject["country_registration"])
+    for query, edition in company_search_plan(subject):
+        url, language = feed_url(query, edition)
         try:
             for article in parse_feed(fetcher(url), query, language):
                 if article["url"] not in seen_urls:

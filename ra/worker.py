@@ -7,7 +7,7 @@ import queue
 import threading
 import time
 
-from . import db
+from . import db, governance_roster
 from .search import search_company
 from .exposure import add_exposure_leads, search_topic, sector_markets, topic_editions
 from .news_apis import plan_subjects
@@ -56,7 +56,7 @@ def _work_loop():
             _queue.task_done()
 
 
-def process_run(run_id: int, searcher=search_company, topic_searcher=None):
+def process_run(run_id: int, searcher=search_company, topic_searcher=None, roster_check=governance_roster.check):
     run = db.get_run(run_id)
     if run is None or run["status"] not in ("queued", "running"):
         return
@@ -79,6 +79,10 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None):
             articles, errors = searcher(subject)
         except Exception as exc:
             articles, errors = [], [f"{type(exc).__name__}: {exc}"]
+        try:
+            roster_check(run_id, subject_key, subject)
+        except (ValueError, OSError) as exc:
+            errors.append(f"Registry roster: {exc}")
         articles = add_exposure_leads(subject, articles, errors, topic_cache, check)
         with db.connect() as conn:
             for article in articles:
