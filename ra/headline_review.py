@@ -10,7 +10,8 @@ from scripts.translation_review.simple import review
 from scripts.translation_review.reviewer import ReviewError
 from scripts.translation_review.reasoning import parse_final
 
-from . import db
+from . import db, online_translation
+from .news_apis import ProviderError
 from .language import _detected
 
 PORT = 1234
@@ -42,12 +43,17 @@ def audit(source, language, candidate):
 
 
 def fallback(source, language, publisher, argos_status):
-    """Ask each local model to abstain when it cannot translate this language reliably."""
+    """Try online translation, then local models that can abstain."""
     suffix = " - " + publisher
     body = source[:-len(suffix)] if publisher and source.endswith(suffix) else source
     if not body.strip() or len(body) > 4000:
         return "", f"{argos_status}; local fallback needs review"
     reasons = [argos_status]
+    try:
+        english = online_translation.translate(body, language.split("-")[0].lower(), "en")
+        return english + (suffix if body != source else ""), "MyMemory online"
+    except ProviderError as exc:
+        reasons.append(str(exc))
     for model in (QWEN, GEMMA):
         try:
             response = local_request(PORT, "/v1/chat/completions", {

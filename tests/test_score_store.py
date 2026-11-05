@@ -387,6 +387,9 @@ def test_keyword_edit_translate_and_disable_in_review(database, monkeypatch):
     monkeypatch.setattr(keywords, "_rules", keywords._rules)
     monkeypatch.setattr(keywords, "schedule", lambda: None)
     monkeypatch.setattr(translation, "installed_keyword_translations", lambda terms, code: {})
+    def offline(*args):
+        raise keywords.ProviderError("offline test")
+    monkeypatch.setattr(keywords.online_translation, "translate", offline)
     term = "covenant breach"
     def model(prompt, data, schema):
         if "english" in schema["properties"]:

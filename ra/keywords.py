@@ -9,7 +9,8 @@ from pathlib import Path
 from babel import Locale
 from psycopg.types.json import Jsonb
 
-from . import db
+from . import db, online_translation
+from .news_apis import ProviderError
 from .aliases import normalized
 from .model_store import country_languages
 
@@ -196,6 +197,12 @@ def translate_batch(rows, code):
         proposed = installed_keyword_translations(terms, code)
     except (RuntimeError, OSError, ValueError):
         proposed = {}
+    for term in terms:
+        if not proposed.get(term):
+            try:
+                proposed[term] = online_translation.translate(term, "en", code)
+            except ProviderError:
+                continue  # Local generation below can still supply the missing phrase.
     accepted = {}
     meanings = {term: MEANINGS[term] for term in terms if term in MEANINGS}
     for attempt in range(2):

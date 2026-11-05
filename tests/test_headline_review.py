@@ -1,6 +1,15 @@
+import pytest
+
 from ra import headline_review as qa, translation
 from ra.company_exports import title
 from ra.scoring import input_hash
+
+
+@pytest.fixture(autouse=True)
+def offline_tests(monkeypatch):
+    def unavailable(*args):
+        raise qa.ProviderError("offline test")
+    monkeypatch.setattr(qa.online_translation, "translate", unavailable)
 
 
 def test_fallback_abstains_before_trying_gemma_and_preserves_publisher(monkeypatch):
@@ -54,3 +63,16 @@ def test_legacy_argos_archive_installs_without_downloading_again(monkeypatch, tm
     monkeypatch.setattr(model_store, "_download", lambda *a: (_ for _ in ()).throw(AssertionError()))
     assert model_store.ensure_model("ar")[0]
     assert model_store.installed("ar")
+
+
+def test_missing_argos_uses_online_for_any_language_before_local(monkeypatch):
+    monkeypatch.setattr(translation, "argos_translate", lambda *args: ("", "no model"))
+    calls = []
+    def online(text, source, target):
+        calls.append((text, source, target))
+        return "Company repays debt"
+    monkeypatch.setattr(qa.online_translation, "translate", online)
+    for lang in ("uz", "sw-KE"):
+        assert translation.translate_text("Headline - Brand", lang, publisher="Brand") == (
+            "Company repays debt - Brand", "MyMemory online")
+    assert calls == [("Headline", "uz", "en"), ("Headline", "sw", "en")]

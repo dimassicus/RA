@@ -206,6 +206,6 @@ def coverage(countries: list[str]) -> list[dict]:
     output = []
     for country in sorted(set(countries)):
         for code in country_languages(country):
-            state = "installed" if installed(code) else "available" if code in offered else "no direct offline model"
+            state = "Argos installed" if installed(code) else "Argos available to install" if code in offered else "MyMemory online, then local Qwen / Gemma"
             output.append({"country": country, "language": code, "status": state})
     return output
