@@ -119,7 +119,7 @@ def test_worker_scores_new_articles_without_network(database, monkeypatch):
         return [{"title": "Acme Manufacturing returns to profit", "language": "en", "publisher": "Test",
                  "url": "https://example.test/worker", "published_at": datetime.now(timezone.utc)-timedelta(hours=1),
                  "query": "test", "signal_terms": []}], []
-    worker.process_run(run_id, searcher=searcher)
+    worker.process_run(run_id, searcher=searcher, topic_searcher=lambda *args: [])
     assert db.get_run(run_id)["status"] == "completed"
     assert db.get_results(run_id)[0]["score"] == 2
     assert all(r["score"] is None for r in score_store.weekly_history(company["id"]))
@@ -291,3 +291,45 @@ def test_verification_queue_resumes_interrupted_jobs_without_starting_searches(d
     assert len(started) == 1
     assert database.execute('SELECT status FROM verification_jobs').fetchone()['status'] == 'queued'
     assert database.execute('SELECT count(*) AS n FROM search_runs').fetchone()['n'] == 1
+
+
+def test_shared_news_only_changes_the_company_with_source_evidence(database):
+    from ra import verification_store
+    subjects = [
+        db.company_snapshot(database.execute(
+            "INSERT INTO companies(name,country_registration,primary_industries) VALUES (%s,'Brazil','fertilizers') RETURNING *",
+            (name,)).fetchone())
+        for name in ("Acme Manufacturing", "Other Industries")
+    ]
+    run_id = db.create_run("all", subjects)
+    calls = []
+    def search(branch, topic):
+        calls.append((branch, topic))
+        return [({"title": "Brazil fertilizer tariffs rise", "url": "https://example.test/tariffs",
+                  "published_at": datetime.now(timezone.utc) - timedelta(hours=1), "query": topic,
+                  "language": "en", "publisher": "Test", "source_kind": "context", "signal_terms": []},
+                 "import costs and access to customers")]
+    worker.process_run(run_id, searcher=lambda company: ([], []), topic_searcher=search)
+    assert calls == [("country", "brazil"), ("sector", "fertilizer")]
+    # A worker replay uses the saved topics, including their publication dates.
+    database.execute("UPDATE search_runs SET status='queued' WHERE id=%s", (run_id,))
+    worker.process_run(run_id, searcher=lambda company: ([], []), topic_searcher=search)
+    assert len(calls) == 2
+    leads = db.get_results(run_id)
+    assert len(leads) == 2 and all(len(a["exposure_paths"]) == 2 for a in leads)
+    assert all(not a["score_included"] and a["score"] == 0 for a in leads)
+    with pytest.raises(ValueError, match="impact"):
+        score_store.review_score(leads[0]["id"], -2, True, "The whole sector is exposed")
+    for lead in leads:
+        verification_store.verify_article(lead["id"], fetcher=lambda url: {
+            "status": "available", "language": "en", "body": "Acme Manufacturing announces plant closure following the tariff increase."})
+    scored = {a["subject_name"]: a for a in db.get_results(run_id)}
+    assert scored["Acme Manufacturing"]["score_included"] and scored["Acme Manufacturing"]["score"] == -2
+    assert not scored["Other Industries"]["score_included"]
+    assert score_store.weekly_history(subjects[0]["id"])[0]["score"] == -2
+    assert score_store.weekly_history(subjects[1]["id"])[0]["score"] is None
+    client = create_app().test_client()
+    page = client.get(f"/runs/{run_id}?view=exposure")
+    assert page.status_code == 200 and b"Acme Manufacturing" in page.data and b"Other Industries" in page.data
+    assert b"import costs and access to customers" in page.data
+    assert client.get(f"/runs/{run_id}/download.xlsx").status_code == 200

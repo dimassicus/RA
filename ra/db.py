@@ -360,6 +360,32 @@ def list_runs(limit: int = 12):
         ).fetchall()
 
 
+def run_topic_check(run_id, search, branch, topic):
+    from .exposure import check_topic
+    with connect() as conn:
+        claimed = conn.execute(
+            "INSERT INTO exposure_checks (run_id,branch,topic) VALUES (%s,%s,%s) "
+            "ON CONFLICT DO NOTHING RETURNING run_id", (run_id, branch, topic),
+        ).fetchone()
+        if claimed:
+            hits, error = check_topic(branch, topic, search)
+            # Preserve publication instants for reinsertion after a worker restart.
+            stored = [({**hit, "published_at": hit["published_at"].isoformat() if hit["published_at"] else None}, channel)
+                      for hit, channel in hits]
+            conn.execute("UPDATE exposure_checks SET hits=%s,error=%s WHERE run_id=%s AND branch=%s AND topic=%s",
+                         (Jsonb(stored), error, run_id, branch, topic))
+            return hits, error
+        row = conn.execute("SELECT hits,error FROM exposure_checks WHERE run_id=%s AND branch=%s AND topic=%s",
+                           (run_id, branch, topic)).fetchone()
+        return row["hits"], row["error"]
+
+
+def exposure_coverage(run_id):
+    with connect() as conn:
+        return conn.execute("SELECT branch,topic,jsonb_array_length(hits) AS leads,error FROM exposure_checks "
+                            "WHERE run_id=%s ORDER BY branch,topic", (run_id,)).fetchall()
+
+
 def get_results(run_id: int):
     with connect() as conn:
         return conn.execute(

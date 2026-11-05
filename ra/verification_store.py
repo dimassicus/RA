@@ -78,7 +78,7 @@ def enqueue_run(run_id, limit_per_company=8):
         raise ValueError('Wait for the search to finish')
     rows = db.get_results(run_id)
     # Prefer accessible publisher sources, then strongest headline cues and recent dates.
-    rows.sort(key=lambda a: (urlsplit(a['url']).hostname == 'news.google.com',
+    rows.sort(key=lambda a: (a.get('source_kind') == 'context', urlsplit(a['url']).hostname == 'news.google.com',
                             -abs(a.get('score') or 0), -(a['published_at'] or a['created_at']).timestamp(), a['id']))
     counts, total = {}, 0
     for article in rows:

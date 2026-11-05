@@ -87,7 +87,9 @@ def score_article(article: dict, subject: dict, now: datetime | None = None) -> 
               "score_evidence": evidence, "score_input_hash": input_hash(article, subject),
               "score_reason": "No directional credit evidence in the available headline"}
     problem = ""
-    if not identity:
+    if article.get("source_kind") == "context":
+        problem = "Potential exposure requires source evidence of an impact on this company"
+    elif not identity:
         problem = "Company identity is not supported by the headline"
     elif article.get("discovery_service") == "FCA Warning RSS":
         problem = "Possible clone warning; confirm which entity is affected"

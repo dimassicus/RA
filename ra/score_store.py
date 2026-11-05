@@ -143,6 +143,8 @@ def review_score(result_id, score: int, included: bool, reason: str):
                                "WHERE r.id=%s FOR UPDATE OF r", (result_id,)).fetchone()
         if not article or article["run_status"] in ("running", "queued"):
             raise ValueError("The article must belong to a finished search")
+        if included and article["exposure_paths"] and article["verification"].get("status") != "supported":
+            raise ValueError("A source check must establish an impact on this company before including an exposure lead")
         if included and (not article["published_at"] or article["published_at"] > datetime.now(timezone.utc)):
             raise ValueError("A valid publication date is required for weekly inclusion")
         assessment = {field: article[field] for field in FIELDS}

@@ -87,3 +87,36 @@ def test_fca_rss_is_used_for_uk_presence_and_only_keeps_name_matches_on_fca_doma
     assert articles[0]["source_kind"] == "official"
     assert articles[0]["publisher"] == "Financial Conduct Authority"
     assert not has_uk_presence({"name": "Acme Finance", "country_registration": "France"})
+
+
+def test_shared_exposures_fetch_each_topic_once_and_keep_paths_per_company():
+    from ra.exposure import add_exposure_leads, check_topic, search_topic
+    feed = b'''<rss><channel>
+      <item><title>Brazil fertilizer tariffs rise - Daily</title><link>https://example.test/shared</link><source>Daily</source></item>
+      <item><title>Tariffs rise - Brazil</title><link>https://example.test/no-topic</link><source>Brazil</source></item>
+      <item><title>Brazil wins match</title><link>https://example.test/sport</link></item>
+    </channel></rss>'''
+    calls = []
+    def search(branch, topic):
+        calls.append((branch, topic))
+        if topic == "copper":
+            raise OSError("feed unavailable")
+        return search_topic(branch, topic, fetcher=lambda url: feed)
+    def check(branch, topic):
+        return check_topic(branch, topic, search)
+    cache = {}
+    first = {"country_registration": "Brazil", "primary_countries": "Brasil", "primary_industries": "Fertilizers; copper"}
+    second = {"country_registration": "Brasil", "primary_industries": "fertilizer; Copper"}
+    errors_a, errors_b = [], []
+    direct = {"url": "https://example.test/shared", "source_kind": "official"}
+    a, = add_exposure_leads(first, [direct], errors_a, cache, check)
+    b, = add_exposure_leads(second, [], errors_b, cache, check)
+    assert calls == [("country", "brazil"), ("sector", "fertilizer"), ("sector", "copper")]
+    assert a["source_kind"] == "official" and b["source_kind"] == "context"
+    assert len(a["exposure_paths"]) == len(b["exposure_paths"]) == 2
+    assert "operates in" in a["exposure_paths"][0] and "operates in" not in b["exposure_paths"][0]
+    assert "import costs" in b["exposure_paths"][1]
+    assert errors_a == errors_b and "copper" in errors_a[0]
+    prices = feed.replace(b"fertilizer tariffs", b"fertilizer prices")
+    assert not search_topic("country", "brazil", fetcher=lambda url: prices)
+    assert search_topic("sector", "fertilizer", fetcher=lambda url: prices)

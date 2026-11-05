@@ -1,0 +1,553 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Simplified translation review — Qwen and Gemma retest</title>
+<style>body{font:16px/1.55 system-ui;color:#203040;max-width:1500px;margin:30px auto;padding:20px}table{border-collapse:collapse;width:100%;margin:20px 0}td,th{border:1px solid #cad3dc;padding:10px;text-align:left;vertical-align:top}.scroll{overflow:auto}.notice{background:#fff3d6;padding:16px}pre{white-space:pre-wrap}section{border-top:1px solid #ccd;margin-top:30px;padding-top:15px}a{color:#175b92}</style>
+<h1>Simplified translation reviewer: Qwen and Gemma retest</h1>
+<p>Evaluation series started 4 November 2026; simplified retest continued 5 November. App, translator, database and live scoring unchanged. Unresolved cases are automatically withheld in the experiment; no analyst foreign-language approval step is introduced.</p>
+<p><a href="reasoning-review-comparison.html">Previous reasoning comparison</a> · <a href="simple-review-summary.json">Counts and run identities</a></p>
+<h2>Result and recommendation</h2><p><b>Prefer Gemma with reasoning for the next isolated reviewer trial; keep the existing translator and app unchanged.</b> Both reasoning-on configurations returned valid results for all 46 cases and flagged 18 of 19 provisionally labelled material errors. Gemma rejected one of 70 previously nonmaterial candidates versus five for Qwen, and completed in 38.39 minutes versus 44.30. These are small-sample operational results, not established production accuracy.</p>
+<p>Qwen reasoning-on failures fell from 20 to zero; Gemma reasoning-on failures fell from two to zero. This supports the diagnosis that the old response protocol was a major obstacle for Qwen. The change is not a universal improvement: Qwen off regressed from zero to six failed cases, partly because of new protocol restrictions. Gemma off improved from 28 failures to seven, but still approved three labelled errors. Neither new reasoning-off configuration is the preferred reviewer.</p>
+<p><b>Remaining semantic limitations:</b> both reasoning models still approve the disputed NLLB covenant wording. Gemma now also accepts the real Portuguese candidate whose possibility/timing nuance it flagged in the previous run. That earlier real-source advantage is no longer stable under the simpler prompt, even though both models catch the more explicit error in the short Portuguese regression sentence. No labelled-bad candidate is selected by this experiment, but NLLB is excluded from selection and publisher examples lie outside the nineteen-error metric; this is not proof of safe automatic approval.</p>
+<p>Gemma makes fewer questionable rewrites in these examples: it retains MADLAD for the Greek borrowing/lending article, whereas Qwen additionally objects to singular versus plural dividends and rewrites it. Gemma also accepts the clean Portuguese and Turkish regression paraphrases that Qwen rejects. Both propose separately checked corrections for invented Vietnamese currencies; the second check uses the same model and is not independent verification.</p>
+<p><b>Next:</b> retain the compact verdict-and-evidence design, separate optional correction output and harmless duplicate evidence from substantive judgment failures, and evaluate fresh articles against independently established meanings before enabling automatic correction. Preserve automatic withholding for unresolved meaning. Date/number formatting checks still cause some unnecessary withholding and need their own controlled follow-up.</p>
+<p class="notice">Each configuration uses the same 46 cases and 105 candidate translations. Nineteen candidates have provisional material-error labels. The twelve formerly fresh fictional cases are now regression examples, not a new held-out test. Labels are assistant judgments; this is not an estimate of production accuracy.</p>
+<h2>What changed</h2><p>The response now contains one candidate verdict and a list of material issues. The nested seven-category coverage grid and wording-only issue reports are removed. The prompt still asks the model to check all seven dimensions. Uncertain results remain ineligible; corrections are permitted only when every candidate is rejected for a material error and still receive a separate same-model check.</p>
+<p>Evidence uses arrays of separate contiguous quotations. Validation preserves offsets into original text, allowing one-layer HTML entity decoding, NFC accent composition, typographic quotation marks and whitespace changes. It does not change words, case, numbers, currencies or negation; invent ellipses; or accept word fragments inside a different word. Invalid JSON and unsupported verdicts remain failures. Number/date routing diagnostics are unchanged to avoid confounding this retest.</p>
+<p>Settings remain temperature 0, seed 42, 32768 context, 8192 output tokens, medium reasoning on versus none off, and unconstrained final JSON. Reasoning-on success requires observed reasoning tokens and a separate final answer. No retries or per-case prompt tuning. This compares a changed prompt/protocol and evidence handling together, not a pure evidence-normalization ablation.</p>
+<p>Installed configurations: Qwen 27B uses MLX 5-bit weights; Gemma 31B uses GGUF Q4_0 QAT weights. Timings describe these local configurations, include correction checks and are not a hardware-normalized comparison of model families. Each configuration was run once.</p>
+<h2>All 46 cases</h2><div class="scroll"><table><tr><th>Model / mode / version</th><th>Errors flagged</th><th>Errors approved</th><th>Errors uncertain</th><th>Errors unassessed</th><th>Valid cases</th><th>Previously nonmaterial candidates rejected</th><th>Cases withheld</th><th>Labelled-bad candidates selected</th><th>Minutes</th></tr>
+<tr><td>qwen / off / before</td><td>18/19</td><td>1</td><td>0</td><td>0</td><td>46/46</td><td>4</td><td>8</td><td>0</td><td>12.78</td></tr>
+<tr><td>qwen / off / after</td><td>14/19</td><td>1</td><td>0</td><td>4</td><td>40/46</td><td>2</td><td>12</td><td>0</td><td>5.66</td></tr>
+<tr><td>qwen / on / before</td><td>9/19</td><td>0</td><td>0</td><td>10</td><td>26/46</td><td>3</td><td>21</td><td>0</td><td>64.23</td></tr>
+<tr><td>qwen / on / after</td><td>18/19</td><td>1</td><td>0</td><td>0</td><td>46/46</td><td>5</td><td>6</td><td>0</td><td>44.3</td></tr>
+<tr><td>gemma / off / before</td><td>7/19</td><td>0</td><td>0</td><td>12</td><td>18/46</td><td>0</td><td>29</td><td>0</td><td>8.65</td></tr>
+<tr><td>gemma / off / after</td><td>11/19</td><td>3</td><td>0</td><td>5</td><td>39/46</td><td>0</td><td>11</td><td>0</td><td>2.99</td></tr>
+<tr><td>gemma / on / before</td><td>16/19</td><td>1</td><td>0</td><td>2</td><td>44/46</td><td>2</td><td>7</td><td>0</td><td>64.42</td></tr>
+<tr><td>gemma / on / after</td><td>18/19</td><td>1</td><td>0</td><td>0</td><td>46/46</td><td>1</td><td>5</td><td>0</td><td>38.39</td></tr>
+</table></div>
+<h2>Twelve previously fresh cases</h2><div class="scroll"><table><tr><th>Model / mode / version</th><th>Errors flagged</th><th>Errors approved</th><th>Errors uncertain</th><th>Errors unassessed</th><th>Valid cases</th><th>Previously nonmaterial candidates rejected</th><th>Cases withheld</th><th>Labelled-bad candidates selected</th><th>Minutes</th></tr>
+<tr><td>qwen / off / before</td><td>9/9</td><td>0</td><td>0</td><td>0</td><td>12/12</td><td>0</td><td>1</td><td>0</td><td>3.01</td></tr>
+<tr><td>qwen / off / after</td><td>7/9</td><td>0</td><td>0</td><td>2</td><td>10/12</td><td>0</td><td>3</td><td>0</td><td>1.41</td></tr>
+<tr><td>qwen / on / before</td><td>5/9</td><td>0</td><td>0</td><td>4</td><td>6/12</td><td>1</td><td>6</td><td>0</td><td>13.4</td></tr>
+<tr><td>qwen / on / after</td><td>9/9</td><td>0</td><td>0</td><td>0</td><td>12/12</td><td>2</td><td>1</td><td>0</td><td>8.66</td></tr>
+<tr><td>gemma / off / before</td><td>4/9</td><td>0</td><td>0</td><td>5</td><td>7/12</td><td>0</td><td>5</td><td>0</td><td>2.3</td></tr>
+<tr><td>gemma / off / after</td><td>6/9</td><td>0</td><td>0</td><td>3</td><td>9/12</td><td>0</td><td>4</td><td>0</td><td>0.82</td></tr>
+<tr><td>gemma / on / before</td><td>8/9</td><td>0</td><td>0</td><td>1</td><td>11/12</td><td>0</td><td>2</td><td>0</td><td>8.7</td></tr>
+<tr><td>gemma / on / after</td><td>9/9</td><td>0</td><td>0</td><td>0</td><td>12/12</td><td>0</td><td>1</td><td>0</td><td>7.2</td></tr>
+</table></div>
+<p>Errors without a valid assessment are not counted as detected. A failed correction check can follow valid initial candidate assessments. Nonmaterial-rejection counts cover valid assessments only; failures can also withhold good translations. A selected correction is not independently established as correct. The original publisher excerpts fall outside the nineteen-error metric.</p>
+<h2>Response failures</h2><table><tr><th>Configuration</th><th>Failures</th></tr>
+<tr><td>qwen / off_before</td><td>None</td></tr>
+<tr><td>qwen / off_after</td><td>Evidence validation: 1; Unrequested correction alongside approved candidate: 3; Repeated evidence fragment: 1; Malformed final JSON: 1</td></tr>
+<tr><td>qwen / on_before</td><td>Malformed final JSON: 13; Evidence validation: 3; Other response validation or request failure: 1; Missing or unexpected response fields: 3</td></tr>
+<tr><td>qwen / on_after</td><td>None</td></tr>
+<tr><td>gemma / off_before</td><td>Malformed final JSON: 25; Other response validation or request failure: 2; Evidence validation: 1</td></tr>
+<tr><td>gemma / off_after</td><td>Missing or unexpected response fields: 7</td></tr>
+<tr><td>gemma / on_before</td><td>Evidence validation: 2</td></tr>
+<tr><td>gemma / on_after</td><td>None</td></tr>
+</table><p>Offline rechecking of the 6 old evidence-quotation failures, without another model call or changed verdict, made 2 responses structurally valid using normalization alone: qwen on L3_en_ru, gemma on L3_ru_en. The remaining 4 still fail. This is a response-validation diagnostic, not proof the recovered judgments are semantically correct.</p>
+<h2>New-run failure details</h2><p>These responses remain failed in every metric. A correct judgment elsewhere in a rejected response is not silently recovered into a pass. The new correction constraint and duplicate-fragment rejection are protocol restrictions, not evidence that translation meaning was misunderstood.</p><table><tr><th>Configuration</th><th>Case</th><th>Reason withheld</th></tr>
+<tr><td>qwen / off</td><td>D1_ru_en</td><td>ReviewError: Evidence does not match an original text span</td></tr>
+<tr><td>qwen / off</td><td>D1_en_ru</td><td>ReviewError: Correction offered without rejecting every candidate</td></tr>
+<tr><td>qwen / off</td><td>PT1</td><td>ReviewError: Correction offered without rejecting every candidate</td></tr>
+<tr><td>qwen / off</td><td>VI2</td><td>ReviewError: Duplicate evidence span</td></tr>
+<tr><td>qwen / off</td><td>F_RU1</td><td>ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 556 (char 555)</td></tr>
+<tr><td>qwen / off</td><td>F_EL1</td><td>ReviewError: Correction offered without rejecting every candidate</td></tr>
+<tr><td>gemma / off</td><td>A2_en_ru</td><td>ReviewError: Unexpected simplified response shape</td></tr>
+<tr><td>gemma / off</td><td>L1_en_ru</td><td>ReviewError: Unexpected simplified response shape</td></tr>
+<tr><td>gemma / off</td><td>PT1</td><td>ReviewError: Unexpected simplified response shape</td></tr>
+<tr><td>gemma / off</td><td>EL1</td><td>ReviewError: Unexpected simplified response shape</td></tr>
+<tr><td>gemma / off</td><td>F_RU1</td><td>ReviewError: Unexpected simplified response shape</td></tr>
+<tr><td>gemma / off</td><td>F_EL1</td><td>ReviewError: Unexpected simplified response shape</td></tr>
+<tr><td>gemma / off</td><td>F_VI1</td><td>ReviewError: Invalid material issue fields</td></tr>
+</table><h2>Recorded evidence and mode audit</h2><p>These counts include separate correction checks. Original offsets and normalized quotations were checked again after inference; reasoning modes were checked from returned usage metadata. Quote provenance does not establish that an interpretation is correct.</p><table><tr><th>Configuration</th><th>Validated calls</th><th>Original evidence spans verified</th><th>Spans using normalization</th><th>Rejected calls with expected reasoning mode</th></tr>
+<tr><td>qwen / off</td><td>42</td><td>66</td><td>0</td><td>6/6</td></tr>
+<tr><td>qwen / on</td><td>50</td><td>103</td><td>1</td><td>0/0</td></tr>
+<tr><td>gemma / off</td><td>42</td><td>59</td><td>0</td><td>7/7</td></tr>
+<tr><td>gemma / on</td><td>49</td><td>89</td><td>0</td><td>0/0</td></tr>
+</table>
+<h2>Disagreements with earlier nonmaterial labels</h2><p>These are not automatically model mistakes: earlier labels are provisional. The explanations below make possible over-rejection and label weaknesses inspectable. Only fictional labelled examples appear here.</p><table><tr><th>Configuration</th><th>Case / candidate</th><th>New verdict and explanation</th></tr>
+<tr><td>qwen / off</td><td>L5_ru_en / baseline</td><td>material_error: The source states the guarantee &#x27;secures&#x27; (обеспечивает) the debt. The translation &#x27;provides the debt&#x27; incorrectly implies the guarantee creates or supplies the debt itself, rather than securing it.</td></tr>
+<tr><td>qwen / off</td><td>N1_en_ru / madlad</td><td>material_error: The source states the company does not deny the default (implying the default happened). The translation uses a double negative (&#x27;does not deny that it did not fulfill&#x27;), which implies the company claims it did NOT default, reversing the meaning.</td></tr>
+<tr><td>qwen / on</td><td>N3_ru_en / baseline</td><td>material_error: The Russian word &#x27;требование&#x27; in a credit/loan context denotes a formal legal demand, not a polite &#x27;request.&#x27; Translating it as &#x27;request&#x27; softens the legal character of the bank&#x27;s action.</td></tr>
+<tr><td>qwen / on</td><td>L5_ru_en / baseline</td><td>material_error: &#x27;Обеспечивает долг&#x27; means &#x27;secures the debt&#x27; (provides security for it). &#x27;Provides the debt&#x27; reverses the meaning, suggesting the guarantee supplies or creates the debt rather than securing it.</td></tr>
+<tr><td>qwen / on</td><td>L5_ru_en / madlad</td><td>material_error: The source states the guarantee &#x27;is not a pledge&#x27; (не является залогом) — a classification of the instrument. &#x27;Does not pledge&#x27; changes this to an action statement, altering the legal characterization of the guarantee as a distinct instrument from a pledge.</td></tr>
+<tr><td>qwen / on</td><td>F_PT2 / candidate_1</td><td>material_error: The source states the suspension does not IMPLY (entail/mean) forgiveness, a logical-implication relationship. Candidate B recasts this as the suspension not FORGIVING the debt, making the suspension the agent of a potential forgiveness act rather than a condition whose consequence is being denied. The logical structure of the negation is altered.</td></tr>
+<tr><td>qwen / on</td><td>F_TR2 / candidate_1</td><td>material_error: The Turkish &#x27;tamamı … ait değil&#x27; expresses a partial negation: not all of the amount is Deniz&#x27;s (some is). Candidate A&#x27;s &#x27;The full amount does not belong to Deniz&#x27; reads as a complete negation, implying none of it is Deniz&#x27;s.</td></tr>
+<tr><td>gemma / on</td><td>L5_ru_en / baseline</td><td>material_error: &#x27;Обеспечивать долг&#x27; in a financial context means to &#x27;secure&#x27; a debt, not to &#x27;provide&#x27; it. &#x27;Provides the debt&#x27; is nonsensical or implies the guarantee is the source of the debt.; &#x27;Освобождён от обязательств&#x27; means &#x27;released&#x27; or &#x27;relieved&#x27; from obligations, whereas &#x27;exempt&#x27; typically means not subject to a rule or requirement that applies to others.</td></tr>
+</table>
+<h2>Per-case routing before and after</h2><p>Original routing prefers the existing translator, then MADLAD, then a separately checked correction. NLLB is audited but never selected. The fictional fresh candidates are manually authored. Numeric checks can withhold otherwise approved translations. Every result remains ineligible for live scoring.</p><div class="scroll"><table><tr><th>Case</th>
+<th>qwen off</th><th>qwen on</th><th>gemma off</th><th>gemma on</th></tr>
+<tr><th>N1_ru_en</th>
+<td><b>Before:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful<br><b>After:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful</td>
+<td><b>Before:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful<br><b>After:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful</td>
+<td><b>Before:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful<br><b>After:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful</td>
+</tr>
+<tr><th>N2_ru_en</th>
+<td><b>Before:</b> baseline — nllb: faithful; madlad: faithful; baseline: faithful<br><b>After:</b> baseline — nllb: faithful; madlad: faithful; baseline: faithful</td>
+<td><b>Before:</b> baseline — nllb: faithful; madlad: faithful; baseline: faithful<br><b>After:</b> baseline — nllb: faithful; madlad: faithful; baseline: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> baseline — nllb: faithful; madlad: faithful; baseline: faithful</td>
+<td><b>Before:</b> baseline — nllb: faithful; madlad: faithful; baseline: faithful<br><b>After:</b> baseline — nllb: faithful; madlad: faithful; baseline: faithful</td>
+</tr>
+<tr><th>N3_ru_en</th>
+<td><b>Before:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful<br><b>After:</b> madlad — baseline: material_error; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> madlad — baseline: material_error; madlad: faithful; nllb: faithful<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+</tr>
+<tr><th>D1_ru_en</th>
+<td><b>Before:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful<br><b>After:</b> withheld — ReviewError: Evidence does not match an original text span</td>
+<td><b>Before:</b> withheld — ReviewError: Extra data: line 1 column 1035 (char 1034)<br><b>After:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful</td>
+<td><b>Before:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful<br><b>After:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful</td>
+</tr>
+<tr><th>D2_ru_en</th>
+<td><b>Before:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+</tr>
+<tr><th>D3_ru_en</th>
+<td><b>Before:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful<br><b>After:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful</td>
+<td><b>Before:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful<br><b>After:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful</td>
+<td><b>Before:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful<br><b>After:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful</td>
+</tr>
+<tr><th>A1_ru_en</th>
+<td><b>Before:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+</tr>
+<tr><th>A2_ru_en</th>
+<td><b>Before:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful<br><b>After:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful</td>
+<td><b>Before:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful<br><b>After:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful</td>
+<td><b>Before:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful<br><b>After:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful</td>
+<td><b>Before:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful<br><b>After:</b> baseline — madlad: faithful; nllb: faithful; baseline: faithful</td>
+</tr>
+<tr><th>A3_ru_en</th>
+<td><b>Before:</b> baseline — nllb: faithful; baseline: faithful; madlad: faithful<br><b>After:</b> baseline — nllb: faithful; baseline: faithful; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 2052 (char 2051)<br><b>After:</b> baseline — nllb: faithful; baseline: faithful; madlad: faithful</td>
+<td><b>Before:</b> baseline — nllb: faithful; baseline: faithful; madlad: faithful<br><b>After:</b> baseline — nllb: faithful; baseline: faithful; madlad: faithful</td>
+<td><b>Before:</b> baseline — nllb: faithful; baseline: faithful; madlad: faithful<br><b>After:</b> baseline — nllb: faithful; baseline: faithful; madlad: faithful</td>
+</tr>
+<tr><th>L1_ru_en</th>
+<td><b>Before:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+</tr>
+<tr><th>L2_ru_en</th>
+<td><b>Before:</b> baseline — madlad: faithful; baseline: faithful; nllb: faithful<br><b>After:</b> baseline — madlad: faithful; baseline: faithful; nllb: faithful</td>
+<td><b>Before:</b> baseline — madlad: faithful; baseline: faithful; nllb: faithful<br><b>After:</b> baseline — madlad: faithful; baseline: faithful; nllb: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> baseline — madlad: faithful; baseline: faithful; nllb: faithful</td>
+<td><b>Before:</b> baseline — madlad: faithful; baseline: faithful; nllb: faithful<br><b>After:</b> baseline — madlad: faithful; baseline: faithful; nllb: faithful</td>
+</tr>
+<tr><th>L3_ru_en</th>
+<td><b>Before:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful<br><b>After:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Translation evidence is not an exact quote<br><b>After:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> baseline — nllb: faithful; baseline: faithful; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Translation evidence is not an exact quote<br><b>After:</b> baseline — nllb: material_error; baseline: faithful; madlad: faithful</td>
+</tr>
+<tr><th>L5_ru_en</th>
+<td><b>Before:</b> madlad — baseline: material_error; madlad: faithful; nllb: faithful<br><b>After:</b> madlad — baseline: material_error; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Invalid category verdict<br><b>After:</b> withheld — baseline: material_error; madlad: material_error; nllb: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> baseline — baseline: faithful; madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> madlad — baseline: material_error; madlad: faithful; nllb: faithful<br><b>After:</b> madlad — baseline: material_error; madlad: faithful; nllb: faithful</td>
+</tr>
+<tr><th>N1_en_ru</th>
+<td><b>Before:</b> withheld — madlad: material_error; nllb: faithful<br><b>After:</b> withheld — madlad: material_error; nllb: faithful</td>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: faithful<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: faithful<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+</tr>
+<tr><th>N2_en_ru</th>
+<td><b>Before:</b> madlad — nllb: material_error; madlad: faithful<br><b>After:</b> madlad — nllb: material_error; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Translation evidence is not an exact quote<br><b>After:</b> madlad — nllb: material_error; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> madlad — nllb: faithful; madlad: faithful</td>
+<td><b>Before:</b> madlad — nllb: material_error; madlad: faithful<br><b>After:</b> madlad — nllb: material_error; madlad: faithful</td>
+</tr>
+<tr><th>N3_en_ru</th>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: faithful<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Incomplete candidate coverage<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: faithful<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+</tr>
+<tr><th>D1_en_ru</th>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: material_error<br><b>After:</b> withheld — ReviewError: Correction offered without rejecting every candidate</td>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: material_error<br><b>After:</b> madlad — madlad: faithful; nllb: material_error</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> madlad — madlad: faithful; nllb: material_error</td>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: material_error<br><b>After:</b> madlad — madlad: faithful; nllb: material_error</td>
+</tr>
+<tr><th>D2_en_ru</th>
+<td><b>Before:</b> madlad — nllb: faithful; madlad: faithful<br><b>After:</b> madlad — nllb: faithful; madlad: faithful</td>
+<td><b>Before:</b> madlad — nllb: faithful; madlad: faithful<br><b>After:</b> madlad — nllb: faithful; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> madlad — nllb: faithful; madlad: faithful</td>
+<td><b>Before:</b> madlad — nllb: faithful; madlad: faithful<br><b>After:</b> madlad — nllb: faithful; madlad: faithful</td>
+</tr>
+<tr><th>D3_en_ru</th>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: faithful<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 1214 (char 1213)<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: faithful<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+</tr>
+<tr><th>A1_en_ru</th>
+<td><b>Before:</b> madlad — nllb: material_error; madlad: faithful<br><b>After:</b> madlad — nllb: material_error; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Incomplete candidate coverage<br><b>After:</b> madlad — nllb: material_error; madlad: faithful</td>
+<td><b>Before:</b> madlad — nllb: material_error; madlad: faithful<br><b>After:</b> madlad — nllb: material_error; madlad: faithful</td>
+<td><b>Before:</b> madlad — nllb: material_error; madlad: faithful<br><b>After:</b> madlad — nllb: material_error; madlad: faithful</td>
+</tr>
+<tr><th>A2_en_ru</th>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: material_error<br><b>After:</b> madlad — madlad: faithful; nllb: material_error</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 929 (char 928)<br><b>After:</b> madlad — madlad: faithful; nllb: material_error</td>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: material_error<br><b>After:</b> withheld — ReviewError: Unexpected simplified response shape</td>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: material_error<br><b>After:</b> madlad — madlad: faithful; nllb: material_error</td>
+</tr>
+<tr><th>A3_en_ru</th>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: faithful<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: faithful<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: faithful<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+<td><b>Before:</b> madlad — madlad: faithful; nllb: faithful<br><b>After:</b> madlad — madlad: faithful; nllb: faithful</td>
+</tr>
+<tr><th>L1_en_ru</th>
+<td><b>Before:</b> withheld — nllb: faithful; madlad: material_error<br><b>After:</b> withheld — nllb: faithful; madlad: material_error</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 789 (char 788)<br><b>After:</b> withheld — nllb: faithful; madlad: material_error</td>
+<td><b>Before:</b> withheld — nllb: faithful; madlad: material_error<br><b>After:</b> withheld — ReviewError: Unexpected simplified response shape</td>
+<td><b>Before:</b> withheld — nllb: faithful; madlad: material_error<br><b>After:</b> withheld — nllb: faithful; madlad: material_error</td>
+</tr>
+<tr><th>L2_en_ru</th>
+<td><b>Before:</b> withheld — madlad: material_error; nllb: faithful<br><b>After:</b> withheld — madlad: material_error; nllb: faithful</td>
+<td><b>Before:</b> correction — madlad: material_error; nllb: material_error<br><b>After:</b> withheld — madlad: material_error; nllb: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> withheld — madlad: material_error; nllb: faithful</td>
+<td><b>Before:</b> withheld — madlad: material_error; nllb: faithful<br><b>After:</b> withheld — madlad: material_error; nllb: faithful</td>
+</tr>
+<tr><th>L3_en_ru</th>
+<td><b>Before:</b> withheld — nllb: faithful; madlad: material_error<br><b>After:</b> madlad — nllb: faithful; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Translation evidence is not an exact quote<br><b>After:</b> madlad — nllb: faithful; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> madlad — nllb: faithful; madlad: faithful</td>
+<td><b>Before:</b> madlad — nllb: faithful; madlad: faithful<br><b>After:</b> madlad — nllb: faithful; madlad: faithful</td>
+</tr>
+<tr><th>L4_en_ru</th>
+<td><b>Before:</b> withheld — nllb: faithful; madlad: material_error<br><b>After:</b> madlad — nllb: faithful; madlad: faithful</td>
+<td><b>Before:</b> withheld — nllb: material_error; madlad: material_error<br><b>After:</b> madlad — nllb: faithful; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> madlad — nllb: faithful; madlad: faithful</td>
+<td><b>Before:</b> madlad — nllb: faithful; madlad: faithful<br><b>After:</b> madlad — nllb: faithful; madlad: faithful</td>
+</tr>
+<tr><th>PT1</th>
+<td><b>Before:</b> madlad — madlad: faithful; baseline: material_error<br><b>After:</b> withheld — ReviewError: Correction offered without rejecting every candidate</td>
+<td><b>Before:</b> madlad — madlad: faithful; baseline: material_error<br><b>After:</b> madlad — madlad: faithful; baseline: material_error</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> withheld — ReviewError: Unexpected simplified response shape</td>
+<td><b>Before:</b> correction — madlad: material_error; baseline: material_error<br><b>After:</b> madlad — madlad: faithful; baseline: material_error</td>
+</tr>
+<tr><th>PT2</th>
+<td><b>Before:</b> correction — madlad: material_error; baseline: material_error<br><b>After:</b> baseline — madlad: faithful; baseline: faithful</td>
+<td><b>Before:</b> baseline — madlad: faithful; baseline: faithful<br><b>After:</b> baseline — madlad: faithful; baseline: faithful</td>
+<td><b>Before:</b> baseline — madlad: faithful; baseline: faithful<br><b>After:</b> baseline — madlad: faithful; baseline: faithful</td>
+<td><b>Before:</b> baseline — madlad: material_error; baseline: faithful<br><b>After:</b> baseline — madlad: faithful; baseline: faithful</td>
+</tr>
+<tr><th>EL1</th>
+<td><b>Before:</b> madlad — madlad: faithful; baseline: material_error<br><b>After:</b> madlad — madlad: faithful; baseline: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Incomplete candidate coverage<br><b>After:</b> madlad — madlad: faithful; baseline: material_error</td>
+<td><b>Before:</b> madlad — madlad: faithful; baseline: material_error<br><b>After:</b> withheld — ReviewError: Unexpected simplified response shape</td>
+<td><b>Before:</b> madlad — madlad: faithful; baseline: material_error<br><b>After:</b> madlad — madlad: faithful; baseline: material_error</td>
+</tr>
+<tr><th>EL2</th>
+<td><b>Before:</b> madlad — baseline: material_error; madlad: faithful<br><b>After:</b> madlad — baseline: material_error; madlad: faithful</td>
+<td><b>Before:</b> madlad — baseline: material_error; madlad: faithful<br><b>After:</b> correction — baseline: material_error; madlad: material_error</td>
+<td><b>Before:</b> madlad — baseline: material_error; madlad: faithful<br><b>After:</b> madlad — baseline: material_error; madlad: faithful</td>
+<td><b>Before:</b> madlad — baseline: material_error; madlad: faithful<br><b>After:</b> madlad — baseline: material_error; madlad: faithful</td>
+</tr>
+<tr><th>TR1</th>
+<td><b>Before:</b> madlad — baseline: material_error; madlad: faithful<br><b>After:</b> madlad — baseline: material_error; madlad: faithful</td>
+<td><b>Before:</b> madlad — baseline: material_error; madlad: faithful<br><b>After:</b> madlad — baseline: material_error; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> madlad — baseline: material_error; madlad: faithful</td>
+<td><b>Before:</b> madlad — baseline: material_error; madlad: faithful<br><b>After:</b> madlad — baseline: material_error; madlad: faithful</td>
+</tr>
+<tr><th>TR2</th>
+<td><b>Before:</b> withheld — baseline: material_error; madlad: faithful<br><b>After:</b> withheld — baseline: material_error; madlad: faithful</td>
+<td><b>Before:</b> withheld — baseline: material_error; madlad: faithful<br><b>After:</b> withheld — baseline: material_error; madlad: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Invalid category verdict<br><b>After:</b> withheld — baseline: material_error; madlad: faithful</td>
+<td><b>Before:</b> withheld — baseline: material_error; madlad: faithful<br><b>After:</b> withheld — baseline: material_error; madlad: faithful</td>
+</tr>
+<tr><th>VI1</th>
+<td><b>Before:</b> withheld — baseline: material_error; madlad: material_error<br><b>After:</b> withheld — baseline: material_error; madlad: material_error</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 2745 (char 2744)<br><b>After:</b> withheld — baseline: material_error; madlad: material_error</td>
+<td><b>Before:</b> withheld — ReviewError: Invalid category verdict<br><b>After:</b> withheld — baseline: material_error; madlad: material_error</td>
+<td><b>Before:</b> withheld — baseline: material_error; madlad: material_error<br><b>After:</b> withheld — baseline: material_error; madlad: material_error</td>
+</tr>
+<tr><th>VI2</th>
+<td><b>Before:</b> correction — baseline: material_error; madlad: material_error<br><b>After:</b> withheld — ReviewError: Duplicate evidence span</td>
+<td><b>Before:</b> correction — baseline: material_error; madlad: material_error<br><b>After:</b> correction — baseline: material_error; madlad: material_error</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 124 (char 123)<br><b>After:</b> correction — baseline: material_error; madlad: material_error</td>
+<td><b>Before:</b> correction — baseline: material_error; madlad: material_error<br><b>After:</b> correction — baseline: material_error; madlad: material_error</td>
+</tr>
+<tr><th>F_RU1</th>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error<br><b>After:</b> withheld — ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 556 (char 555)</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 1132 (char 1131)<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> withheld — ReviewError: Unexpected simplified response shape</td>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error</td>
+</tr>
+<tr><th>F_RU2</th>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful</td>
+</tr>
+<tr><th>F_PT1</th>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 1681 (char 1680)<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error</td>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error</td>
+</tr>
+<tr><th>F_PT2</th>
+<td><b>Before:</b> candidate_1 — candidate_2: faithful; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: faithful; candidate_1: faithful</td>
+<td><b>Before:</b> candidate_2 — candidate_2: faithful; candidate_1: material_error<br><b>After:</b> candidate_2 — candidate_2: faithful; candidate_1: material_error</td>
+<td><b>Before:</b> candidate_1 — candidate_2: faithful; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: faithful; candidate_1: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_2: faithful; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: faithful; candidate_1: faithful</td>
+</tr>
+<tr><th>F_EL1</th>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error<br><b>After:</b> withheld — ReviewError: Correction offered without rejecting every candidate</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 1269 (char 1268)<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error</td>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error<br><b>After:</b> withheld — ReviewError: Unexpected simplified response shape</td>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: material_error</td>
+</tr>
+<tr><th>F_EL2</th>
+<td><b>Before:</b> correction — candidate_1: material_error; candidate_2: material_error<br><b>After:</b> correction — candidate_1: material_error; candidate_2: material_error</td>
+<td><b>Before:</b> correction — candidate_1: material_error; candidate_2: material_error<br><b>After:</b> correction — candidate_1: material_error; candidate_2: material_error</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> correction — candidate_1: material_error; candidate_2: material_error</td>
+<td><b>Before:</b> correction — candidate_1: material_error; candidate_2: material_error<br><b>After:</b> correction — candidate_1: material_error; candidate_2: material_error</td>
+</tr>
+<tr><th>F_TR1</th>
+<td><b>Before:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+</tr>
+<tr><th>F_TR2</th>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 1936 (char 1935)<br><b>After:</b> candidate_2 — candidate_1: material_error; candidate_2: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful<br><b>After:</b> candidate_1 — candidate_1: faithful; candidate_2: faithful</td>
+</tr>
+<tr><th>F_VI1</th>
+<td><b>Before:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 2759 (char 2758)<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful<br><b>After:</b> withheld — ReviewError: Invalid material issue fields</td>
+<td><b>Before:</b> withheld — ReviewError: Source evidence is not an exact quote<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+</tr>
+<tr><th>F_VI2</th>
+<td><b>Before:</b> withheld — candidate_1: faithful; candidate_2: faithful<br><b>After:</b> withheld — candidate_1: faithful; candidate_2: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 1022 (char 1021)<br><b>After:</b> withheld — candidate_1: faithful; candidate_2: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Expecting &#x27;:&#x27; delimiter: line 1 column 89 (char 88)<br><b>After:</b> withheld — candidate_1: faithful; candidate_2: faithful</td>
+<td><b>Before:</b> withheld — candidate_1: faithful; candidate_2: faithful<br><b>After:</b> withheld — candidate_1: faithful; candidate_2: faithful</td>
+</tr>
+<tr><th>F_EN1</th>
+<td><b>Before:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+</tr>
+<tr><th>F_EN2</th>
+<td><b>Before:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+<td><b>Before:</b> withheld — ReviewError: Translation evidence is not an exact quote<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+<td><b>Before:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful<br><b>After:</b> candidate_1 — candidate_2: material_error; candidate_1: faithful</td>
+</tr>
+</table></div><h2>Fictional regression examples: source, translations and new judgments</h2>
+<section><h3>F_RU1 — Negation scope reversed; guarantor versus borrower.</h3><p><b>Source</b></p><pre>Компания «Северный Маяк» не отрицает задержку купона, но отрицает дефолт по основной сумме долга. Поручитель не является заёмщиком.</pre><div class="scroll"><table><tr>
+<th>candidate_1 / expected clear</th><th>candidate_2 / expected material</th></tr><tr>
+<td><pre>Severny Mayak does not deny a coupon delay, but denies defaulting on principal. The guarantor is not the borrower.</pre></td><td><pre>Severny Mayak denies a coupon delay, but does not deny defaulting on principal. The guarantor is not the borrower.</pre></td></tr></table></div>
+<details><summary>qwen / off — withheld — ReviewError: Expecting &#x27;,&#x27; delimiter: line 1 column 556 (char 555)</summary>
+</details>
+<details><summary>qwen / on — candidate_1 — candidate_1: faithful; candidate_2: material_error</summary>
+<p><b>candidate_2</b>: Source says the company does NOT deny the coupon delay; candidate B reverses this to say it denies the delay.</p>
+<p><b>candidate_2</b>: Source says the company DOES deny default on principal; candidate B reverses this to say it does not deny default.</p>
+</details>
+<details><summary>gemma / off — withheld — ReviewError: Unexpected simplified response shape</summary>
+</details>
+<details><summary>gemma / on — candidate_1 — candidate_1: faithful; candidate_2: material_error</summary>
+<p><b>candidate_2</b>: The candidate states the company denies the delay, whereas the source says it does not deny it.</p>
+<p><b>candidate_2</b>: The candidate states the company does not deny the default, whereas the source says it denies it.</p>
+</details>
+</section>
+<section><h3>F_RU2 — Clean control: leap day, rescheduling direction, decimal amount.</h3><p><b>Source</b></p><pre>ООО «Ладога» перенесло платёж в размере 37,5 млн рублей с 29 февраля 2028 года на 1 марта 2028 года. Проценты продолжают начисляться.</pre><div class="scroll"><table><tr>
+<th>candidate_1 / expected clear</th><th>candidate_2 / expected clear</th></tr><tr>
+<td><pre>Ladoga LLC moved the RUB 37.5 million payment from 29 February 2028 to 1 March 2028. Interest continues to accrue.</pre></td><td><pre>Ladoga LLC rescheduled a payment of 37.5 million rubles from February 29, 2028 to March 1, 2028. Interest is still accruing.</pre></td></tr></table></div>
+<details><summary>qwen / off — candidate_1 — candidate_1: faithful; candidate_2: faithful</summary>
+</details>
+<details><summary>qwen / on — candidate_1 — candidate_1: faithful; candidate_2: faithful</summary>
+</details>
+<details><summary>gemma / off — candidate_1 — candidate_1: faithful; candidate_2: faithful</summary>
+</details>
+<details><summary>gemma / on — candidate_1 — candidate_1: faithful; candidate_2: faithful</summary>
+</details>
+</section>
+<section><h3>F_PT1 — Possibility versus eventual certainty; no filing yet. Targeted regression of the prior Portuguese miss.</h3><p><b>Source</b></p><pre>A Aurora poderá, eventualmente, pedir recuperação judicial, mas ainda não decidiu fazê-lo. Nenhum pedido foi apresentado.</pre><div class="scroll"><table><tr>
+<th>candidate_1 / expected clear</th><th>candidate_2 / expected material</th></tr><tr>
+<td><pre>Aurora may possibly seek court-supervised restructuring, but has not yet decided to do so. No application has been filed.</pre></td><td><pre>Aurora will eventually seek court-supervised restructuring, although it has not yet decided to do so. No application has been filed.</pre></td></tr></table></div>
+<details><summary>qwen / off — candidate_1 — candidate_1: faithful; candidate_2: material_error</summary>
+<p><b>candidate_2</b>: The source uses &#x27;poderá&#x27; (may) to indicate possibility, whereas the translation uses &#x27;will&#x27; to indicate certainty, changing the meaning from a potential action to a definite future action.</p>
+</details>
+<details><summary>qwen / on — candidate_1 — candidate_1: faithful; candidate_2: material_error</summary>
+<p><b>candidate_2</b>: The source uses &#x27;poderá, eventualmente&#x27; expressing possibility (&#x27;may possibly&#x27;), not certainty. Candidate B renders this as &#x27;will eventually,&#x27; converting a conditional/uncertain statement into a definite future commitment, which contradicts the subsequent clause that Aurora has not yet decided.</p>
+</details>
+<details><summary>gemma / off — candidate_1 — candidate_1: faithful; candidate_2: material_error</summary>
+<p><b>candidate_2</b>: The source expresses a possibility (&#x27;poderá&#x27;, &#x27;eventualmente&#x27;), whereas the translation expresses a certainty (&#x27;will eventually&#x27;).</p>
+</details>
+<details><summary>gemma / on — candidate_1 — candidate_1: faithful; candidate_2: material_error</summary>
+<p><b>candidate_2</b>: The source expresses a possibility (&#x27;may/might&#x27;), whereas the translation expresses a certainty (&#x27;will&#x27;).</p>
+</details>
+</section>
+<section><h3>F_PT2 — Clean control: temporary collection suspension, not debt forgiveness.</h3><p><b>Source</b></p><pre>Os credores suspenderam as cobranças por 45 dias. A suspensão não implica perdão da dívida de R$ 83 milhões.</pre><div class="scroll"><table><tr>
+<th>candidate_1 / expected clear</th><th>candidate_2 / expected clear</th></tr><tr>
+<td><pre>Creditors suspended collection efforts for 45 days. The suspension does not forgive the R$ 83 million debt.</pre></td><td><pre>Creditors paused debt collection for 45 days. This does not constitute forgiveness of the BRL 83 million debt.</pre></td></tr></table></div>
+<details><summary>qwen / off — candidate_1 — candidate_2: faithful; candidate_1: faithful</summary>
+</details>
+<details><summary>qwen / on — candidate_2 — candidate_2: faithful; candidate_1: material_error</summary>
+<p><b>candidate_1</b>: The source states the suspension does not IMPLY (entail/mean) forgiveness, a logical-implication relationship. Candidate B recasts this as the suspension not FORGIVING the debt, making the suspension the agent of a potential forgiveness act rather than a condition whose consequence is being denied. The logical structure of the negation is altered.</p>
+</details>
+<details><summary>gemma / off — candidate_1 — candidate_2: faithful; candidate_1: faithful</summary>
+</details>
+<details><summary>gemma / on — candidate_1 — candidate_2: faithful; candidate_1: faithful</summary>
+</details>
+</section>
+<section><h3>F_EL1 — Borrowing liabilities versus lending assets; direction and amounts.</h3><p><b>Source</b></p><pre>Ο καθαρός δανεισμός της εταιρείας Aster μειώθηκε από 18 εκατ. ευρώ σε 12 εκατ. ευρώ. Η μείωση δεν αφορά τα δάνεια που χορήγησε η εταιρεία σε τρίτους.</pre><div class="scroll"><table><tr>
+<th>candidate_1 / expected clear</th><th>candidate_2 / expected material</th></tr><tr>
+<td><pre>Aster’s net borrowing fell from EUR 18 million to EUR 12 million. The decrease does not concern loans the company made to third parties.</pre></td><td><pre>Aster’s net lending fell from EUR 18 million to EUR 12 million. The decrease does not concern loans the company made to third parties.</pre></td></tr></table></div>
+<details><summary>qwen / off — withheld — ReviewError: Correction offered without rejecting every candidate</summary>
+</details>
+<details><summary>qwen / on — candidate_1 — candidate_1: faithful; candidate_2: material_error</summary>
+<p><b>candidate_2</b>: In a corporate (non-bank) context, &#x27;καθαρός δανεισμός&#x27; refers to the company&#x27;s own net debt/borrowing position, not &#x27;net lending.&#x27; The second sentence confirms this by distinguishing the decrease from loans the company granted to third parties, which would be redundant if the metric were already &#x27;net lending.&#x27;</p>
+</details>
+<details><summary>gemma / off — withheld — ReviewError: Unexpected simplified response shape</summary>
+</details>
+<details><summary>gemma / on — candidate_1 — candidate_1: faithful; candidate_2: material_error</summary>
+<p><b>candidate_2</b>: The source refers to the company&#x27;s borrowing. The second sentence clarifies that the decrease does not relate to loans the company granted to others, confirming that the first sentence refers to the company&#x27;s own debt/borrowing, not its lending.</p>
+</details>
+</section>
+<section><h3>F_EL2 — Shared-error trap: both candidates reverse the explicitly named dates.</h3><p><b>Source</b></p><pre>Η προθεσμία πληρωμής λήγει στις 4 Μαΐου 2028, όχι στις 5 Απριλίου 2028. Δεν έχει κηρυχθεί πτώχευση.</pre><div class="scroll"><table><tr>
+<th>candidate_1 / expected material</th><th>candidate_2 / expected material</th></tr><tr>
+<td><pre>The payment deadline is 5 April 2028, not 4 May 2028. Bankruptcy has not been declared.</pre></td><td><pre>Payment is due on April 5, 2028 rather than May 4, 2028. There has been no bankruptcy declaration.</pre></td></tr></table></div>
+<details><summary>qwen / off — correction — candidate_1: material_error; candidate_2: material_error</summary>
+<p><b>candidate_1</b>: The translation swaps the correct date (4 May 2028) with the incorrect date (5 April 2028), reversing the meaning of the negation.</p>
+<p><b>candidate_2</b>: The translation swaps the correct date (4 May 2028) with the incorrect date (5 April 2028), reversing the meaning of the negation.</p>
+<p>Experimental correction:</p><pre>The payment deadline expires on 4 May 2028, not on 5 April 2028. Bankruptcy has not been declared.</pre>
+</details>
+<details><summary>qwen / on — correction — candidate_1: material_error; candidate_2: material_error</summary>
+<p><b>candidate_1</b>: The dates are swapped. The source states the deadline IS 4 May 2028 and is NOT 5 April 2028; candidate A reverses this, making 5 April the actual deadline and 4 May the incorrect one.</p>
+<p><b>candidate_2</b>: The dates are swapped. The source states the deadline IS 4 May 2028 and is NOT 5 April 2028; candidate B reverses this, making April 5 the actual due date and May 4 the incorrect one.</p>
+<p>Experimental correction:</p><pre>The payment deadline expires on 4 May 2028, not on 5 April 2028. Bankruptcy has not been declared.</pre>
+</details>
+<details><summary>gemma / off — correction — candidate_1: material_error; candidate_2: material_error</summary>
+<p><b>candidate_1</b>: The candidate swapped the correct deadline date with the incorrect one.</p>
+<p><b>candidate_2</b>: The candidate swapped the correct deadline date with the incorrect one.</p>
+<p>Experimental correction:</p><pre>The payment deadline expires on May 4, 2028, not on April 5, 2028. Bankruptcy has not been declared.</pre>
+</details>
+<details><summary>gemma / on — correction — candidate_1: material_error; candidate_2: material_error</summary>
+<p><b>candidate_1</b>: The dates are swapped; the source states May 4 is the deadline, not April 5.</p>
+<p><b>candidate_2</b>: The dates are swapped; the source states May 4 is the deadline, not April 5.</p>
+<p>Experimental correction:</p><pre>The payment deadline expires on May 4, 2028, not on April 5, 2028. Bankruptcy has not been declared.</pre>
+</details>
+</section>
+<section><h3>F_TR1 — Borrower/guarantor reversal and exclusion of interest.</h3><p><b>Source</b></p><pre>Anka, 72 milyon TL tutarındaki kredinin borçlusu değil, garantörüdür. Garanti faiz ödemelerini kapsamıyor.</pre><div class="scroll"><table><tr>
+<th>candidate_1 / expected clear</th><th>candidate_2 / expected material</th></tr><tr>
+<td><pre>Anka is the guarantor, not the borrower, of the TL 72 million loan. The guarantee does not cover interest payments.</pre></td><td><pre>Anka is the borrower, not the guarantor, of the TL 72 million loan. The guarantee does not cover interest payments.</pre></td></tr></table></div>
+<details><summary>qwen / off — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The source states Anka is the guarantor, not the borrower. Candidate A reverses these roles.</p>
+</details>
+<details><summary>qwen / on — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The source states Anka is NOT the borrower but IS the guarantor. Candidate A reverses the negation, claiming Anka IS the borrower and NOT the guarantor.</p>
+</details>
+<details><summary>gemma / off — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The candidate reverses the roles; the source states Anka is the guarantor, not the borrower.</p>
+</details>
+<details><summary>gemma / on — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The candidate reverses the roles of borrower and guarantor.</p>
+</details>
+</section>
+<section><h3>F_TR2 — Clean control: regional total versus company amount, conditional jobs.</h3><p><b>Source</b></p><pre>45 şirket için toplam 120 milyon TL yatırım planlanıyor. Bu tutarın tamamı Deniz şirketine ait değil; projeler gerçekleşirse 260 kişi işe alınacak.</pre><div class="scroll"><table><tr>
+<th>candidate_1 / expected clear</th><th>candidate_2 / expected clear</th></tr><tr>
+<td><pre>A total investment of TL 120 million is planned for 45 companies. The full amount does not belong to Deniz; 260 people will be hired if the projects proceed.</pre></td><td><pre>Planned investment across 45 companies totals 120 million Turkish lira. It is not all attributable to Deniz. If the projects go ahead, 260 people will be hired.</pre></td></tr></table></div>
+<details><summary>qwen / off — candidate_1 — candidate_1: faithful; candidate_2: faithful</summary>
+</details>
+<details><summary>qwen / on — candidate_2 — candidate_1: material_error; candidate_2: faithful</summary>
+<p><b>candidate_1</b>: The Turkish &#x27;tamamı … ait değil&#x27; expresses a partial negation: not all of the amount is Deniz&#x27;s (some is). Candidate A&#x27;s &#x27;The full amount does not belong to Deniz&#x27; reads as a complete negation, implying none of it is Deniz&#x27;s.</p>
+</details>
+<details><summary>gemma / off — candidate_1 — candidate_1: faithful; candidate_2: faithful</summary>
+</details>
+<details><summary>gemma / on — candidate_1 — candidate_1: faithful; candidate_2: faithful</summary>
+</details>
+</section>
+<section><h3>F_VI1 — Projected profit versus realised revenue; explicit financial-category and status reversal.</h3><p><b>Source</b></p><pre>Công ty Sao Mai dự kiến lợi nhuận trước thuế là 240 tỷ đồng, không phải doanh thu. Đây là kế hoạch, chưa phải kết quả thực hiện.</pre><div class="scroll"><table><tr>
+<th>candidate_1 / expected clear</th><th>candidate_2 / expected material</th></tr><tr>
+<td><pre>Sao Mai expects pre-tax profit of VND 240 billion, not revenue. This is a plan, not an achieved result.</pre></td><td><pre>Sao Mai achieved revenue of VND 240 billion, not pre-tax profit. This is a completed result, not a plan.</pre></td></tr></table></div>
+<details><summary>qwen / off — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The source states the 240 billion VND figure is pre-tax profit, not revenue. Candidate A swaps these identities, claiming it is revenue and not profit.</p>
+<p><b>candidate_2</b>: The source describes the figure as a forecast/plan that has not yet been realized. Candidate A incorrectly states it is an achieved/completed result.</p>
+</details>
+<details><summary>qwen / on — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The source states the 240 billion is pre-tax profit, not revenue. Candidate A inverts this, calling it revenue and denying it is pre-tax profit.</p>
+<p><b>candidate_2</b>: &#x27;dự kiến&#x27; means expects/forecasts, not achieved. Candidate A turns a forecast into a realized result.</p>
+<p><b>candidate_2</b>: The source says it is a plan, not yet an achieved result. Candidate A inverts this, calling it a completed result and denying it is a plan.</p>
+</details>
+<details><summary>gemma / off — withheld — ReviewError: Invalid material issue fields</summary>
+</details>
+<details><summary>gemma / on — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The candidate incorrectly states the company achieved revenue instead of expecting pre-tax profit.</p>
+<p><b>candidate_2</b>: The candidate swaps the excluded item; the source says it is not revenue, but the candidate says it is not pre-tax profit.</p>
+<p><b>candidate_2</b>: The candidate reverses the meaning, stating it is a result rather than a plan.</p>
+</details>
+</section>
+<section><h3>F_VI2 — Clean control: plant identity, date, safety negation and borrowing plan.</h3><p><b>Source</b></p><pre>Nhà máy phân bón Minh Hải hoạt động trở lại ngày 12/03/2028 sau bảo dưỡng. Không ghi nhận tai nạn lao động; công ty không có kế hoạch vay thêm vốn.</pre><div class="scroll"><table><tr>
+<th>candidate_1 / expected clear</th><th>candidate_2 / expected clear</th></tr><tr>
+<td><pre>The Minh Hai fertilizer plant resumed operations on 12 March 2028 after maintenance. No workplace accidents were recorded; the company has no plans to borrow additional funds.</pre></td><td><pre>Following maintenance, the Minh Hai fertilizer plant restarted on March 12, 2028. No occupational accidents were reported, and the company does not plan additional borrowing.</pre></td></tr></table></div>
+<details><summary>qwen / off — withheld — candidate_1: faithful; candidate_2: faithful</summary>
+</details>
+<details><summary>qwen / on — withheld — candidate_1: faithful; candidate_2: faithful</summary>
+</details>
+<details><summary>gemma / off — withheld — candidate_1: faithful; candidate_2: faithful</summary>
+</details>
+<details><summary>gemma / on — withheld — candidate_1: faithful; candidate_2: faithful</summary>
+</details>
+</section>
+<section><h3>F_EN1 — Pending versus dismissed; no merits decision versus final ruling.</h3><p><b>Source</b></p><pre>The EUR 6.8 million claim against Cedar remains pending. The court has neither dismissed the claim nor ruled on its merits.</pre><div class="scroll"><table><tr>
+<th>candidate_1 / expected clear</th><th>candidate_2 / expected material</th></tr><tr>
+<td><pre>Иск к Cedar на сумму 6,8 млн евро остаётся на рассмотрении. Суд не отклонил иск и не вынес решения по существу.</pre></td><td><pre>Иск к Cedar на сумму 6,8 млн евро отклонён. Суд завершил рассмотрение дела и вынес решение по существу.</pre></td></tr></table></div>
+<details><summary>qwen / off — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The source states the claim is pending and the court has NOT dismissed it or ruled on merits. Candidate A claims the claim was dismissed and the court ruled on merits, which is the exact opposite of the source.</p>
+</details>
+<details><summary>qwen / on — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The source states the claim is still pending and the court has NOT dismissed it and NOT ruled on the merits. Candidate A reverses both negations, stating the claim was dismissed and the court completed the case and issued a ruling on the merits.</p>
+</details>
+<details><summary>gemma / off — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The translation states the claim was rejected, whereas the source says it remains pending.</p>
+<p><b>candidate_2</b>: The translation states the court finished the case and ruled on the merits, which is the exact opposite of the source.</p>
+</details>
+<details><summary>gemma / on — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The source says the claim is pending, but the translation says it was dismissed.</p>
+<p><b>candidate_2</b>: The source states the court has not dismissed the claim nor ruled on its merits, while the translation says the court completed the case and ruled on the merits.</p>
+</details>
+</section>
+<section><h3>F_EN2 — Temporary acceleration waiver versus forgiveness; surviving guarantee.</h3><p><b>Source</b></p><pre>The lender waived acceleration until 30 September 2028. It did not forgive the USD 14 million principal, and the guarantee remains in force.</pre><div class="scroll"><table><tr>
+<th>candidate_1 / expected clear</th><th>candidate_2 / expected material</th></tr><tr>
+<td><pre>Кредитор отказался от требования досрочного погашения до 30 сентября 2028 года. Он не простил основной долг в размере 14 млн долларов США; гарантия остаётся в силе.</pre></td><td><pre>Кредитор простил основной долг в размере 14 млн долларов США до 30 сентября 2028 года. Гарантия прекращена.</pre></td></tr></table></div>
+<details><summary>qwen / off — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The source states the lender waived acceleration (not forgiveness) and explicitly did NOT forgive the principal. Candidate A claims the lender forgave the principal, reversing the negation and misidentifying the action.</p>
+<p><b>candidate_2</b>: The source states the guarantee remains in force. Candidate A states the guarantee is terminated (прекращена), which is the opposite legal status.</p>
+</details>
+<details><summary>qwen / on — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The source says the lender waived acceleration (postponed the right to demand early repayment), but the translation says the lender forgave the principal debt, which is a fundamentally different legal action.</p>
+<p><b>candidate_2</b>: The source explicitly states the lender did NOT forgive the principal; the translation drops the negation and states the lender did forgive it.</p>
+<p><b>candidate_2</b>: The source says the guarantee remains in force; the translation says the guarantee is terminated, which is the opposite meaning.</p>
+</details>
+<details><summary>gemma / off — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The candidate states the debt was forgiven, whereas the source states it was not forgiven.</p>
+<p><b>candidate_2</b>: The candidate states the guarantee is terminated, whereas the source states it remains in force.</p>
+</details>
+<details><summary>gemma / on — candidate_1 — candidate_2: material_error; candidate_1: faithful</summary>
+<p><b>candidate_2</b>: The candidate states the lender forgave the debt, whereas the source states the lender did not forgive it.</p>
+<p><b>candidate_2</b>: The candidate states the guarantee is terminated, whereas the source states it remains in force.</p>
+<p><b>candidate_2</b>: The candidate translates &#x27;waived acceleration&#x27; as &#x27;forgave the principal&#x27;.</p>
+</details>
+</section>
+<p>No raw reasoning traces or full publisher originals are published here. Local inputs, responses and original evidence offsets remain in the ignored experiment directory. No cloud API calls or model downloads were made.</p></html>

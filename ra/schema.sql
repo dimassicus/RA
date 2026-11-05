@@ -99,6 +99,8 @@ CREATE TABLE IF NOT EXISTS search_results (
     UNIQUE (run_id, subject_key, url)
 );
 
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS exposure_paths TEXT[] NOT NULL DEFAULT '{}';
+
 CREATE INDEX IF NOT EXISTS search_results_run_date_idx
     ON search_results (run_id, published_at DESC);
 CREATE INDEX IF NOT EXISTS search_results_history_idx
@@ -200,3 +202,12 @@ CREATE TABLE IF NOT EXISTS verification_jobs (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE verification_jobs ADD COLUMN IF NOT EXISTS source_url TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS exposure_checks (
+    run_id BIGINT NOT NULL REFERENCES search_runs(id) ON DELETE CASCADE,
+    branch TEXT NOT NULL CHECK (branch IN ('country', 'sector')),
+    topic TEXT NOT NULL,
+    hits JSONB NOT NULL DEFAULT '[]',
+    error TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (run_id, branch, topic)
+);

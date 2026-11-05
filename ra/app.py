@@ -280,10 +280,11 @@ def create_app() -> Flask:
             abort(404)
         all_results = classify_results(run, db.get_results(run_id))
         view = request.args.get("view", "risk")
-        if view not in ("risk", "review", "older", "background", "scored", "all"):
+        if view not in ("risk", "review", "older", "background", "scored", "exposure", "all"):
             abort(400, "Unknown lead view")
         results = [item for item in all_results if view == "all" or item["relevance"] == view
-                   or (view == "scored" and item.get("score_included"))]
+                   or (view == "scored" and item.get("score_included"))
+                   or (view == "exposure" and item.get("exposure_paths"))]
         if view in ("risk", "older", "scored"):
             grouped = {}
             for item in results:
@@ -299,7 +300,9 @@ def create_app() -> Flask:
             "run.html", run=run, results=results, errors=db.get_errors(run_id), view=view,
             counts={**{key: sum(item["relevance"] == key for item in all_results)
                     for key in ("risk", "review", "older", "background")},
+                    "exposure": sum(bool(item.get("exposure_paths")) for item in all_results),
                     "scored": sum(bool(item.get("score_included")) for item in all_results)},
+            exposure_checks=db.exposure_coverage(run_id) if view == "exposure" else [],
             score_labels=LABELS, verification_jobs=verification_store.job_summary(run_id),
             all_count=len(all_results),
             selected_count=sum(bool(item["report_selected"]) for item in all_results),

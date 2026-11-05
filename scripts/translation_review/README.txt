@@ -1,5 +1,11 @@
 Automated translation review experiment
 
+Use Qwen 27B with reasoning off for routine development runs. Revisit Gemma
+31B with reasoning on when the full monitoring workflow runs end to end.
+With the local Qwen instance loaded as ra-simple-qwen at 32768 context and
+the LM Studio server running, use a fresh output directory for each run, e.g.
+  .venv/bin/python scripts/evaluate_simple_review.py --model ra-simple-qwen --mode off --suite all --work .local/translation-benchmark/dev-001
+
 This harness is isolated from the live RA app. It neither imports application
 translation/scoring code nor connects to the database or news providers.
 It does not replace the active Argos translator. Every output explicitly has
@@ -145,3 +151,61 @@ downloads, app/database mutations, cloud API calls or news-provider calls are
 part of these runs. Proposed corrections remain experimental, even if the same
 model endorses them in a second call. An accepted correction still requires
 separate quality evidence before production use.
+
+Simplified-protocol retest (isolated, fixed regression corpus):
+  scripts/translation_review/simple.py
+  scripts/translation_review/evidence.py
+  scripts/evaluate_simple_review.py
+  scripts/compare_simple_review.py
+  tests/test_simple_review.py
+
+The simplified response has candidate/verdict/issues and a correction field.
+Issues contain a category, separate source/translation quote arrays and an
+English explanation. The seven-category output grid and wording-only issues
+are removed, but all seven dimensions remain in the review instructions.
+Only material issues are returned. A faithful or uncertain verdict has no
+material issues; a material verdict requires evidence. Corrections are accepted
+only when every candidate was rejected as materially wrong, then separately
+checked using the same model. This remains correlated, not independent review.
+No category-coverage claims are manufactured by the compatibility adapter.
+
+Evidence validation decodes one layer of recognized terminated HTML entities,
+NFC-normalizes combining accents, normalizes typographic quote marks and
+collapses whitespace. It retains original source offsets and text. Every
+fragment must match; invented ellipses are not split or repaired. Words,
+numbers, currencies, negation and case are never rewritten. A quote may not
+match inside a different alphanumeric word. Separate fragments must be supplied
+as separate array entries. Only completeness issues may omit target evidence.
+These checks verify quotation provenance, not the truth of the model's judgment.
+Malformed JSON, missing candidates, unsupported verdicts and contradictory
+corrections still fail closed. No best-effort semantic or verdict repair occurs.
+
+All four runs use the same previously frozen 46 cases / 105 translations and
+19 provisional material labels. The twelve formerly fresh examples are now
+regressions, not unseen tests. Settings match the previous reasoning experiment:
+32768 context, 8192 output tokens, temperature zero, seed 42; medium reasoning
+on versus none off. Observed reasoning and a separate final answer are required.
+Existing numeric/date diagnostics are unchanged to isolate protocol/evidence
+work; their known false blocks remain visible. No runtime prompt tuning/retries.
+
+With a model already loaded locally (use one instance at a time):
+  .venv/bin/python scripts/evaluate_simple_review.py --model ra-simple-qwen --mode off --suite all --work .local/translation-benchmark/simple-review/qwen-off
+Repeat for on and for ra-simple-gemma. Preserve all four run directories.
+  .venv/bin/python scripts/compare_simple_review.py
+The comparison generates evidence-ablation.json in the local work directory,
+recording an offline recheck of six previous quotation failures. Only two
+validate after normalization alone; this is not a semantic accuracy claim.
+Reports go to docs/translation-evaluation/2026-11-04/simple-review-*. No app,
+translator, database, live scoring, cloud APIs or news APIs are involved.
+
+5 November follow-up (simple-v2)
+The v1 results and reports above describe the original validation policy.
+The v2 parser accepts an omitted correction as empty and discards an unsolicited
+correction when any candidate is faithful or uncertain. Repeated quotes resolving
+to the same original span count once. All quotes must still resolve. Malformed JSON,
+unsupported evidence and missing explanations still withhold the review.
+
+To run frozen local watchlist examples with Argos output in candidates.baseline:
+  .venv/bin/python scripts/evaluate_simple_review.py --model ra-simple-qwen --mode off --cases-file .local/translation-benchmark/dev-20261105/fresh-cases.json --work .local/translation-benchmark/dev-002
+Use a fresh output directory. The case file is local because it contains source excerpts.
+See docs/translation-evaluation/2026-11-05/README.txt for replay and fresh results.

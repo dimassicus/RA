@@ -3,6 +3,63 @@ Translation evaluation snapshots — 4 November 2026
 Decision: keep the existing Argos translator active. These are offline review
 artifacts, not an application change or approval to switch models.
 
+Simplified-protocol retest (completed 5 November 2026):
+- simple-review-comparison.html contains all four new configurations, the
+  matched previous runs, case-level routing, evidence audits, failure details
+  and side-by-side fictional regression examples. simple-review-summary.json
+  preserves counts and identities. This is the newest reviewer comparison.
+- Same 46 cases / 105 candidate translations per configuration; 184 case
+  evaluations total. The twelve formerly fresh examples are now regression
+  cases, not a new held-out test. Nineteen material-error labels and 70
+  nonmaterial labels remain provisional; publisher excerpts are unlabelled.
+- Qwen on: 46/46 valid, 18/19 labelled errors flagged, one approved, none
+  unassessed; five previously nonmaterial candidates rejected. 44.30 minutes.
+  Previous on: 26/46 valid, nine flagged, ten unassessed; 64.23 minutes.
+- Gemma on: 46/46 valid, 18/19 flagged, one approved, none unassessed;
+  one previously nonmaterial candidate rejected. 38.39 minutes.
+  Previous on: 44/46 valid, 16 flagged, two unassessed; 64.42 minutes.
+- Qwen off: 40/46 valid, 14 flagged, one approved, four unassessed;
+  5.66 minutes. Gemma off: 39/46 valid, 11 flagged, three approved,
+  five unassessed; 2.99 minutes. Time includes separate correction checks.
+- Prefer Gemma on for the next isolated reviewer trial: it matches Qwen on's
+  labelled-error detection with fewer disputed rejections and less runtime.
+  Both still approve the disputed NLLB covenant wording. Gemma's earlier
+  Portuguese possibility/timing warning disappeared under the simpler prompt;
+  both reasoning models now accept that real-source MADLAD candidate. This
+  limits the recommendation: no unattended correction/scoring deployment.
+- Gemma retained the Greek MADLAD candidate where Qwen additionally rejected
+  singular/plural dividend wording and rewrote it. It also accepted the clean
+  Portuguese and Turkish regression paraphrases that Qwen rejected. Both
+  proposed same-model-checked corrections for invented Vietnamese currencies.
+  No labelled-bad candidate was selected, but NLLB is excluded from selection
+  and publisher examples are outside the labelled-error metric.
+- The compact response uses candidate verdicts and material issues instead
+  of a nested coverage grid. Evidence uses separate original-text fragments,
+  with recorded offsets and conservative HTML/Unicode/quote/space handling.
+  Words, amounts, currencies and negation cannot be normalized into a match;
+  invented ellipses and unsupported verdicts fail validation. There is no
+  fuzzy quote repair. Quote provenance alone does not prove semantic accuracy.
+- The retest changes prompt/protocol and evidence handling together. It also
+  enforces correction-only-when-all-candidates-are-materially-wrong and rejects
+  duplicate evidence fragments. Qwen off had three extra-correction failures,
+  two evidence failures and one malformed JSON response. Gemma off had seven
+  schema failures, six from an omitted empty correction field. These are
+  recorded failures, not silently repaired passes or proof of semantic misses.
+- An offline evidence-only check made two of six old quotation-failure
+  responses structurally valid without new inference; the other four still
+  failed. This diagnostic does not establish those judgments as correct.
+- Next: separate optional correction/duplicate-fragment handling from
+  substantive failures, improve number/date routing in its own controlled
+  test, and use fresh independently verified meanings before integration.
+  No analyst foreign-language approval step is introduced; unresolved cases
+  remain withheld automatically in the experiment.
+- The 42 focused harness tests passed. Final report audits verified frozen
+  inputs/implementation, all run lengths, model/settings equivalence,
+  observed reasoning modes, original evidence offsets and local HTML links.
+  All 36 app/config hashes remained unchanged. No visual browser check was
+  performed. No cloud/news APIs or model downloads were used. Benchmark
+  model instances were unloaded and the LM Studio server was stopped.
+
 Reasoning-enabled follow-up (all runs complete):
 - reasoning-review-comparison.html contains the comparison with previous runs,
   matched reasoning-off controls, and side-by-side fresh candidate texts.

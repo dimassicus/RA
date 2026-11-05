@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from functools import partial
 import queue
 import threading
 import time
 
 from . import db
 from .search import search_company
+from .exposure import add_exposure_leads, search_topic
 from .news_apis import plan_subjects
 from .translation import translate_text
 from .language import detect_language
@@ -54,7 +56,7 @@ def _work_loop():
             _queue.task_done()
 
 
-def process_run(run_id: int, searcher=search_company):
+def process_run(run_id: int, searcher=search_company, topic_searcher=search_topic):
     run = db.get_run(run_id)
     if run is None or run["status"] not in ("queued", "running"):
         return
@@ -65,6 +67,8 @@ def process_run(run_id: int, searcher=search_company):
         )
         conn.execute("DELETE FROM search_results WHERE run_id = %s", (run_id,))
         conn.execute("DELETE FROM search_errors WHERE run_id = %s", (run_id,))
+    topic_cache = {}
+    check = partial(db.run_topic_check, run_id, topic_searcher)
     for subject in plan_subjects(run["subjects"], run_id):
         subject_key = str(subject.get("id") or f"one-off:{run_id}")
         name = subject["name"]
@@ -72,6 +76,8 @@ def process_run(run_id: int, searcher=search_company):
             articles, errors = searcher(subject)
         except Exception as exc:
             articles, errors = [], [f"{type(exc).__name__}: {exc}"]
+        if run["scope"] in ("all", "selected"):
+            articles = add_exposure_leads(subject, articles, errors, topic_cache, check)
         with db.connect() as conn:
             for article in articles:
                 language = detect_language(article["title"], article["language"])
@@ -87,14 +93,14 @@ def process_run(run_id: int, searcher=search_company):
                     "INSERT INTO search_results "
                     "(run_id, company_id, subject_key, subject_name, title, url, publisher, discovery_service, source_kind, "
                     "published_at, query, language, title_en, publisher_en, translation_provider, "
-                    "signal_terms, seen_before) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "signal_terms, seen_before, exposure_paths) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT (run_id, subject_key, url) DO NOTHING",
                     (run_id, subject.get("id"), subject_key, name, article["title"],
                      article["url"], article["publisher"], article.get("discovery_service", ""),
                      article.get("source_kind", "news"), article["published_at"],
                      article["query"], language, title_en, publisher_en, provider,
-                     article["signal_terms"], seen_before),
+                     article["signal_terms"], seen_before, article.get("exposure_paths", [])),
                 )
             for message in errors:
                 conn.execute(

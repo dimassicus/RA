@@ -126,3 +126,11 @@ Subsequent translation-benchmark inspection found corrupted glyphs and many inva
 ## Isolated translation evaluation
 
 The [benchmark instructions](scripts/translation_benchmark_README.txt) cover pinned Meta NLLB and Google MADLAD downloads, hash verification, CTranslate2 INT8 conversion, comparisons with the existing translator, and a local human-review sheet. The corpus includes fictional bilingual credit-news articles and legal/negation stress cases; saved headline inputs are optional. Model weights, environments, database exports and generated results stay in ignored local directories. These tools do not switch the running app's translator. Human review and downstream attribution validation are required before adoption.
+
+## Country and sector exposure
+
+All-watchlist and selected-company runs search three branches. Company discovery uses the existing names, local editions and official sources. Country and sector discovery use a shared English-language Google News RSS search per distinct exposure in the run snapshot. These searches use the seven-day feed window and match the topic and a credit-related term in the headline. Country checks cover trade restrictions, funding, currency and operating disruptions. Sector checks also cover supply, prices and demand.
+
+Open **Country and sector exposure** on the run page to see completed checks, including empty feeds and errors. Each matching article lists the connected company, its registration, presence or industry, and a possible impact to investigate. A global sector story can have a narrower geographic scope than the company's operations. Each source URL has one row per company even when several branches find it. The database retains topic results for a restarted run.
+
+Weekly inclusion of an exposure lead requires source-supported impact on the named company. The existing source checker supports English and Portuguese. The company detail, Excel leads and selected PDF carry the exposure explanation. One-off name searches still use company discovery.
