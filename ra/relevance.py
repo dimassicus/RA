@@ -9,23 +9,11 @@ from datetime import timedelta, timezone
 from .aliases import company_names, contains, headline_identity, normalized
 
 
-# Whole words/explicit stems avoid 'loss' in 'gloss' and 'multa' in 'simultaneous'.
-# Native cues supplement English translations; unsupported languages stay reviewable.
-PATTERNS = {
-    "debt / creditors": r"default\w*|missed payments?|overdue|debt crisis|creditor\w*|inadimpl\w*|divida vencida|vỡ nợ|vo no|temerrut\w*",
-    "restructuring": r"bankrupt\w*|insolven\w*|restructur\w*|recuperacao (?:extra)?judicial|falencia|mediacao|mediation|tutela de urgencia|konkordato\w*|iflas\w*|pha san|افلاس|إفلاس|πτωχευσ\w*",
-    "legal / regulatory": r"lawsuits?|litigation|sanctions?|investigat\w*|fined|fines|fraud\w*|arbitration|arbitragem|investiga\w*|multas?|condena\w*|corrup\w*|sorusturma\w*|ceza\w*|dieu tra",
-    "operations": r"shutdowns?|closures?|layoffs?|plant fire|explosion|accident|strike|fechamento|paralis\w*|demiss\w*|hibernacao|suspens\w*|greve|grev|yangin|dinh cong|dong cua",
-    "financial deterioration": r"loss(?:es)?|prejuizo\w*|liquidity (?:crisis|shortfall)|cash (?:crisis|shortfall)|profit warning|downgrad\w*|negative outlook|lucro cai|queda (?:do|no|de) lucro|zarar\w*|thua lo|خسائر",
-    "management change": r"resign\w*|renuncia\w*|istifa\w*|tu chuc",
-}
-PATTERNS = {label: re.compile(r"(?<!\w)(?:" + normalized_pattern + r")(?!\w)")
-            for label, normalized_pattern in PATTERNS.items()}
+from .keywords import matches
 
 
-def risk_signals(text: str) -> list[str]:
-    folded = normalized(text)
-    return [label for label, pattern in PATTERNS.items() if pattern.search(folded)]
+def risk_signals(text: str, language: str = "") -> list[str]:
+    return list(dict.fromkeys(group for _, group, direction in matches(text, language) if direction == "adverse"))
 
 
 def headline(article: dict, field: str) -> str:
@@ -41,7 +29,8 @@ def classify(article: dict, subject: dict, as_of=None) -> dict:
     title = headline(article, "title")
     english = headline(article, "title_en")
     text = normalized(title + " " + english)
-    signals = sorted(set(risk_signals(title) + risk_signals(english)))
+    hits = sorted(set(matches(title, article.get("language")) + matches(english, "en")))
+    signals = sorted({group for _, group, direction in hits if direction == "adverse"})
     official = article.get("source_kind") == "official"
     if article.get("discovery_service") == "FCA Warning RSS":
         signals = sorted(set(signals + ["regulatory warning / possible clone"]))
@@ -79,7 +68,8 @@ def classify(article: dict, subject: dict, as_of=None) -> dict:
             category, reason = "review", "Missing or unexpected publication date; " + reason
         elif published < as_of - timedelta(days=30):
             category, reason = "older", "Older than 30 days at search time; " + reason
-    return {**article, "relevance": category, "relevance_reason": reason, "signal_terms": signals}
+    return {**article, "relevance": category, "relevance_reason": reason, "signal_terms": signals,
+            "keyword_hits": [{"term": term, "direction": direction} for term, _, direction in hits]}
 
 
 def classify_results(run: dict, results: list[dict]) -> list[dict]:

@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Monitoring keywords · RA{% endblock %}
+{% block content %}
+<h1>Monitoring keywords</h1>
+<p>English keywords flag headlines for review. Choose the expected sentiment. Company scores require evidence of impact.</p>
+<section class="panel form-panel">
+  <h2>Add a keyword</h2>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="enabled" value="yes">
+    <div class="form-grid"><label>English word or phrase<input name="english" required maxlength="80" placeholder="e.g. covenant breach"></label>
+    <label>Sentiment<select name="direction">{% for direction in directions %}<option>{{ direction }}</option>{% endfor %}</select></label></div>
+    <div class="form-actions"><button class="button primary">Add and translate</button></div>
+  </form>
+</section>
+<section class="panel list-panel"><h2>Keyword list</h2>
+  <p>Translation languages follow active companies’ registration countries. Local Qwen checks translated phrases before use. Refresh to see progress.</p>
+  {% if error %}<p role="status">{{ error }}</p>{% endif %}
+  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary" name="action" value="retry">Retry missing translations</button></form>
+  <div class="table-scroll"><table><thead><tr><th>English keyword</th><th>Sentiment</th><th>Active</th><th>Translations</th><th></th></tr></thead><tbody>
+  {% for row in rows %}
+    {% set fid = 'keyword-' ~ row.id %}
+    <tr><td><input form="{{ fid }}" aria-label="English keyword {{ row.english }}" name="english" value="{{ row.english }}" required maxlength="80"></td>
+      <td><select form="{{ fid }}" name="direction" aria-label="Sentiment for {{ row.english }}">{% for direction in directions %}<option {% if direction == row.direction %}selected{% endif %}>{{ direction }}</option>{% endfor %}</select></td>
+      <td><input form="{{ fid }}" name="enabled" type="checkbox" value="yes" aria-label="Enable {{ row.english }}" {% if row.enabled %}checked{% endif %}></td>
+      <td><details><summary>{{ languages|select('in', row.translations)|list|length }}/{{ languages|length }} languages</summary>
+      {% for code in languages %}<div>{{ language_name(code) }} · {{ row.translations.get(code, 'Pending') }}</div>{% endfor %}</details></td>
+      <td><form id="{{ fid }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="previous" value="{{ row.english }}"><button class="button secondary">Save</button></form></td></tr>
+  {% endfor %}</tbody></table></div>
+</section>
+{% endblock %}

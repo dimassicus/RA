@@ -380,3 +380,38 @@ def test_progress_measures_entire_run_and_separates_translation_from_source(data
     database.execute("UPDATE search_results SET verification='{\"status\":\"unavailable\"}' WHERE language='es'")
     v = client.get(endpoint).json['verification']
     assert v['percent'] == 100 and v['attention'] == 3
+
+
+def test_keyword_edit_translate_and_disable_in_review(database, monkeypatch):
+    from ra import keywords, translation
+    monkeypatch.setattr(keywords, "_rules", keywords._rules)
+    monkeypatch.setattr(keywords, "schedule", lambda: None)
+    monkeypatch.setattr(translation, "installed_keyword_translations", lambda terms, code: {})
+    term = "covenant breach"
+    def model(prompt, data, schema):
+        if "english" in schema["properties"]:
+            return {"english": True}
+        if schema["properties"][term]["type"] == "boolean":
+            return {term: data["translations"][term] == "violação de cláusula"}
+        return {term: "violação de cláusula" if isinstance(data["terms"], dict) else "unrelated wording"}
+    monkeypatch.setattr(keywords, "model_json", model)
+    client = create_app().test_client()
+    with client.session_transaction() as session:
+        session["csrf_token"] = "token"
+    form = dict(csrf_token="token", english=term, direction="adverse", enabled="yes")
+    assert client.post("/keywords", data=form).status_code == 302
+    row, = keywords.records()
+    keywords.translate_batch([row], "pt")
+    keywords.reload_rules()
+    assert keywords.matches("violação de cláusula", "pt") == [(term, term, "adverse")]
+    edit = dict(form, id=row["id"], previous=term, english="debt relief", direction="favorable")
+    client.post("/keywords", data=edit)
+    row, = keywords.records()
+    assert row["translations"] == {} and not keywords.matches(term)
+    assert keywords.matches("debt relief") == [("debt relief", "debt relief", "favorable")]
+    client.post("/keywords", data={**edit, "previous": "debt relief", "enabled": ""})
+    assert not keywords.matches("debt relief")
+    keywords.seed(database)
+    count = len(keywords.records())
+    keywords.seed(database)
+    assert count == len(keywords.records())

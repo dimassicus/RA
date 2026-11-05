@@ -30,8 +30,8 @@ PT_CREDIT_GLOSSARY = (
 
 
 @lru_cache(maxsize=3)
-def _model(source_code: str):
-    path = MODEL_ROOT / f"{source_code}_en"
+def _model(source_code: str, target_code: str = "en"):
+    path = MODEL_ROOT / f"{source_code}_{target_code}"
     if not (path / "model").is_dir() or not (path / "sentencepiece.model").is_file():
         return None
     import ctranslate2
@@ -42,6 +42,19 @@ def _model(source_code: str):
     metadata_path = path / "metadata.json"
     metadata = json.loads(metadata_path.read_text()) if metadata_path.exists() else {}
     return tokenizer, translator, metadata.get("target_prefix", "")
+
+
+def installed_keyword_translations(terms, target_code):
+    """Use an installed English-to-target Argos pair when available."""
+    model = _model("en", target_code)
+    if not model:
+        return {}
+    tokenizer, translator, prefix = model
+    inputs = [tokenizer.encode(term, out_type=str) for term in terms]
+    outputs = translator.translate_batch(inputs, target_prefix=[[prefix] for _ in terms] if prefix else None,
+                                         replace_unknowns=True, beam_size=4)
+    return {term: tokenizer.decode_pieces(result.hypotheses[0]).removeprefix(prefix).strip()
+            for term, result in zip(terms, outputs)}
 
 
 def argos_translate(text: str, language: str, company_name: str = "", publisher: str = "") -> tuple[str, str]:

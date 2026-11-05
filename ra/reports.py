@@ -25,6 +25,13 @@ WARNING = (
 )
 
 
+def keyword_notes(article):
+    from .relevance import headline
+    from .keywords import matches
+    hits = matches(headline(article, "title"), article.get("language")) + matches(headline(article, "title_en"))
+    return [f"{term} ({direction})" for term, _, direction in sorted(set(hits))]
+
+
 def _date(value) -> str:
     return value.astimezone(timezone.utc).strftime("%Y-%m-%d") if value else ""
 
@@ -89,7 +96,7 @@ def make_xlsx(run: dict, results: list[dict], errors: list[dict], selected: bool
             "Official notice" if item["source_kind"] == "official" else "News lead",
             _safe_excel(item["publisher"]), _safe_excel(item.get("publisher_en")),
             _safe_excel(item["title"]), _safe_excel(item.get("title_en")),
-            ", ".join(item["signal_terms"]), "Seen before" if item["seen_before"] else "New to system",
+            ", ".join(keyword_notes(item)), "Seen before" if item["seen_before"] else "New to system",
             item["language"], item["url"], _safe_excel(item["query"]),
             _safe_excel(item.get("discovery_service", "")),
             item.get("score"), _safe_excel(item.get("score_status", "pending")),
@@ -193,7 +200,7 @@ def make_pdf(run: dict, results: list[dict], errors: list[dict], selected: bool 
                     cell_style,
                 ),
                 Paragraph(f"<link href={url} color='#0F6F69'>{bilingual}</link>", cell_style),
-                Paragraph("<br/>".join(escape(text) for text in [*item["signal_terms"], *item.get("exposure_paths", [])]) or "-", cell_style),
+                Paragraph("<br/>".join(escape(text) for text in [*keyword_notes(item), *item.get("exposure_paths", [])]) or "-", cell_style),
             ])
         table = LongTable(rows, colWidths=[69, 120, 87, 354, 128], repeatRows=1, hAlign="LEFT")
         table.setStyle(TableStyle([

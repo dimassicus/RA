@@ -1,0 +1,392 @@
+{
+  "accident": {
+    "ar": "حادث",
+    "az": "hadisə",
+    "el": "ατύχημα",
+    "pt": "acidente",
+    "ru": "авария",
+    "tr": "kaza",
+    "uz": "halokat",
+    "vi": "tai nạn"
+  },
+  "arbitration": {
+    "ar": "تحكيم",
+    "az": "arbitraj",
+    "el": "διαιτησία",
+    "pt": "arbitragem",
+    "ru": "арбитраж",
+    "tr": "tahkim",
+    "uz": "arbitraj",
+    "vi": "trọng tài"
+  },
+  "bankruptcy": {
+    "ar": "إفلاس",
+    "az": "iflas",
+    "el": "πτώχευση",
+    "pt": "falência",
+    "ru": "банкротство",
+    "tr": "iflas",
+    "uz": "bankrotlik",
+    "vi": "phá sản"
+  },
+  "cash crisis": {
+    "ar": "أزمة سيولة",
+    "az": "nağd axın krizi",
+    "el": "κρίση ρευστότητας",
+    "pt": "crise de liquidez",
+    "ru": "кризис ликвидности",
+    "tr": "nakit krizi",
+    "uz": "naqd pul krizisi",
+    "vi": "khủng hoảng thanh khoản"
+  },
+  "cash shortfall": {
+    "ar": "عجز في السيولة",
+    "az": "nağd çatışmazlığı",
+    "el": "έλλειμμα ρευστότητας",
+    "pt": "déficit de caixa",
+    "ru": "нехватка денежных средств",
+    "tr": "nakit açığı",
+    "uz": "naqd pul yetishmasligi",
+    "vi": "thiếu hụt tiền mặt"
+  },
+  "closure": {
+    "ar": "إغلاق",
+    "az": "bağlanma",
+    "el": "κλείσιμο",
+    "pt": "encerramento",
+    "ru": "закрытие",
+    "tr": "kapanış",
+    "uz": "yopish",
+    "vi": "đóng cửa"
+  },
+  "conviction": {
+    "ar": "حكم جنائي",
+    "az": "məhkum olma",
+    "el": "καταδίκη",
+    "pt": "condenação",
+    "ru": "приговор",
+    "tr": "mahkumiyet",
+    "uz": "sud hukmi",
+    "vi": "án có tội"
+  },
+  "corruption": {
+    "ar": "فساد",
+    "az": "korrupsiya",
+    "el": "διαφθορά",
+    "pt": "corrupção",
+    "ru": "коррупция",
+    "tr": "yolsuzluk",
+    "uz": "korrupsiya",
+    "vi": "tham nhũng"
+  },
+  "credit upgrade": {
+    "ar": "رفع التصنيف الائتماني",
+    "az": "kredit reytinqinin yüksəldilməsi",
+    "el": "ανέλιξη πιστοληπτικής ικανότητας",
+    "pt": "melhoria de rating",
+    "ru": "повышение кредитного рейтинга",
+    "tr": "kredi notu yükseltme",
+    "uz": "kredit reytingining oshirilishi",
+    "vi": "nâng hạng tín nhiệm"
+  },
+  "creditor": {
+    "ar": "دائن",
+    "az": "kredit verən",
+    "el": "δανειστής",
+    "pt": "credor",
+    "ru": "кредитор",
+    "tr": "alacaklı",
+    "uz": "kredit beruvchi",
+    "vi": "chủ nợ"
+  },
+  "debt crisis": {
+    "ar": "أزمة ديون",
+    "az": "borc krizi",
+    "el": "χρεωκοπική κρίση",
+    "pt": "crise da dívida",
+    "ru": "долговой кризис",
+    "tr": "borç krizi",
+    "uz": "qarzdorlik krizisi",
+    "vi": "khủng hoảng nợ"
+  },
+  "default": {
+    "ar": "تخلف عن السداد",
+    "az": "defolt",
+    "el": "αθέτηση υποχρέωσης",
+    "pt": "inadimplência",
+    "ru": "дефолт",
+    "tr": "temerrüt",
+    "uz": "defolt",
+    "vi": "vỡ nợ"
+  },
+  "downgrade": {
+    "ar": "خفض التصنيف",
+    "az": "reytinqin aşağı salınması",
+    "el": "κατάταξη σε χαμηλότερη βαθμίδα",
+    "pt": "rebaixamento de rating",
+    "ru": "понижение кредитного рейтинга",
+    "tr": "kredi notu düşürme",
+    "uz": "kredit reytingining pasaytirilishi",
+    "vi": "hạ hạng tín nhiệm"
+  },
+  "explosion": {
+    "ar": "انفجار",
+    "az": "partlayış",
+    "el": "εκρηξή",
+    "pt": "explosão",
+    "ru": "взрыв",
+    "tr": "patlama",
+    "uz": "portlash",
+    "vi": "vụ nổ"
+  },
+  "fine": {
+    "ar": "غرامة",
+    "az": "cərimə",
+    "el": "προστίμο",
+    "pt": "multa",
+    "ru": "штраф",
+    "tr": "ceza",
+    "uz": "jarima",
+    "vi": "phạt tiền"
+  },
+  "fraud": {
+    "ar": "احتيال",
+    "az": "aldatma",
+    "el": "απάτη",
+    "pt": "fraude",
+    "ru": "мошенничество",
+    "tr": "dolandırıcılık",
+    "uz": "firibgarlik",
+    "vi": "lừa đảo"
+  },
+  "insolvency": {
+    "ar": "عدم القدرة على سداد الديون",
+    "az": "iflas",
+    "el": "αφερεγγυότητα",
+    "pt": "insolvência",
+    "ru": "неплатёжеспособность",
+    "tr": "iflas",
+    "uz": "bankrotlik",
+    "vi": "mất khả năng thanh toán"
+  },
+  "interim protective relief": {
+    "ar": "التدابير الوقائية المؤقتة",
+    "az": "müvəqqəti qoruyucu tədbirlər",
+    "el": "προσωρινή δικαστική προστασία",
+    "pt": "medida cautelar provisória",
+    "ru": "временная защитная мера",
+    "tr": "geçici koruma tedbiri",
+    "uz": "vaqtinchalik himoya choralari",
+    "vi": "biện pháp bảo vệ tạm thời"
+  },
+  "investigation": {
+    "ar": "تحقيق",
+    "az": "təhqiqat",
+    "el": "ερευνα",
+    "pt": "investigação",
+    "ru": "расследование",
+    "tr": "soruşturma",
+    "uz": "tekshiruv",
+    "vi": "cuộc điều tra"
+  },
+  "lawsuit": {
+    "ar": "دعوى قضائية",
+    "az": "mühakimə",
+    "el": "αγωγή",
+    "pt": "processo judicial",
+    "ru": "судебный иск",
+    "tr": "dava",
+    "uz": "sud da’vosi",
+    "vi": "vụ kiện"
+  },
+  "layoff": {
+    "ar": "تسريح عمال",
+    "az": "işdən azad edilmə",
+    "el": "απολύσεις",
+    "pt": "corte de postos de trabalho",
+    "ru": "сокращение персонала",
+    "tr": "işten çıkarma",
+    "uz": "ishdan bo'shatish",
+    "vi": "cắt giảm nhân sự"
+  },
+  "liquidity crisis": {
+    "ar": "أزمة سيولة",
+    "az": "likvidlik krizi",
+    "el": "κρίση ρευστότητας",
+    "pt": "crise de liquidez",
+    "ru": "кризис ликвидности",
+    "tr": "likidite krizi",
+    "uz": "likvidlik krizi",
+    "vi": "khủng hoảng thanh khoản"
+  },
+  "liquidity shortfall": {
+    "ar": "عجز في السيولة",
+    "az": "likvidlik çatışmazlığı",
+    "el": "έλλειμμα ρευστότητας",
+    "pt": "déficit de liquidez",
+    "ru": "нехватка ликвидности",
+    "tr": "likidite açığı",
+    "uz": "likvidlik yetishmovchiligi",
+    "vi": "thiếu hụt thanh khoản"
+  },
+  "litigation": {
+    "ar": "نزاع قضائي",
+    "az": "mühakimə",
+    "el": "δικαστική διαμάχη",
+    "pt": "litígio",
+    "ru": "судебный спор",
+    "tr": "yargılama",
+    "uz": "sud jarayoni",
+    "vi": "tranh chấp pháp lý"
+  },
+  "loss": {
+    "ar": "خسارة",
+    "az": "zəyan",
+    "el": "ζημία",
+    "pt": "prejuízo",
+    "ru": "убыток",
+    "tr": "zarar",
+    "uz": "zarar",
+    "vi": "thua lỗ"
+  },
+  "mediation": {
+    "ar": "وساطة",
+    "az": "vasitəçilik",
+    "el": "διαμεσολάβηση",
+    "pt": "mediação",
+    "ru": "медиация",
+    "tr": "arabuluculuk",
+    "uz": "vositachilik",
+    "vi": "hòa giải"
+  },
+  "missed payment": {
+    "ar": "تأخر في السداد",
+    "az": "ödənişin gecikməsi",
+    "el": "καθυστέρηση πληρωμής",
+    "pt": "pagamento em atraso",
+    "ru": "пропуск платежа",
+    "tr": "ödeme kaçağı",
+    "uz": "to'lovni o'tkazib yuborish",
+    "vi": "trễ hạn thanh toán"
+  },
+  "negative outlook": {
+    "ar": "توقعات سلبية",
+    "az": "mənfi perspektiv",
+    "el": "αρνητική προοπτική",
+    "pt": "perspectiva negativa",
+    "ru": "негативный прогноз",
+    "tr": "negatif görünüm",
+    "uz": "manfiy prognoz",
+    "vi": "triển vọng tiêu cực"
+  },
+  "obtained refinancing": {
+    "ar": "حصلت على إعادة تمويل",
+    "az": "borcları yeniləmək üçün maliyyələşmə əldə etdi",
+    "el": "εξασφάλισε αναχρηματοδότηση",
+    "pt": "obteve refinanciamento",
+    "ru": "получил рефинансирование",
+    "tr": "yeniden finansman sağladı",
+    "uz": "qarzni qayta moliyalashtirish uchun yangi mablag'lar jalb qilindi",
+    "vi": "đã huy động được vốn để tái tài trợ nợ"
+  },
+  "overdue": {
+    "ar": "متأخر السداد",
+    "az": "müddətindən gecikmiş",
+    "el": "καθυστερημένο",
+    "pt": "em atraso",
+    "ru": "просрочка",
+    "tr": "gecikmiş",
+    "uz": "muddati o'tgan",
+    "vi": "quá hạn"
+  },
+  "plant fire": {
+    "ar": "حريق في المصنع",
+    "az": "istehsal sahəsində yanğın",
+    "el": "πυρκαγιά σε εργοστάσιο",
+    "pt": "incêndio na fábrica",
+    "ru": "пожар на производстве",
+    "tr": "fabrika yangını",
+    "uz": "zavodda yong'in",
+    "vi": "cháy nhà máy"
+  },
+  "profit decline": {
+    "ar": "تراجع الأرباح",
+    "az": "gəlirin azalması",
+    "el": "πτώση κερδών",
+    "pt": "queda de lucro",
+    "ru": "снижение прибыли",
+    "tr": "kâr düşüşü",
+    "uz": "foyda kamayishi",
+    "vi": "lợi nhuận giảm"
+  },
+  "profit warning": {
+    "ar": "تحذير من تراجع الأرباح",
+    "az": "gəlir xəbərdarlığı",
+    "el": "προειδοποίηση για κέρδη",
+    "pt": "alerta de lucro",
+    "ru": "предупреждение о снижении прибыли",
+    "tr": "kâr uyarısı",
+    "uz": "foyda ogohlantirishi",
+    "vi": "cảnh báo lợi nhuận"
+  },
+  "resignation": {
+    "ar": "استقالة",
+    "az": "istefa",
+    "el": "αποχώρηση",
+    "pt": "renúncia",
+    "ru": "отставка",
+    "tr": "istifa",
+    "uz": "istifa",
+    "vi": "từ chức"
+  },
+  "restructuring": {
+    "ar": "إعادة هيكلة",
+    "az": "yenidən quruluş",
+    "el": "αναδιάρθρωση",
+    "pt": "reestruturação",
+    "ru": "реструктуризация",
+    "tr": "yapılandırma",
+    "uz": "qayta tuzilish",
+    "vi": "cơ cấu lại"
+  },
+  "return to profit": {
+    "ar": "العودة إلى الربحية",
+    "az": "gəlirliyyətə qayıdış",
+    "el": "επιστροφή στο κέρδος",
+    "pt": "retorno ao lucro",
+    "ru": "возврат к прибыли",
+    "tr": "kâra dönüş",
+    "uz": "foyda olishga qaytish",
+    "vi": "có lãi trở lại"
+  },
+  "sanction": {
+    "ar": "عقوبة تنظيمية",
+    "az": "sanksiya",
+    "el": "επιβολή κυρώσεων",
+    "pt": "sanção",
+    "ru": "санкция",
+    "tr": "yaptırım",
+    "uz": "sanktsiya",
+    "vi": "chế tài"
+  },
+  "shutdown": {
+    "ar": "إغلاق",
+    "az": "fəaliyyətin dayandırılması",
+    "el": "κλείσιμο",
+    "pt": "fechamento",
+    "ru": "остановка",
+    "tr": "üretim durdurma",
+    "uz": "to'xtatib qo'yish",
+    "vi": "đình sản"
+  },
+  "strike": {
+    "ar": "إضراب",
+    "az": "strejk",
+    "el": "απεργία",
+    "pt": "greve",
+    "ru": "забастовка",
+    "tr": "grev",
+    "uz": "ish tashlash",
+    "vi": "đình công"
+  }
+}

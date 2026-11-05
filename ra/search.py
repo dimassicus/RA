@@ -58,9 +58,9 @@ def normalized(value: str) -> str:
     return "".join(character for character in value if not unicodedata.combining(character))
 
 
-def signal_terms(title: str) -> list[str]:
+def signal_terms(title: str, language: str = "") -> list[str]:
     from .relevance import risk_signals
-    return risk_signals(title)
+    return risk_signals(title, language)
 
 
 def search_queries(subject: dict) -> list[str]:
@@ -121,7 +121,7 @@ def parse_feed(content: bytes, query: str, language: str, limit: int = 30) -> li
             "published_at": published_at,
             "query": query,
             "language": language,
-            "signal_terms": signal_terms(title),
+            "signal_terms": signal_terms(title, language),
             "source_kind": "news",
             "discovery_service": "Google News RSS",
         })
@@ -197,7 +197,7 @@ def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None) 
             articles.append({
                 "title": title, "url": url, "publisher": "Heringer RI",
                 "published_at": published_at, "query": f"Official disclosures {filing_year}",
-                "language": "pt-BR", "signal_terms": signal_terms(title),
+                "language": "pt-BR", "signal_terms": signal_terms(title, "pt"),
                 "source_kind": "official",
                 "discovery_service": "Heringer RI",
             })

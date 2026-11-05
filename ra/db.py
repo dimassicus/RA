@@ -47,6 +47,8 @@ def reserve_news_api_request(provider: str, daily_limit: int) -> bool:
 def init_schema():
     with connect() as conn:
         conn.execute(Path(__file__).with_name("schema.sql").read_text())
+        from .keywords import seed
+        seed(conn)
         # Existing rows used registration_number as a combined identifier field.
         for row in conn.execute(
             "SELECT id, country_registration, registration_number FROM companies "

@@ -3,6 +3,19 @@ const leadBody = leadTable.tBodies[0];
 const leadRows = Array.from(leadBody.rows);
 const columnHeaders = Array.from(leadTable.querySelectorAll('th[data-column]'));
 
+const cueFilter = document.getElementById('cue-filter');
+const rowKeywords = new Map(leadRows.map(row => [row, JSON.parse(row.dataset.keywords)]));
+for (const [field, title] of [['direction', 'Sentiment'], ['term', 'Keyword']]) {
+  const group = document.createElement('optgroup');
+  group.label = title;
+  const values = new Set([...rowKeywords.values()].flat().map(hit => hit[field]));
+  for (const value of [...values].sort((a, b) => a.localeCompare(b))) {
+    group.append(new Option(value, field + ':' + value));
+  }
+  cueFilter.append(group);
+}
+cueFilter.addEventListener('change', filterLeads);
+
 function compareValues(key, a, b, direction) {
   if (key === 'company') return direction * a.localeCompare(b);
   if (a === 'pending' || b === 'pending') {
@@ -13,9 +26,11 @@ function compareValues(key, a, b, direction) {
 
 function filterLeads() {
   const filters = columnHeaders.map(header => [header.dataset.column, header.querySelector('select').value]);
+  const [field, keyword] = cueFilter.value.split(':');
   let visible = 0;
   for (const row of leadRows) {
-    row.hidden = filters.some(([key, value]) => value && row.dataset[key] !== value);
+    row.hidden = (cueFilter.value && !rowKeywords.get(row).some(hit => hit[field] === keyword)) ||
+      filters.some(([key, value]) => value && row.dataset[key] !== value);
     if (!row.hidden) visible++;
   }
   document.getElementById('lead-count').textContent = `Showing ${visible} of ${leadRows.length} leads in this view.`;

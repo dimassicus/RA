@@ -11,7 +11,7 @@ from pathlib import Path
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from psycopg.errors import UniqueViolation
 
-from . import db, intake_worker, model_store, news_apis, preliminary, worker
+from . import db, keywords, intake_worker, model_store, news_apis, preliminary, worker
 from .importer import stage_workbook
 from .exposure import topic_links
 from .company_report import load_report
@@ -72,6 +72,25 @@ def create_app() -> Flask:
             model_coverage=model_store.coverage([company["country_registration"] for company in companies]),
             news_api_providers=news_apis.configured_providers(),
         )
+
+    @app.route("/keywords", methods=["GET", "POST"])
+    def keyword_settings():
+        if request.method == "POST":
+            try:
+                if request.form.get("action") != "retry":
+                    row_id = int(request.form.get("id") or 0)
+                    keywords.save(row_id, request.form.get("english", ""), request.form.get("direction", ""),
+                                  request.form.get("enabled") == "yes", request.form.get("previous", ""))
+                keywords.schedule()
+                flash("Keyword settings saved. Missing translations queued.", "success")
+            except UniqueViolation:
+                flash("This English keyword already exists.", "error")
+            except ValueError as exc:
+                flash(str(exc), "error")
+            return redirect(url_for("keyword_settings"))
+        return render_template("keywords.html", rows=keywords.records(), languages=keywords.languages(),
+                               language_name=keywords.language_name, directions=keywords.DIRECTIONS,
+                               error=keywords.last_error)
 
     @app.get("/scores")
     def scores():
@@ -207,6 +226,7 @@ def create_app() -> Flask:
             if other and other["id"] != company_id:
                 raise ValueError("Another record already has this name and registration country")
             db.save_company(data, company_id)
+            keywords.schedule()
             model_store.schedule_countries([data["country_registration"]])
             flash("Company details saved.", "success")
             return redirect(url_for("dashboard"))
@@ -225,6 +245,7 @@ def create_app() -> Flask:
     def restore_company(company_id: int):
         if not db.set_active(company_id, True):
             abort(404)
+        keywords.schedule()
         flash("Company restored to the active watchlist.", "success")
         return redirect(url_for("dashboard"))
 
@@ -443,6 +464,7 @@ def create_app() -> Flask:
                 raise ValueError("Double-check the legal name, country, registration number and tax ID, then tick the review box")
             data = form_company(request.form)
             company_id, updated = db.confirm_intake(intake_id, data)
+            keywords.schedule()
             model_store.schedule_countries([data["country_registration"]])
             flash(f"{'Updated' if updated else 'Added'} {data['name']} after review. It is now available for searches.", "success")
             return redirect(url_for("edit_company", company_id=company_id))
@@ -469,6 +491,8 @@ def create_app() -> Flask:
 
 def main():
     db.init_schema()
+    keywords.reload_rules()
+    keywords.schedule()
     score_store.refresh_scores()
     intake_worker.start()
     worker.start_worker()

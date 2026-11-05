@@ -213,3 +213,12 @@ CREATE TABLE IF NOT EXISTS exposure_checks (
 );
 
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS headline_review JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS monitor_keywords (
+    id bigserial PRIMARY KEY,
+    english text NOT NULL UNIQUE,
+    seed_key text UNIQUE,
+    direction text NOT NULL CHECK (direction IN ('adverse','favorable','neutral')),
+    enabled boolean NOT NULL DEFAULT true,
+    translations jsonb NOT NULL DEFAULT '{}'
+);

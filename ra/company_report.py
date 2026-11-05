@@ -5,7 +5,8 @@ from datetime import datetime, time, timedelta
 from . import db, watch_dates
 from .exposure import scope_sector_paths
 from .aliases import headline_identity, normalized
-from .relevance import headline, risk_signals
+from .relevance import headline
+from .keywords import matches
 from .scoring import WEEK_TIMEZONE, week_start
 
 
@@ -80,7 +81,7 @@ def relevant_sources(subject, articles, end):
         if not branches:
             continue
         rank = (bool(a.get("score_included")), abs(a.get("score") or 0) if a.get("score_included") else 0,
-                bool(a.get("report_selected")), "Company" in branches, "Country / region" in branches, bool(risk_signals(text)), published, a["id"])
+                bool(a.get("report_selected")), "Company" in branches, "Country / region" in branches, bool(matches(headline(a, "title"), a.get("language")) or matches(headline(a, "title_en"))), published, a["id"])
         sources.append(dict(article=a, branches=branches, rank=rank, state=state))
     sources.sort(key=lambda s: s["rank"], reverse=True)
     return sources
