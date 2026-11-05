@@ -137,7 +137,7 @@ class Baseline:
     def translate(self, text, source, target, company="", publisher=""):
         if target != "en":
             raise ValueError("Existing app translator only targets English")
-        out, engine = self.module.translate_text(text, source, company, publisher)
+        out, engine = self.module.argos_translate(text, source, company, publisher)
         if not out:
             raise ValueError(engine)
         return out, {"engine": engine}
@@ -184,7 +184,7 @@ def main():
                 item["numeric_surface_changed"] = Counter(number_tokens(src)) != Counter(number_tokens(item["translation"]))
                 item["literal_company_preserved"] = case.get("company", "").casefold() in item["translation"].casefold() if case.get("company") else None
                 if args.model == "baseline" and case["kind"] == "fictional_article" and args.segmentation == "paragraph":
-                    raw, provenance = engine.module.translate_text(src, case["source_lang"], case.get("company", ""))
+                    raw, provenance = engine.module.argos_translate(src, case["source_lang"], case.get("company", ""))
                     item["app_without_chunking"] = {"translation": raw, "engine": provenance, "source_characters": len(src), "input_cap": 1000, "characters_beyond_cap": max(0, len(src) - 1000)}
         except Exception as exc:
             item.update(status="error", error=f"{type(exc).__name__}: {exc}")

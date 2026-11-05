@@ -43,3 +43,25 @@ def test_risk_view_hides_noise_and_preserves_other_view_selections(monkeypatch):
         assert 'type="hidden" name="selected_ids" value="2"' in body
         assert "National team wins cup" in client.get("/runs/5?view=all").get_data(as_text=True)
         assert client.get("/runs/5?view=invalid").status_code == 400
+
+
+def test_watchlist_country_and_sector_filters(monkeypatch):
+    from ra import worker
+    companies = [
+        {"id": 1, "name": "One", "country_registration": "Brazil", "primary_industries": "Fertilizers"},
+        {"id": 2, "name": "Two", "country_registration": "Vietnam", "primary_industries": "Fertilizer"},
+        {"id": 3, "name": "Three", "country_registration": "Greece", "primary_countries": "Brasil", "primary_industries": "Aluminium and Copper"},
+    ]
+    recorded = []
+    monkeypatch.setattr(db, "list_companies", lambda active: companies if active else [])
+    monkeypatch.setattr(db, "create_run", lambda scope, subjects: recorded.append((scope, [s["id"] for s in subjects])) or 4)
+    monkeypatch.setattr(worker, "enqueue", lambda run_id: None)
+    client = create_app().test_client()
+    with client.session_transaction() as session:
+        session["csrf_token"] = "token"
+    for filters, expected in [({}, [1, 2, 3]), ({"country": "brazil"}, [1, 3]), ({"sector": "fertilizer"}, [1, 2]),
+                              ({"country": "brazil", "sector": "copper"}, [3])]:
+        assert client.post("/search/all", data={"csrf_token": "token", **filters}).status_code == 302
+        assert recorded[-1] == ("selected" if filters else "all", expected)
+    client.post("/search/all", data={"csrf_token": "token", "country": "missing"})
+    assert len(recorded) == 4

@@ -12,11 +12,15 @@
 <div class="action-grid">
   <section class="panel action-panel">
     <span class="step">01 · Portfolio</span>
-    <h2>Search all companies</h2>
-    <p>Run a new news discovery pass for every active watchlist company.</p>
+    <h2>Search the watchlist</h2>
+    <p>Country includes registration and operating presence. Choose both filters to search their intersection.</p>
     <form method="post" action="{{ url_for('search_all') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button class="button primary" {% if not companies %}disabled{% endif %}>Run full watchlist search <span aria-hidden="true">↗</span></button>
+      {% for key, label in [('country', 'Country or region'), ('sector', 'Sector')] %}
+      <label>{{ label }}<select name="{{ key }}"><option value="">All</option>
+      {% for branch, topic in topics if branch == key %}<option value="{{ topic }}">{{ topic|title }}</option>{% endfor %}
+      </select></label>{% endfor %}
+      <button class="button primary" {% if not companies %}disabled{% endif %}>Run watchlist search <span aria-hidden="true">↗</span></button>
     </form>
   </section>
   <section class="panel action-panel">

@@ -44,7 +44,7 @@ def _model(source_code: str):
     return tokenizer, translator, metadata.get("target_prefix", "")
 
 
-def translate_text(text: str, language: str, company_name: str = "", publisher: str = "") -> tuple[str, str]:
+def argos_translate(text: str, language: str, company_name: str = "", publisher: str = "") -> tuple[str, str]:
     """Return English text and provenance, or empty strings when unavailable."""
     text = (text or "").strip()
     source_code = language.split("-", 1)[0].lower()
@@ -58,10 +58,10 @@ def translate_text(text: str, language: str, company_name: str = "", publisher: 
             ("Comunicado ao Mercado - ", "Market Notice — "),
         ):
             if text.casefold().startswith(portuguese_prefix.casefold()):
-                body, provider = translate_text(
+                body, provider = argos_translate(
                     text[len(portuguese_prefix):], language, company_name, publisher
                 )
-                return (english_prefix + body, provider) if body else ("", "")
+                return (english_prefix + body, provider) if body else ("", provider)
         if text.casefold() == "fato relevante":
             return "Material Fact", "Brazilian filing glossary"
     try:
@@ -110,27 +110,38 @@ def translate_text(text: str, language: str, company_name: str = "", publisher: 
         return "", f"translation failed: {type(exc).__name__}"
 
 
-def backfill(force: bool = False) -> tuple[int, int]:
+def translate_text(text: str, language: str, company_name: str = "", publisher: str = "") -> tuple[str, str]:
+    candidate, provider = argos_translate(text, language, company_name, publisher)
+    if candidate or not (text or "").strip():
+        return candidate, provider
+    from .headline_review import fallback
+    return fallback(text, language, publisher, provider)
+
+
+def backfill(force: bool = False, run_id: int | None = None) -> tuple[int, int]:
     """Translate earlier saved leads after a language model is installed."""
     from . import db
+    from .headline_review import audit
+    from psycopg.types.json import Jsonb
 
     db.init_schema()
     with db.connect() as conn:
         rows = conn.execute(
             "SELECT id, title, publisher, language, subject_name FROM search_results "
-            "WHERE title_en = '' OR (%s AND translation_provider = 'Argos offline model') ORDER BY id",
-            (force,),
+            "WHERE (%s::bigint IS NULL OR run_id=%s) AND (title_en = '' OR (%s AND translation_provider = 'Argos offline model')) ORDER BY id",
+            (run_id, run_id, force),
         ).fetchall()
     updated = 0
     for row in rows:
         language = detect_language(row["title"], row["language"])
         title_en, provider = translate_text(row["title"], language, row["subject_name"], row["publisher"])
+        result = audit(row["title"], language, title_en)
         publisher_en = row["publisher"]  # Publisher names are brands, not prose.
         with db.connect() as conn:
             conn.execute(
-                "UPDATE search_results SET title_en = %s, publisher_en = %s, translation_provider = %s, language = %s "
+                "UPDATE search_results SET title_en = %s, publisher_en = %s, translation_provider = %s, language = %s, headline_review = %s "
                 "WHERE id = %s AND (title_en = '' OR (%s AND translation_provider = 'Argos offline model'))",
-                (title_en, publisher_en, provider, language, row["id"], force),
+                (title_en, publisher_en, provider, language, Jsonb(result), row["id"], force),
             )
         updated += bool(title_en)
     return updated, len(rows)
@@ -141,6 +152,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Backfill saved English headline translations")
     parser.add_argument("--force", action="store_true", help="Refresh earlier Argos translations")
+    parser.add_argument("--run", type=int, help="Restrict backfill and retry pending reviews to this run")
     args = parser.parse_args()
-    count, total = backfill(force=args.force)
+    count, total = backfill(force=args.force, run_id=args.run)
+    if args.run is not None:
+        from .headline_review import review_saved
+        review_saved(args.run)
     print(f"Translated {count} of {total} leads missing English text")

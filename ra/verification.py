@@ -26,7 +26,7 @@ OTHER_ENTITY = re.compile(r'\b(?:subsidiar\w*|supplier\w*|rival\w*|competitor\w*
 def verify(document, subject, article):
     result = {'version': VERSION, 'status': 'needs_review', 'reason': '', 'evidence': [],
               'document_hash': document.get('sha256', ''), 'source_url': document.get('final_url', article['url']),
-              'method': document.get('method', ''), 'language': document.get('language', '')}
+              'recovery': document.get('recovery',''), 'method': document.get('method', ''), 'language': document.get('language', '')}
     if document.get('status') != 'available':
         return {**result, 'status': 'unavailable', 'reason': document.get('reason', 'Source unavailable')}
     body = document['body']

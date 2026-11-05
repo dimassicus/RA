@@ -1,0 +1,15 @@
+[
+  {
+    "country": "Brazil",
+    "id_field": "tax_id",
+    "issuer_id": "22.266.175/0001-88",
+    "event_key": "2026-Q3-results",
+    "kind": "Earnings release",
+    "label": "Q3 2026 results",
+    "event_date": "2026-11-12",
+    "filed_at": "2026-10-05T18:42:00-03:00",
+    "filing": "CVM corporate calendar, version 6, p. 2",
+    "source_url": "https://www.rad.cvm.gov.br/ENET/frmExibirArquivoIPEExterno.aspx?NumeroProtocoloEntrega=1574469",
+    "evidence": "Informações Trimestrais – ITR. Referentes ao 3º trimestre: 12/11/2026."
+  }
+]

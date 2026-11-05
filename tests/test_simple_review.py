@@ -113,3 +113,17 @@ def test_optional_correction_cannot_override_valid_reviews(fields):
     review, _ = validate(raw, 'original', {'A':'candidate'})
     assert review['corrected_translation'] == ''
     assert review['assessments'][0]['verdict'] == 'uncertain'
+
+
+def test_shadow_review_requests_one_result_and_still_rejects_invented_evidence(monkeypatch):
+    raw = response()
+    raw.pop('correction')
+    raw['reviews'][0]['issues'][0]['source'] = ['invented source text']
+    def model(port, path, request, timeout):
+        shape = request['response_format']['json_schema']['schema']['properties']['reviews']
+        assert shape['minItems'] == shape['maxItems'] == 1
+        assert request['reasoning_effort'] == 'none'
+        return {'model':'local', 'choices':[{'finish_reason':'stop', 'message':{'content':json.dumps(raw)}}]}
+    monkeypatch.setattr(simple, 'local_request', model)
+    with pytest.raises(ReviewError, match="Evidence"):
+        simple.review("They did not pay.", "en", "en", {"A":"They paid."}, "local", 1234, enabled=False, shadow_only=True)

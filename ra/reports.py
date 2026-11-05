@@ -6,6 +6,7 @@ from datetime import timezone
 from io import BytesIO
 from xml.sax.saxutils import escape, quoteattr
 
+from .headline_review import review_note
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -74,7 +75,7 @@ def make_xlsx(run: dict, results: list[dict], errors: list[dict], selected: bool
         "Published", "Company", "Source type", "Publisher (original)", "Publisher (English)",
         "Headline (original)", "Headline (English, machine translation)", "Review cues",
         "Discovery status", "Language", "Article / notice URL", "Search query", "Discovery service",
-        "Article score (-3 to +3)", "Score status", "Included in weekly score", "Score reason", "Scoring version", "Source check", "Source check reason", "Event group", "Potential company exposure",
+        "Article score (-3 to +3)", "Score status", "Included in weekly score", "Score reason", "Scoring version", "Source check", "Source check reason", "Event group", "Potential company exposure", "Headline translation review",
     ]
     leads.append(columns)
     for cell in leads[1]:
@@ -96,7 +97,7 @@ def make_xlsx(run: dict, results: list[dict], errors: list[dict], selected: bool
             _safe_excel(item.get("score_version", "")),
             _safe_excel(item.get("verification", {}).get("status", "pending")),
             _safe_excel(item.get("verification", {}).get("reason", "")), _safe_excel(item.get("event_group", "")),
-            _safe_excel("\n".join(item.get("exposure_paths", []))),
+            _safe_excel("\n".join(item.get("exposure_paths", []))), review_note(item),
         ])
         row = leads.max_row
         link = leads.cell(row, 11)
@@ -181,6 +182,8 @@ def make_pdf(run: dict, results: list[dict], errors: list[dict], selected: bool 
             title_en = escape(item.get("title_en") or "")
             url = quoteattr(item["url"])
             bilingual = f"<b>{title_en}</b><br/>Original: {title}" if title_en and title_en != title else title
+            if review_note(item):
+                bilingual += "<br/>" + escape(review_note(item))
             rows.append([
                 Paragraph(_date(item["published_at"]) or "Unknown", cell_style),
                 Paragraph(escape(item["subject_name"]), cell_style),

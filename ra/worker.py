@@ -9,7 +9,7 @@ import time
 
 from . import db
 from .search import search_company
-from .exposure import add_exposure_leads, search_topic
+from .exposure import add_exposure_leads, search_topic, sector_markets, topic_editions
 from .news_apis import plan_subjects
 from .translation import translate_text
 from .language import detect_language
@@ -56,7 +56,7 @@ def _work_loop():
             _queue.task_done()
 
 
-def process_run(run_id: int, searcher=search_company, topic_searcher=search_topic):
+def process_run(run_id: int, searcher=search_company, topic_searcher=None):
     run = db.get_run(run_id)
     if run is None or run["status"] not in ("queued", "running"):
         return
@@ -68,7 +68,10 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=search_topi
         conn.execute("DELETE FROM search_results WHERE run_id = %s", (run_id,))
         conn.execute("DELETE FROM search_errors WHERE run_id = %s", (run_id,))
     topic_cache = {}
-    check = partial(db.run_topic_check, run_id, topic_searcher)
+    editions = topic_editions(run["subjects"])
+    if topic_searcher is None:
+        topic_searcher = partial(search_topic, markets=sector_markets(run["subjects"]))
+    check = partial(db.run_topic_check, run_id, topic_searcher, editions)
     for subject in plan_subjects(run["subjects"], run_id):
         subject_key = str(subject.get("id") or f"one-off:{run_id}")
         name = subject["name"]
@@ -76,8 +79,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=search_topi
             articles, errors = searcher(subject)
         except Exception as exc:
             articles, errors = [], [f"{type(exc).__name__}: {exc}"]
-        if run["scope"] in ("all", "selected"):
-            articles = add_exposure_leads(subject, articles, errors, topic_cache, check)
+        articles = add_exposure_leads(subject, articles, errors, topic_cache, check)
         with db.connect() as conn:
             for article in articles:
                 language = detect_language(article["title"], article["language"])
@@ -113,6 +115,8 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=search_topi
                 (len(articles), len(errors), run_id),
             )
         time.sleep(0.25)
+    from .headline_review import review_saved
+    review_saved(run_id)
     with db.connect() as conn:
         counts = conn.execute(
             "SELECT result_count, error_count FROM search_runs WHERE id = %s", (run_id,)
@@ -124,4 +128,4 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=search_topi
         )
     refresh_scores(run_id)
     from .verification_store import enqueue_run
-    enqueue_run(run_id)
+    enqueue_run(run_id, limit_per_company=None)

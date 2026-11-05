@@ -211,3 +211,5 @@ CREATE TABLE IF NOT EXISTS exposure_checks (
     error TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (run_id, branch, topic)
 );
+
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS headline_review JSONB NOT NULL DEFAULT '{}'::jsonb;

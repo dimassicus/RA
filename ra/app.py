@@ -13,7 +13,11 @@ from psycopg.errors import UniqueViolation
 
 from . import db, intake_worker, model_store, news_apis, preliminary, worker
 from .importer import stage_workbook
+from .exposure import topic_links
+from .company_report import load_report
+from .company_exports import company_pdf, company_xlsx
 from .aliases import provider_name, validate_aliases
+from .publisher_lookup import original_title
 from .search import search_queries
 from .reports import make_pdf, make_xlsx
 from .relevance import classify_results
@@ -61,8 +65,9 @@ def create_app() -> Flask:
     @app.get("/")
     def dashboard():
         companies = db.list_companies(True)
+        topics = sorted({topic for company in companies for topic in topic_links(company)})
         return render_template(
-            "index.html", companies=companies,
+            "index.html", companies=companies, topics=topics,
             archived=db.list_companies(False), runs=db.list_runs(), intake=db.list_intake(),
             model_coverage=model_store.coverage([company["country_registration"] for company in companies]),
             news_api_providers=news_apis.configured_providers(),
@@ -132,7 +137,7 @@ def create_app() -> Flask:
             flash("Article score saved. Weekly history updated and the decision recorded.", "success")
             return redirect(url_for("article_score", result_id=result_id))
         return render_template("article_score.html", article=article, history=score_store.article_history(result_id),
-                               labels=LABELS, rubric=RUBRIC, **verification_store.details(result_id))
+                               labels=LABELS, rubric=RUBRIC, lookup_title=original_title(article), **verification_store.details(result_id))
 
     @app.post("/articles/<int:result_id>/verify")
     def verify_article(result_id):
@@ -247,11 +252,14 @@ def create_app() -> Flask:
 
     @app.post("/search/all")
     def search_all():
-        subjects = [db.company_snapshot(item) for item in db.list_companies(True)]
+        filters = {(branch, value) for branch in ("country", "sector")
+                   if (value := request.form.get(branch, "").strip())}
+        subjects = [db.company_snapshot(item) for item in db.list_companies(True)
+                    if filters.issubset(topic_links(item))]
         if not subjects:
-            flash("Add a company to the watchlist first.", "warning")
+            flash("No active watchlist company matches this selection.", "warning")
             return redirect(url_for("dashboard"))
-        return begin_search("all", subjects)
+        return begin_search("selected" if filters else "all", subjects)
 
     @app.post("/search/selected")
     def search_selected():
@@ -315,8 +323,28 @@ def create_app() -> Flask:
         run = db.get_run(run_id)
         if not run:
             abort(404)
-        return jsonify({key: run[key] for key in
-                        ("status", "total_companies", "completed_companies", "result_count", "error_count")})
+        payload = {key: run[key] for key in ("status", "total_companies", "completed_companies", "result_count", "error_count")}
+        return jsonify(**payload, verification=verification_store.job_summary(run_id))
+
+    @app.get("/runs/<int:run_id>/company-report")
+    def download_company_report(run_id):
+        run = db.get_run(run_id)
+        if not run:
+            abort(404)
+        if run["status"] in ("queued", "running"):
+            abort(409, "The search is still running")
+        company = request.args.get("company", "")
+        subject = next((s for s in run["subjects"] if str(s.get("id") or "one-off") == company), None)
+        fmt = request.args.get("format")
+        if subject is None or fmt not in ("pdf", "xlsx"):
+            abort(404)
+        report = load_report(run, subject)
+        if fmt == "pdf":
+            content, mime = company_pdf(report), "application/pdf"
+        else:
+            content, mime = company_xlsx(report), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        return send_file(content, mimetype=mime, as_attachment=True,
+                         download_name=f"ra-company-{company}-run-{run_id}.{fmt}")
 
     @app.get("/runs/<int:run_id>/download.<format>")
     def download_run(run_id: int, format: str):

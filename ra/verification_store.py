@@ -34,7 +34,10 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
             and datetime.now(timezone.utc) - cached['fetched_at'] < lifetime):
         document = cached['document']
     else:
-        document = {**fetcher(url), "reader_version": READER_VERSION}
+        hint = {"title":article["title"], "publisher":article["publisher"],
+                "published_at":article["published_at"].isoformat() if article["published_at"] else ""}
+        fetched = retrieve(url, hint) if fetcher is retrieve and not source_url else fetcher(url)
+        document = {**fetched, "reader_version": READER_VERSION}
         with db.connect() as conn:
             conn.execute('INSERT INTO article_documents (url,document) VALUES (%s,%s) ON CONFLICT (url) '
                          'DO UPDATE SET document=EXCLUDED.document,fetched_at=now()', (url, Jsonb(document)))
@@ -85,7 +88,7 @@ def enqueue_run(run_id, limit_per_company=8):
         if (article.get('verification') or {}).get('status', 'pending') != 'pending':
             continue
         key = article['subject_key']
-        if counts.get(key, 0) >= limit_per_company:
+        if limit_per_company is not None and counts.get(key, 0) >= limit_per_company:
             continue
         with db.connect() as conn:
             added = conn.execute('INSERT INTO verification_jobs (result_id) VALUES (%s) ON CONFLICT DO NOTHING RETURNING result_id',
@@ -99,9 +102,25 @@ def enqueue_run(run_id, limit_per_company=8):
 
 def job_summary(run_id):
     with db.connect() as conn:
-        return {r['status']: r['n'] for r in conn.execute(
-            'SELECT j.status,count(*) AS n FROM verification_jobs j JOIN search_results r ON r.id=j.result_id '
-            'WHERE r.run_id=%s GROUP BY j.status', (run_id,)).fetchall()}
+        counts = conn.execute("""
+            SELECT count(*) AS total,
+              count(*) FILTER (WHERE j.status='queued') AS queued,
+              count(*) FILTER (WHERE j.status='running') AS running,
+              count(*) FILTER (WHERE j.status='failed') AS failed,
+              count(*) FILTER (WHERE j.status='completed' OR
+                (j.status IS NULL AND r.verification->>'status'<>'pending')) AS completed,
+              count(*) FILTER (WHERE r.verification->>'status' IN ('unavailable','needs_review')
+                                OR j.status='failed') AS attention,
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en' AND r.title_en='') AS missing,
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en' AND r.title_en<>'') AS translations,
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en' AND r.title_en<>''
+                                AND r.headline_review ? 'status') AS reviewed
+            FROM search_results r LEFT JOIN verification_jobs j ON j.result_id=r.id
+            WHERE r.run_id=%s""", (run_id,)).fetchone()
+    for done, total, percent in ((counts['completed'] + counts['failed'], 'total', 'percent'),
+                                 (counts['reviewed'], 'translations', 'translation_percent')):
+        counts[percent] = 100 * done // counts[total] if counts[total] else 0
+    return counts
 
 
 def details(result_id):

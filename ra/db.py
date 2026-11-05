@@ -360,7 +360,7 @@ def list_runs(limit: int = 12):
         ).fetchall()
 
 
-def run_topic_check(run_id, search, branch, topic):
+def run_topic_check(run_id, search, editions, branch, topic):
     from .exposure import check_topic
     with connect() as conn:
         claimed = conn.execute(
@@ -368,7 +368,7 @@ def run_topic_check(run_id, search, branch, topic):
             "ON CONFLICT DO NOTHING RETURNING run_id", (run_id, branch, topic),
         ).fetchone()
         if claimed:
-            hits, error = check_topic(branch, topic, search)
+            hits, error = check_topic(branch, topic, search, editions.get((branch, topic), ()))
             # Preserve publication instants for reinsertion after a worker restart.
             stored = [({**hit, "published_at": hit["published_at"].isoformat() if hit["published_at"] else None}, channel)
                       for hit, channel in hits]
@@ -387,11 +387,15 @@ def exposure_coverage(run_id):
 
 
 def get_results(run_id: int):
+    from .exposure import scope_sector_paths
     with connect() as conn:
-        return conn.execute(
+        run = conn.execute("SELECT subjects FROM search_runs WHERE id=%s", (run_id,)).fetchone()
+        subjects = {str(s.get("id") or f"one-off:{run_id}"): s for s in run["subjects"]} if run else {}
+        rows = conn.execute(
             "SELECT * FROM search_results WHERE run_id = %s "
             "ORDER BY published_at DESC NULLS LAST, id DESC", (run_id,)
         ).fetchall()
+        return [scope_sector_paths(row, subjects.get(row["subject_key"], {})) for row in rows]
 
 
 def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, tuple[str, str]] | None = None) -> int:
@@ -401,7 +405,7 @@ def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, 
         if run is None or run["status"] in ("queued", "running"):
             raise ValueError("The search must finish before selecting report leads")
         current = {row["id"]: row for row in conn.execute(
-            "SELECT id, title_en, publisher_en FROM search_results WHERE run_id = %s", (run_id,)
+            "SELECT id, title, language, title_en, publisher_en FROM search_results WHERE run_id = %s", (run_id,)
         )}
         valid = set(current)
         if not set(selected_ids) <= valid:
@@ -412,10 +416,13 @@ def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, 
             if len(title_en) > 1000 or len(publisher_en) > 250:
                 raise ValueError("English text is too long")
             if (title_en, publisher_en) != (current[result_id]["title_en"], current[result_id]["publisher_en"]):
+                from .headline_review import audit
+                changed = title_en != current[result_id]["title_en"]
+                qa = audit(current[result_id]["title"], current[result_id]["language"], title_en) if changed else {}
                 conn.execute(
-                    "UPDATE search_results SET title_en = %s, publisher_en = %s, "
+                    "UPDATE search_results SET headline_review = CASE WHEN %s THEN %s ELSE headline_review END, title_en = %s, publisher_en = %s, "
                     "translation_provider = 'analyst edited' WHERE id = %s",
-                    (title_en, publisher_en, result_id),
+                    (changed, Jsonb(qa), title_en, publisher_en, result_id),
                 )
         return conn.execute(
             "UPDATE search_results SET report_selected = (id = ANY(%s)) WHERE run_id = %s",

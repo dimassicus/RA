@@ -1,4 +1,4 @@
-"""Simplified experimental reviewer protocol; never imported by the live app."""
+"""Source-grounded translation review protocol shared by the harness and live shadow checks."""
 import json
 from .evidence import resolve_spans
 from .lmstudio import local_request
@@ -84,7 +84,21 @@ def validate(data,source,candidates):
     return {'assessments':assessments,'corrected_translation':correction},audit
 
 
-def review(source,source_lang,target_lang,candidates,model,port,*,enabled):
+def shadow_schema(labels):
+    """Constrain JSON syntax; validate evidence independently against the original text."""
+    def obj(fields):
+        return {"type":"object","properties":fields,"required":list(fields),"additionalProperties":False}
+    def array(item):
+        return {"type":"array","items":item}
+    string = {"type":"string"}
+    issue = obj({"category":{"type":"string","enum":sorted(CATEGORIES)}, "source":array(string),
+                 "translation":array(string), "explanation":string})
+    row = obj({"candidate":{"type":"string","enum":list(labels)},
+               "verdict":{"type":"string","enum":["faithful","material_error","uncertain"]}, "issues":array(issue)})
+    return obj({"reviews":dict(array(row), minItems=len(labels), maxItems=len(labels))})
+
+
+def review(source,source_lang,target_lang,candidates,model,port,*,enabled,shadow_only=False):
     if not source.strip() or not candidates or any(not t.strip() for t in candidates.values()):
         raise ValueError('Empty input')
     content=json.dumps({'source_language':source_lang,'target_language':target_lang,
@@ -95,6 +109,11 @@ def review(source,source_lang,target_lang,candidates,model,port,*,enabled):
              'reasoning_effort':'medium' if enabled else 'none',
              'chat_template_kwargs':{'enable_thinking':enabled,'reasoning_effort':'medium'},
              'messages':[{'role':'system','content':SYSTEM},{'role':'user','content':content}]}
+    if shadow_only:
+        request["messages"][0]["content"] = SYSTEM.split("If EVERY candidate")[0].replace(
+            '],"correction":""}', ']}') + " Return reviews only; do not propose corrections."
+        request["response_format"] = {"type":"json_schema","json_schema":{
+            "name":"headline_review","strict":True,"schema":shadow_schema(candidates)}}
     envelope=local_request(port,'/v1/chat/completions',request,timeout=600)
     try:
         choices=envelope['choices']
@@ -112,4 +131,4 @@ def review(source,source_lang,target_lang,candidates,model,port,*,enabled):
     return data,{'model':envelope.get('model'),'usage':usage,'finish_reason':choices[0]['finish_reason'],
                  'reasoning_enabled':enabled,'reasoning_chars':chars,'removed_code_fence':wrapper,
                  'evidence_spans':audit,'discarded_correction':bool(raw.get('correction') and not data['corrected_translation']),
-                 'protocol':'simple-v2'}
+                 'protocol':'shadow-v1' if shadow_only else 'simple-v2'}

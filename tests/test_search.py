@@ -97,7 +97,7 @@ def test_shared_exposures_fetch_each_topic_once_and_keep_paths_per_company():
       <item><title>Brazil wins match</title><link>https://example.test/sport</link></item>
     </channel></rss>'''
     calls = []
-    def search(branch, topic):
+    def search(branch, topic, *, edition):
         calls.append((branch, topic))
         if topic == "copper":
             raise OSError("feed unavailable")
@@ -120,3 +120,64 @@ def test_shared_exposures_fetch_each_topic_once_and_keep_paths_per_company():
     prices = feed.replace(b"fertilizer tariffs", b"fertilizer prices")
     assert not search_topic("country", "brazil", fetcher=lambda url: prices)
     assert search_topic("sector", "fertilizer", fetcher=lambda url: prices)
+
+
+def test_sector_editions_span_linked_companies_and_retain_partial_results():
+    from urllib.parse import parse_qs, urlsplit
+    from ra.exposure import check_topic, search_topic, topic_editions
+    subjects = [
+        {"country_registration": "Brasil", "primary_countries": "Latin America", "primary_industries": "fertilizers"},
+        {"country_registration": "Vietnam", "primary_industries": "fertilizer"},
+    ]
+    plan = topic_editions(subjects)
+    assert plan == topic_editions(reversed(subjects))
+    editions = plan["sector", "fertilizer"]
+    assert editions == {"brazil", "mexico", "vietnam"}
+    assert plan["country", "brazil"] == {"brazil"}
+    calls = []
+    def fetch(url):
+        params = parse_qs(urlsplit(url).query)
+        language = params["hl"][0]
+        calls.append(language)
+        if language == "es-419":
+            raise OSError("unavailable")
+        if language == "en-US":
+            return b"<rss><channel/></rss>"
+        if language == "vi-VN":
+            assert "phân bón" in params["q"][0]
+            titles = ["Giá phân bón tăng", "Phân bón giả", "Giá tăng - phân bón"]
+        else:
+            assert "fertilizantes" in params["q"][0]
+            titles = ["Preços de fertilizantes sobem"]
+        return ("<rss><channel>" + "".join(
+            f"<item><title>{title}</title><source>phân bón</source><link>https://example.test/{language}/{i}</link></item>"
+            for i, title in enumerate(titles)) + "</channel></rss>").encode()
+    hits, error = check_topic("sector", "fertilizer", lambda b, t, edition: search_topic(b, t, fetch, edition=edition), editions)
+    assert calls == ["en-US", "pt-BR", "es-419", "vi-VN"]
+    assert "mexico" in error and "unavailable" in error
+    assert [item["language"] for item, _ in hits] == ["pt-BR", "vi-VN"]
+    assert all(label == "selling prices and margins" for _, label in hits)
+
+
+def test_sector_market_applies_to_each_company_in_shared_cache():
+    from ra.exposure import add_exposure_leads, scope_sector_paths
+    cache, calls = {}, []
+    def check(branch, topic):
+        calls.append((branch, topic))
+        titles = ["India fertilizer prices rise", "Bangladesh fertilizer shortage",
+                  "Brazilian fertilizer prices rise", "India exports fertilizer to Brasil",
+                  "Fertilizer prices rise - Brazil", "World fertilizer supply tightens"]
+        return [({"title": title, "publisher": "Brazil", "url": str(i)}, "input costs")
+                for i, title in enumerate(titles) if branch == "sector"], ""
+    def leads(country, presence):
+        return add_exposure_leads({"country_registration": country, "primary_countries": presence,
+                                   "primary_industries": "fertilizer"}, [], [], cache, check)
+    brazil = leads("Brazil", "Latin America")
+    india = leads("Vietnam", "India")
+    assert [r["url"] for r in brazil] == ["2", "3"]
+    assert [r["url"] for r in india] == ["0", "3"]
+    assert calls.count(("sector", "fertilizer")) == 1
+    stale = {"title": "Fertilizer prices in Bangladesh", "title_en": "Fertilizers in Brazil",
+             "exposure_paths": ["Sector · fertilizer"], "language": "pt-BR"}
+    assert scope_sector_paths(stale, {"country_registration": "Brazil"})["exposure_paths"] == []
+    assert stale["exposure_paths"]

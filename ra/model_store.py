@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
-from zipfile import BadZipFile, ZipFile
+from zipfile import BadZipFile, ZipFile, is_zipfile
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -117,7 +117,8 @@ def ensure_model(code: str) -> tuple[bool, str]:
                 fcntl.flock(lock_file, fcntl.LOCK_EX)
                 if installed(code):
                     return True, "offline model installed"
-                _download(url, archive_path)
+                if not archive_path.exists() or not is_zipfile(archive_path):
+                    _download(url, archive_path)
                 shutil.rmtree(temp_path, ignore_errors=True)
                 with ZipFile(archive_path) as zipped:
                     members = zipped.infolist()
@@ -126,7 +127,7 @@ def ensure_model(code: str) -> tuple[bool, str]:
                     prefix = f"translate-{code}_en-"
                     for item in members:
                         parts = Path(item.filename).parts
-                        if not parts or not parts[0].startswith(prefix):
+                        if not parts or not (parts[0] == f"{code}_en" or parts[0].startswith(prefix)):
                             continue
                         relative = Path(*parts[1:])
                         if (relative.is_absolute() or ".." in relative.parts or

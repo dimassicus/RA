@@ -119,7 +119,7 @@ def test_worker_scores_new_articles_without_network(database, monkeypatch):
         return [{"title": "Acme Manufacturing returns to profit", "language": "en", "publisher": "Test",
                  "url": "https://example.test/worker", "published_at": datetime.now(timezone.utc)-timedelta(hours=1),
                  "query": "test", "signal_terms": []}], []
-    worker.process_run(run_id, searcher=searcher, topic_searcher=lambda *args: [])
+    worker.process_run(run_id, searcher=searcher, topic_searcher=lambda *args, **kwargs: [])
     assert db.get_run(run_id)["status"] == "completed"
     assert db.get_results(run_id)[0]["score"] == 2
     assert all(r["score"] is None for r in score_store.weekly_history(company["id"]))
@@ -258,7 +258,8 @@ def test_source_queue_limits_endpoints_and_failure_visibility(database):
     assert saved['verification']['status'] == 'unavailable'
     assert not saved['score_included']
     assert b'Publisher access blocked' in client.get(f"/articles/{first['id']}/score").data
-    assert company['name'].encode() not in client.get(f'/runs/{run_id}').data.split(b'<tbody>')[-1].split(b'</tbody>')[0]
+    risk_page = client.get(f'/runs/{run_id}').data
+    assert first["title"].encode() not in risk_page and b"No leads in this view" in risk_page
     assert client.post(f'/runs/{run_id}/verify', data=data).status_code == 302
     with pytest.raises(ValueError):
         verification_store.enqueue(first['id'], 'https://user:password@example.org/article')
@@ -303,18 +304,19 @@ def test_shared_news_only_changes_the_company_with_source_evidence(database):
     ]
     run_id = db.create_run("all", subjects)
     calls = []
-    def search(branch, topic):
-        calls.append((branch, topic))
+    def search(branch, topic, *, edition):
+        calls.append((branch, topic, edition))
         return [({"title": "Brazil fertilizer tariffs rise", "url": "https://example.test/tariffs",
                   "published_at": datetime.now(timezone.utc) - timedelta(hours=1), "query": topic,
                   "language": "en", "publisher": "Test", "source_kind": "context", "signal_terms": []},
                  "import costs and access to customers")]
     worker.process_run(run_id, searcher=lambda company: ([], []), topic_searcher=search)
-    assert calls == [("country", "brazil"), ("sector", "fertilizer")]
+    assert calls == [("country", "brazil", ""), ("country", "brazil", "brazil"),
+                     ("sector", "fertilizer", ""), ("sector", "fertilizer", "brazil")]
     # A worker replay uses the saved topics, including their publication dates.
     database.execute("UPDATE search_runs SET status='queued' WHERE id=%s", (run_id,))
     worker.process_run(run_id, searcher=lambda company: ([], []), topic_searcher=search)
-    assert len(calls) == 2
+    assert len(calls) == 4
     leads = db.get_results(run_id)
     assert len(leads) == 2 and all(len(a["exposure_paths"]) == 2 for a in leads)
     assert all(not a["score_included"] and a["score"] == 0 for a in leads)
@@ -333,3 +335,48 @@ def test_shared_news_only_changes_the_company_with_source_evidence(database):
     assert page.status_code == 200 and b"Acme Manufacturing" in page.data and b"Other Industries" in page.data
     assert b"import costs and access to customers" in page.data
     assert client.get(f"/runs/{run_id}/download.xlsx").status_code == 200
+
+
+def test_finished_run_company_exports_are_scoped_and_historical(database):
+    from ra.company_report import load_report
+    company, run_id, a = seed(database)
+    score_store.refresh_scores(run_id)
+    now = db.get_run(run_id)["created_at"]
+    baseline = now - timedelta(weeks=1)
+    for instant, score in [(baseline - timedelta(seconds=1), -1), (baseline + timedelta(seconds=1), -2)]:
+        database.execute("INSERT INTO weekly_score_history(company_id,week_start,snapshot,created_at) "
+                         "VALUES (%s,%s,jsonb_build_object('score',%s::int,'event_count',1,'search_count',1,"
+                         "'negative_count',1,'positive_count',0,'neutral_count',0,'source_errors',0),%s)",
+                         (company["id"], week_start(baseline), score, instant))
+    run = db.get_run(run_id)
+    report = load_report(run, run["subjects"][0])
+    assert report["ratings"][1][2]["score"] == -1
+    client = create_app().test_client()
+    prefix = f"/runs/{run_id}/company-report"
+    assert client.get(f"{prefix}?company={company['id']}&format=pdf").data.startswith(b"%PDF")
+    assert client.get(f"{prefix}?company={company['id']}&format=xlsx").data.startswith(b"PK")
+    assert client.get(f"{prefix}?company=1234567&format=pdf").status_code == 404
+    database.execute("UPDATE search_runs SET status='running' WHERE id=%s", (run_id,))
+    assert client.get(f"{prefix}?company={company['id']}&format=pdf").status_code == 409
+    adhoc = db.create_run("one_off", [{"name":"One Off", "country_registration":"Brazil"}])
+    database.execute("UPDATE search_runs SET status='completed' WHERE id=%s", (adhoc,))
+    assert client.get(f"/runs/{adhoc}/company-report?company=one-off&format=pdf").data.startswith(b"%PDF")
+
+
+def test_progress_measures_entire_run_and_separates_translation_from_source(database):
+    company, run_id, article = seed(database)
+    client = create_app().test_client()
+    endpoint = f"/api/runs/{run_id}/status"
+    for i in range(2):
+        database.execute("INSERT INTO search_results (run_id,subject_key,subject_name,title,url,query,language,title_en) "
+                         "VALUES (%s,'x','X','texto original',%s,'q','es','translation')",
+                         (run_id, f'https://example.org/spanish/{i}'))
+    database.execute("INSERT INTO verification_jobs(result_id,status) VALUES (%s,'failed')", (article['id'],))
+    database.execute("UPDATE search_results SET headline_review='{\"status\":\"material_error\"}' "
+                     "WHERE url='https://example.org/spanish/1'")
+    v = client.get(endpoint).json['verification']
+    assert (v['percent'], v['total'], v['failed'], v['attention']) == (33, 3, 1, 1)
+    assert (v['translation_percent'], v['translations'], v['reviewed']) == (50, 2, 1)
+    database.execute("UPDATE search_results SET verification='{\"status\":\"unavailable\"}' WHERE language='es'")
+    v = client.get(endpoint).json['verification']
+    assert v['percent'] == 100 and v['attention'] == 3
