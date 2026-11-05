@@ -1,7 +1,7 @@
 Automated translation review experiment
 
 Use Qwen 27B with reasoning off for routine development runs. Revisit Gemma
-31B with reasoning on when the full monitoring workflow runs end to end.
+31B with reasoning on after a scheduled monitoring run successfully delivers its report.
 With the local Qwen instance loaded as ra-simple-qwen at 32768 context and
 the LM Studio server running, use a fresh output directory for each run, e.g.
   .venv/bin/python scripts/evaluate_simple_review.py --model ra-simple-qwen --mode off --suite all --work .local/translation-benchmark/dev-001

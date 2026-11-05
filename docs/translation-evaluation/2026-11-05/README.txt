@@ -43,3 +43,16 @@ reported zero reasoning tokens. Score eligibility was false for every case.
 Local audit files in .local/translation-benchmark/dev-20261105 include
 saved-replay.json, fresh-cases.json, prepare.py and qwen-off/results.json.
 The Greek archive locators in saved-sources.json are headline indices 7 and 9.
+Their saved lead IDs are 242 and 260 respectively. The other four source URLs
+are recorded in fresh-cases.json.
+
+Separate monitoring check
+A live-feed run used Heringer and Cibrafertil in a disposable PostgreSQL
+database. The three shared checks returned 18 Brazil, 23 Latin America and
+22 fertilizer headlines. The worker stored 139 company-linked rows, of which
+103 carried exposure paths. Sixteen source checks completed. Nine sources were
+unavailable and seven needed attribution review. The other 123 rows were pending.
+Zero rows entered weekly scores. The exposure page, Excel and PDF endpoints
+all returned HTTP 200. The final run took 55.47 s with a warmed source cache.
+In a controlled attribution test, one shared tariff story scored only the
+company whose plant closure was explicitly supported by the source.
