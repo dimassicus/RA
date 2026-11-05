@@ -94,10 +94,13 @@ def governance_searches(subject):
         editions.append(("ru", country))
     names = [provider_name(subject), *parse_aliases(subject.get("aliases", ""))]
     plans = []
+    local_anchor = names[0]
     for code, edition in editions:
         # Prefer a reviewed local-script alias when the register uses another alphabet.
         script = {"el": r"[Α-ω]", "ar": r"[ء-ي]", "ru": r"[А-я]"}.get(code)
         anchor = next((n for n in names if script and re.search(script, n)), names[0])
+        if code == lang:
+            local_anchor = anchor
         for groups in (("executive role", "leadership action", "management change"), ("ownership",)):
             terms = keywords.discovery_terms(groups, code)
             if code == "en" and "chief executive officer" in terms:
@@ -107,6 +110,16 @@ def governance_searches(subject):
             if terms:
                 expression = " OR ".join(f'"{term}"' for term in terms)
                 plans.append((f'"{anchor}" ({expression})', edition))
+    # Official notices often name the issuer without using a governance keyword.
+    region = LOCALES.get(normalized(country), ("", ""))[1]
+    domains = {
+        "AZ": ("vergiler.az", "taxes.gov.az"), "BR": ("gov.br/cvm", "b3.com.br"),
+        "EG": ("egx.com.eg", "fra.gov.eg"), "GR": ("businessportal.gr", "athexgroup.gr", "athens.euronext.com"),
+        "VN": ("hsx.vn", "hnx.vn"), "UZ": ("openinfo.uz", "uzse.uz"), "TR": ("kap.org.tr", "ticaretsicil.gov.tr"),
+    }
+    if region in domains:
+        expr = " OR ".join("site:" + site for site in domains[region])
+        plans.append((f'"{local_anchor}" ({expr})', country))
     # Keep name searches independent of vocabulary, including executives leaving for another issuer.
     for field in ("top_management", "key_owners"):
         names = [re.sub(r"\s*\([^)]*\)", "", part).strip().replace('"', '') for part in
@@ -246,6 +259,13 @@ def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None) 
 def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_json_post) -> tuple[list[dict], list[str]]:
     articles, errors = [], []
     seen_urls = set()
+    from .governance_sources import notice_source, recent_notices
+    source = notice_source(subject)
+    if source:
+        for article in recent_notices(subject, *source, fetcher, errors=errors):
+            if article["url"] not in seen_urls:
+                seen_urls.add(article["url"])
+                articles.append(article)
     if is_heringer(subject):
         try:
             for article in heringer_official_notices(fetcher=official_fetcher):

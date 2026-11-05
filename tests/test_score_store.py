@@ -440,3 +440,25 @@ def test_registry_history_is_per_issuer_idempotent_and_reported(database):
     assert notes == ['Newly listed · Another Example · Diretor', 'Previously listed · Jane Example · Diretor']
     with create_app().test_client() as client:
         assert 'Another Example' in client.get(f'/runs/{second}?view=governance').get_data(as_text=True)
+
+
+def test_registry_failure_preserves_last_good_comparison_and_retries(database):
+    from ra import governance_roster as registry
+    company, first, _ = seed(database)
+    key = str(company['id'])
+    url = 'https://issuer.example/board'
+    registry.record(first, key, company, url, lambda _: ('Board', {'old':'Old director'}))
+    _, second, _ = seed(database)
+    def unavailable(_):
+        raise ValueError('Incomplete roster')
+    with pytest.raises(ValueError):
+        registry.record(second, key, company, url, unavailable)
+    row, = registry.observations(second, key)
+    assert row['notes'] == ['Incomplete roster'] and row['previous_at'] is None
+    _, third, _ = seed(database)
+    registry.record(third, key, company, url, lambda _: ('Board', {'new':'New director'}, 'https://issuer.example/filing'))
+    row, = registry.observations(third, key)
+    assert row['source_url'].endswith('/filing')
+    assert row['notes'] == ['Newly listed · New director', 'Previously listed · Old director']
+    registry.record(second, key, company, url, lambda _: ('Board', {'new':'New director'}))
+    assert not registry.observations(second, key)[0]['coverage_note']

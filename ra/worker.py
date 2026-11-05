@@ -9,6 +9,7 @@ import time
 
 from . import db, governance_roster
 from .search import search_company
+from .governance_sources import notice_source
 from .exposure import add_exposure_leads, search_topic, sector_markets, topic_editions
 from .news_apis import plan_subjects
 from .translation import translate_text
@@ -75,10 +76,23 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
     for subject in plan_subjects(run["subjects"], run_id):
         subject_key = str(subject.get("id") or f"one-off:{run_id}")
         name = subject["name"]
+        search_failure = ""
         try:
             articles, errors = searcher(subject)
         except Exception as exc:
-            articles, errors = [], [f"{type(exc).__name__}: {exc}"]
+            search_failure = f"{type(exc).__name__}: {exc}"
+            articles, errors = [], [search_failure]
+        source = notice_source(subject) if searcher is search_company else None
+        if source:
+            publisher, index_url = source
+            failures = [message for message in errors if message.startswith(publisher + ':')]
+            count = sum(item.get('discovery_service') == publisher for item in articles)
+            summary = f'{count} notices collected in the seven-day window.'
+            if failures:
+                summary += ' Incomplete check. ' + ' '.join(failures)
+            elif search_failure:
+                summary = 'Disclosure check incomplete. ' + search_failure
+            governance_roster.save_note(run_id, subject_key, subject, index_url, publisher, summary)
         try:
             roster_check(run_id, subject_key, subject)
         except (ValueError, OSError) as exc:

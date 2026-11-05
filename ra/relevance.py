@@ -39,6 +39,9 @@ def governance_cues(article, subject):
     if groups & {"management change", "leadership action"} and (
             "executive role" in groups or (article.get("source_kind") == "official" and "management change" in groups)):
         labels.append("Leadership")
+    if (article.get("discovery_service") == "PVFCCo investor disclosures" and
+            contains(normalized(original), "thay doi nhan su") and "Leadership" not in labels):
+        labels.append("Leadership")
     if "ownership" in groups:
         labels.append("Major ownership")
     return labels

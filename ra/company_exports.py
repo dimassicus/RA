@@ -48,7 +48,8 @@ def roster_lines(report):
     for row in report.get("rosters", []):
         observed = row['observed_at'].astimezone(WEEK_TIMEZONE)
         prior = row['previous_at']
-        label = f"{row['source_label']} · observed {observed:%d %b %Y}"
+        action = "recorded" if row.get("coverage_note") else "observed"
+        label = f"{row['source_label']} · {action} {observed:%d %b %Y}"
         if prior:
             label += f", compared with {prior.astimezone(WEEK_TIMEZONE):%d %b %Y}"
         yield label, row['source_url']

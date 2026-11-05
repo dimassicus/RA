@@ -159,3 +159,15 @@ previously unavailable article.
 Company searches also check leadership and major ownership news in English and the registration-country language where configured. Azerbaijan and Uzbekistan get Russian queries too. The search uses issuer aliases, the enabled governance terms in the keyword editor, and separate issuer-plus-name queries for listed executives and owners. **Leadership and ownership** on the run page gathers matching leads. Company PDF and Excel briefs include relevant seven-day headlines and available roster comparisons.
 
 For Brazilian companies with a matching CNPJ and legal name, each run records the names and roles in the Receita Federal roster supplied by BrasilAPI. For Heringer it also compares the issuer’s dated shareholding table, including disclosed percentages and share counts. The first observation establishes a baseline. Later observations show differences since the preceding successful check. The issuer’s update date and RA’s observation date can differ. Partial rosters, missing dates on the issuer table and unreconciled totals are reported as coverage gaps. A leadership or ownership change needs separate evidence of credit impact to enter an automatic weekly score.
+
+Governance checks cover the seven current registration countries. Each company search includes a local-edition query for exchange or regulator notices. Curated issuer sources require a matching country, legal name and identifier. The run’s **Leadership and ownership** view and both company report formats distinguish source observations, failed checks and register follow-ups. Dates on filings can precede the date RA reads them. Only comparable observations for the same subject and source enter roster comparisons.
+
+| Registration country | Additional public evidence | Remaining scope |
+| --- | --- | --- |
+| Azerbaijan | Vergilər official company notices, queried by VÖEN | Obtain a State Tax Service extract for current representatives and major owners. An empty gazette search means no matching published notice. |
+| Brazil | CNPJ managers and partners, plus Heringer’s dated investor ownership table | Cibrafértil’s CNPJ roster does not establish ownership percentages. |
+| Egypt | Delemar Industrial Group’s published chief officers and EGYDIR’s separate, undated entry for the operating entity’s general manager | The watched profiles-production entity needs its own ITDA extract for directors and owners. |
+| Greece | Euronext Athens issuer board and disclosed voting rights of at least 5% | Smaller holdings fall outside the exchange table. |
+| Turkey | CMS Jant ve Makina board, Tiryaki Agro board and CEO, and Tiryaki’s dated KAP shareholding table | CMS ownership needs separate disclosure. |
+| Uzbekistan | Balton Trading Asia’s tax-ID-matched Orginfo director and founder percentages, with source date | Orginfo is a secondary directory. Use an official register extract for confirmation. |
+| Vietnam | PVFCCo board and executives, current investor disclosure index, and named key shareholders in the latest published English investor bulletin | Holdings apply on the date printed in the bulletin. The report links the PDF. |

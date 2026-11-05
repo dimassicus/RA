@@ -234,3 +234,6 @@ CREATE TABLE IF NOT EXISTS governance_rosters (
     PRIMARY KEY (run_id, subject_key, source_url)
 );
 CREATE INDEX IF NOT EXISTS governance_rosters_source_idx ON governance_rosters (source_url, observed_at DESC);
+
+ALTER TABLE governance_rosters ADD COLUMN IF NOT EXISTS coverage_note TEXT NOT NULL DEFAULT '';
+ALTER TABLE governance_rosters ADD COLUMN IF NOT EXISTS evidence_url TEXT NOT NULL DEFAULT '';
