@@ -144,3 +144,14 @@ The report ranks the run’s preceding seven days of headlines, prioritising sco
 
 
 **Next dates to watch** lists upcoming earnings releases, debt maturities and covenant tests in date order, including events on the report date. Each entry links to the issuer filing and identifies the reporting period or instrument. Dates are selected from `sources/watch-dates.json`, a reviewed register keyed by registration country and tax or registration ID. To add a date, check the latest filing, record its publication timestamp with timezone, the exact date, source URL, page or section, and a short supporting excerpt. For an amendment, append a later filing with the same event key. A null event date withdraws the event. Reports select the last filing available at the run cutoff. Calendar entries do not enter credit scoring. A blank calendar means the register holds no confirmed upcoming date for the issuer.
+
+Article verification uses optional Brave, Jina and Firecrawl keys from `.env` (see `.env.example`).
+After the Google News handoff and original-headline RSS lookup fail, Brave searches the
+original-language headline and publisher. RA checks the publisher page and publication time
+(within 24 hours of the feed). For public pages that time out, contain multiple articles or
+yield too little text, RA tries Jina Reader and then Firecrawl. Each provider defaults to 20
+attempts per UTC day, shared across watchlist and ad hoc runs. A daily limit of zero disables
+calls to that provider. The assessment page shows the recovered text for analyst review.
+Reader output can contain comments or related stories, so it cannot automatically change a
+company score. A new run uses this flow automatically. Use **Check full article** to retry a
+previously unavailable article.

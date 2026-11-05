@@ -1,0 +1,84 @@
+import pytest
+
+from ra import article_content as reader, recovery_providers as providers
+from ra.verification import verify
+
+URL = 'https://gazeta.example/news/123'
+HINT = {'title': 'Crédito aprovado - Gazeta', 'publisher': 'Gazeta', 'published_at': '2026-11-05T10:00:00+00:00'}
+TEXT = 'Acme Manufacturing has reported a financial loss after a decline in demand. ' * 6
+META = '<meta property="og:title" content="Crédito aprovado"><meta name="datePublished" content="2026-11-05T09:00:00Z">'
+
+
+@pytest.fixture
+def setup(monkeypatch):
+    for name in providers.HOSTS:
+        monkeypatch.setenv('RA_' + name.upper() + '_API_KEY', 'fake')
+    monkeypatch.setattr(providers, 'public_target', lambda url: None)
+    return monkeypatch
+
+
+def test_brave_after_failed_rss_checks_publisher_page(setup):
+    def fetch(url):
+        if 'bing.com' in url:
+            raise TimeoutError()
+        raw = (META + '<article>' + TEXT + '</article>').encode() if url == URL else b''
+        return raw, 'text/html', url
+    setup.setattr(reader, 'fetch_bytes', fetch)
+    hits = [{'title': 'Crédito aprovado | Gazeta', 'profile': {'name':'Gazeta'}, 'url':URL},
+            {'title': 'Crédito aprovado', 'profile': {'name':'Syndicate'}, 'url':'https://other.example/123'}]
+    setup.setattr(providers, 'request', lambda provider, path: {'web': {'results': hits}})
+    result = reader._retrieve('https://news.google.com/rss/articles/missing', HINT)
+    assert result['status'] == 'available' and result['recovery'].startswith('Brave')
+    assert result['body'] == TEXT.strip() and not result['review_only']
+    hits.append(dict(hits[0], url=URL+'-ambiguous'))
+    assert not providers.brave_destination(HINT)
+
+
+def test_firecrawl_after_jina_failure_cannot_supply_automatic_score(setup):
+    calls = []
+    def request(provider, path, **kwargs):
+        calls.append(provider)
+        if provider == 'Jina':
+            raise ValueError('Jina HTTP 409')
+        return {'data': {'metadata': {'title':'Crédito aprovado', 'url':URL, 'statusCode':200}, 'markdown':TEXT}}
+    setup.setattr(providers, 'request', request)
+    setup.setattr(reader, 'fetch_bytes', lambda url: (META.encode(), 'text/html', url))
+    result = reader._retrieve(URL, HINT)
+    assert calls == ['Jina','Firecrawl'] and result['body'] == TEXT.strip()
+    assert verify(result, {'name':'Acme Manufacturing'}, {'url':URL})['status'] == 'needs_review'
+
+
+@pytest.mark.parametrize('change', [
+    {'url':'https://other.example/article'}, {'title':'Other story'}, {'publishedTime':'2024-11-05T10:00:00Z'},
+    {'content':'Only a headline'}, {'content':TEXT+' Subscribe to continue reading'}
+])
+def test_reader_rejects_unconfirmed_or_gated_content(setup, change):
+    setup.delenv('RA_FIRECRAWL_API_KEY')
+    data = dict(url=URL,title='Crédito aprovado',publishedTime=HINT['published_at'],content=TEXT)
+    setup.setattr(providers, 'request', lambda *args, **kwargs: {'data': {**data, **change}})
+    setup.setattr(reader, 'fetch_bytes', lambda url: (META.encode(), 'text/html', url))
+    assert reader._retrieve(URL, HINT)['status'] == 'unavailable'
+
+
+def test_publisher_access_denial_stops_before_paid_readers(setup):
+    def denied(url):
+        raise ValueError('Source returned HTTP 403; access was not bypassed')
+    setup.setattr(reader, 'fetch_bytes', denied)
+    setup.setattr(providers, 'request', lambda *a, **kw: pytest.fail('unexpected API call'))
+    assert 'HTTP 403' in reader._retrieve(URL, HINT)['reason']
+
+
+def test_quota_exhaustion_does_not_make_external_request(setup):
+    setup.setattr(providers.db, 'reserve_news_api_request', lambda name, limit: False)
+    with pytest.raises(ValueError, match='daily request limit'):
+        providers.request('Brave', '/res/v1/web/search')
+
+
+def test_launcher_accepts_existing_recovery_labels(tmp_path, setup):
+    from scripts import serve_local
+    env = tmp_path / '.env'
+    env.write_text('BRAVE API=b\nJINA API=j\nFirecrawler API=f\nFMP API=unused\n')
+    setup.setattr(serve_local, 'ENV_FILE', env)
+    result = {}
+    serve_local.load_local_env(result)
+    assert result == {'RA_BRAVE_API_KEY':'b', 'RA_JINA_API_KEY':'j', 'RA_FIRECRAWL_API_KEY':'f'}

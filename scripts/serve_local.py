@@ -157,12 +157,17 @@ def load_local_env(environment: dict[str, str]) -> None:
         return
     allowed = {"RA_GNEWS_API_KEY", "RA_THENEWSAPI_API_KEY",
                "RA_GNEWS_DAILY_LIMIT", "RA_THENEWSAPI_DAILY_LIMIT"}
+    aliases = {"BRAVE API": "RA_BRAVE_API_KEY", "JINA API": "RA_JINA_API_KEY",
+               "Firecrawler API": "RA_FIRECRAWL_API_KEY"}
+    allowed.update(aliases.values())
+    allowed.update({"RA_BRAVE_DAILY_LIMIT", "RA_JINA_DAILY_LIMIT", "RA_FIRECRAWL_DAILY_LIMIT"})
     for line in ENV_FILE.read_text().splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#") or "=" not in stripped:
             continue
         name, value = stripped.split("=", 1)
         name, value = name.strip(), value.strip()
+        name = aliases.get(name, name)
         if name not in allowed or not re.fullmatch(r"[A-Z][A-Z0-9_]*", name):
             continue
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":

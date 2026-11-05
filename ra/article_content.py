@@ -18,7 +18,7 @@ from html.parser import HTMLParser
 from io import BytesIO
 from urllib.parse import urljoin, urlsplit, urlunsplit, parse_qsl, urlencode
 
-READER_VERSION = "public-source-v2.1"
+READER_VERSION = "public-source-v3"
 MAX_BYTES = 2_000_000
 MAX_TEXT = 100_000
 
@@ -97,11 +97,15 @@ class ArticleHTML(HTMLParser):
         self.explicit_only = explicit_only
         self.article_count = 0
         self.page_titles = []
+        self.page_dates = []
 
     def handle_starttag(self, tag, attrs):
         attrs = {key: value or '' for key, value in attrs}
         if tag == 'meta' and attrs.get('property') == 'og:title':
             self.page_titles.append(attrs.get('content',''))
+        if tag == 'meta' and (attrs.get('property') in ('article:published_time', 'og:article:published_time')
+                              or 'datePublished' in (attrs.get('itemprop'), attrs.get('name'))):
+            self.page_dates.append(attrs.get('content', ''))
         parent = self.stack[-1][1:] if self.stack else (False, False)
         in_article, blocked = parent
         marked = attrs.get('itemprop') == 'articleBody'
@@ -140,23 +144,35 @@ class ArticleHTML(HTMLParser):
             self.parts.append(data)
 
 
-def structured_bodies(node):
+def structured_articles(node):
     if isinstance(node, list):
         for entry in node:
-            yield from structured_bodies(entry)
+            yield from structured_articles(entry)
     elif isinstance(node, dict):
         kind = node.get('@type', '')
         kinds = kind if isinstance(kind, list) else [kind]
         if any(k in ('NewsArticle', 'Article', 'ReportageNewsArticle') for k in kinds):
             if node.get('isAccessibleForFree') in (False, 'False', 'false'):
                 raise ValueError('Publisher marks this article as restricted')
-            if isinstance(node.get('articleBody'), str):
-                yield node['articleBody']
+            yield node
         for key in ('@graph', 'mainEntity'):
-            yield from structured_bodies(node.get(key))
+            yield from structured_articles(node.get(key))
 
 
-def extract(raw, content_type):
+def parse_html(raw, content_type):
+    match = re.search(r'charset=["\']?([\w-]+)', content_type)
+    text = raw.decode(match[1] if match else 'utf-8', errors='replace')
+    parser = ArticleHTML()
+    parser.feed(text)
+    for item in structured_articles(parser.structured):
+        if isinstance(item.get('datePublished'), str):
+            parser.page_dates.append(item['datePublished'])
+        if isinstance(item.get('headline'), str):
+            parser.page_titles.append(item['headline'])
+    return parser, text
+
+
+def extract(raw, content_type, parsed=None):
     if raw.startswith(b'%PDF-') or 'application/pdf' in content_type:
         from pypdf import PdfReader
         reader = PdfReader(BytesIO(raw))
@@ -165,12 +181,9 @@ def extract(raw, content_type):
         body = '\n\n'.join(page.extract_text() or '' for page in reader.pages)
         method = 'PDF text (no OCR)'
     elif 'html' in content_type:
-        match = re.search(r'charset=["\']?([\w-]+)', content_type)
-        encoding = match.group(1) if match else 'utf-8'
-        text = raw.decode(encoding, errors='replace')
-        parser = ArticleHTML()
-        parser.feed(text)
-        bodies = list(structured_bodies(parser.structured))
+        parser, text = parsed or parse_html(raw, content_type)
+        bodies = [item['articleBody'] for item in structured_articles(parser.structured)
+                  if isinstance(item.get('articleBody'), str)]
         if not bodies and parser.article_count > 1:
             primary = ArticleHTML(explicit_only=True)
             primary.feed(text)
@@ -197,26 +210,29 @@ def retrieve(url, hint=None):
     """Fail closed on access failures without leaking URLs/tokens in exceptions."""
     try:
         result = subprocess.run([sys.executable, '-m', 'ra.article_content', url],
-                                input=json.dumps(hint or {}), capture_output=True, text=True, timeout=45, check=True)
+                                input=json.dumps(hint or {}), capture_output=True, text=True, timeout=120, check=True)
         return json.loads(result.stdout)
     except (subprocess.SubprocessError, ValueError):
         return {'status': 'unavailable', 'reason': 'Source retrieval or parsing failed / timed out'}
 
 
 def _retrieve(url, hint=None):
-    from .publisher_lookup import google_destination, search_destination, normalized, original_title
+    from .publisher_lookup import google_destination, search_destination
+    from . import recovery_providers as providers
+    from xml.etree.ElementTree import ParseError
     hint = hint or {}
     route = ''
     destination = ''
+    review_only = False
+    google_hosts = ('news.google.com', 'consent.google.com')
     try:
-        is_google = urlsplit(url).hostname == 'news.google.com'
         try:
             raw, content_type, final_url = fetch_bytes(url)
-        except (OSError, ValueError):
-            if not is_google or not hint:
+        except (OSError, ValueError) as exc:
+            if not hint or (urlsplit(url).hostname != 'news.google.com' and not isinstance(exc, TimeoutError)):
                 raise
             raw, content_type, final_url = b'', '', url
-        if urlsplit(final_url).hostname in ('news.google.com', 'consent.google.com'):
+        if urlsplit(final_url).hostname in google_hosts:
             if urlsplit(final_url).hostname == 'news.google.com':
                 try:
                     destination = google_destination(raw, url, fetch_bytes)
@@ -224,27 +240,52 @@ def _retrieve(url, hint=None):
                     destination = ''
             route = 'Google News publisher link'
             if not destination:
-                destination = search_destination(hint, fetch_bytes)
                 route = 'original-headline search'
+                try:
+                    destination = search_destination(hint, fetch_bytes)
+                except (ValueError, OSError, ParseError):
+                    destination = ''
+            if not destination and providers.configured('Brave'):
+                route = 'Brave original-headline search'
+                destination = providers.brave_destination(hint)
             if not destination:
                 raise ValueError('No matching original publisher article found')
-            raw, content_type, final_url = fetch_bytes(destination)
-            if urlsplit(final_url).hostname in ('news.google.com', 'consent.google.com'):
+            try:
+                raw, content_type, final_url = fetch_bytes(destination)
+            except TimeoutError:
+                raw, content_type, final_url = b'', '', destination
+            if urlsplit(final_url).hostname in google_hosts:
                 raise ValueError('Publisher link returned to Google News')
-            if route == 'original-headline search':
-                if urlsplit(final_url).hostname != urlsplit(destination).hostname:
-                    destination = ''
-                    raise ValueError('Search match redirected to a different host')
-                parser = ArticleHTML()
-                parser.feed(raw.decode('utf-8', errors='replace'))
-                if normalized(original_title(hint)) not in {normalized(t) for t in parser.page_titles}:
-                    destination = ''
-                    raise ValueError('Publisher page does not confirm the original headline')
+            if route.endswith('headline search') and urlsplit(final_url).hostname != urlsplit(destination).hostname:
+                destination = ''
+                raise ValueError('Search match redirected to a different host')
         destination = final_url
-        body, method = extract(raw, content_type)
+        parsed = parse_html(raw, content_type) if 'html' in content_type else None
+        page = parsed[0] if parsed else ArticleHTML()
+        if raw and route.endswith('headline search'):
+            if not any(providers.matches_title(title, hint) for title in page.page_titles):
+                destination = ''
+                raise ValueError('Publisher page does not confirm the original headline')
+            if route.startswith('Brave') and (not page.page_dates or not all(
+                    providers.matches_date(date, hint) for date in page.page_dates)):
+                raise ValueError('Publisher page does not confirm the publication date')
+        try:
+            if not raw and not content_type:
+                raise TimeoutError('Publisher timed out')
+            body, method = extract(raw, content_type, parsed)
+        except (ValueError, TimeoutError) as exc:
+            recoverable = isinstance(exc, TimeoutError) or str(exc).startswith(('Too little article text', 'Multiple articles'))
+            if not recoverable or not all(hint.get(k) for k in ('title', 'publisher', 'published_at')):
+                raise
+            if page.page_dates and not all(providers.matches_date(d, hint) for d in page.page_dates):
+                raise ValueError('Publisher page does not confirm the publication date')
+            if page.page_titles and not any(providers.matches_title(t, hint) for t in page.page_titles):
+                raise ValueError('Publisher page does not confirm the original headline')
+            body, method = providers.read_publisher(destination, hint, exc, page.page_dates)
+            review_only = True
         from .language import detect_language
         return {'status': 'available', 'body': body, 'final_url': canonical_url(final_url),
-                'language': detect_language(body[:4000]), 'method': method, 'recovery':route,
+                'language': detect_language(body[:4000]), 'review_only': review_only, 'method': method, 'recovery':route,
                 'sha256': hashlib.sha256(body.encode()).hexdigest(), 'reason': ''}
     except (socket.timeout, TimeoutError):
         reason = 'Publisher or search endpoint timed out'

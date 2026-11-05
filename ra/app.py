@@ -162,7 +162,7 @@ def create_app() -> Flask:
     def verify_article(result_id):
         try:
             verification_store.enqueue(result_id, request.form.get("source_url", "").strip())
-            flash("Source check queued. Cached sources are reused; no news API request is made.", "success")
+            flash("Source check queued. RA reuses cached sources and tries publisher recovery when needed.", "success")
         except ValueError as exc:
             flash(str(exc), "error")
         return redirect(url_for("article_score", result_id=result_id))

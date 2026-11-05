@@ -30,14 +30,15 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
     with db.connect() as conn:
         cached = conn.execute('SELECT * FROM article_documents WHERE url=%s', (url,)).fetchone()
     lifetime = timedelta(days=7) if cached and cached['document']['status'] == 'available' else timedelta(hours=24)
-    if (cached and cached['document'].get('reader_version') == READER_VERSION
+    hint = {"title": article["title"], "publisher": article["publisher"],
+            "published_at": article["published_at"].isoformat() if article["published_at"] else ""}
+    if (cached and cached['document'].get('source_hint') == hint
+            and cached['document'].get('reader_version') == READER_VERSION
             and datetime.now(timezone.utc) - cached['fetched_at'] < lifetime):
         document = cached['document']
     else:
-        hint = {"title":article["title"], "publisher":article["publisher"],
-                "published_at":article["published_at"].isoformat() if article["published_at"] else ""}
-        fetched = retrieve(url, hint) if fetcher is retrieve and not source_url else fetcher(url)
-        document = {**fetched, "reader_version": READER_VERSION}
+        fetched = retrieve(url, hint) if fetcher is retrieve else fetcher(url)
+        document = {**fetched, "reader_version": READER_VERSION, "source_hint": hint}
         with db.connect() as conn:
             conn.execute('INSERT INTO article_documents (url,document) VALUES (%s,%s) ON CONFLICT (url) '
                          'DO UPDATE SET document=EXCLUDED.document,fetched_at=now()', (url, Jsonb(document)))
@@ -128,7 +129,13 @@ def details(result_id):
         article = conn.execute('SELECT * FROM search_results WHERE id=%s', (result_id,)).fetchone()
         members = conn.execute('SELECT * FROM search_results WHERE event_group=%s AND event_group<>\'\' ORDER BY id',
                                (article['event_group'],)).fetchall()
-        return {'verification_history': conn.execute('SELECT * FROM article_verification_history WHERE result_id=%s ORDER BY id DESC',
+        checked = article['verification'] or {}
+        recovered = conn.execute(
+            "SELECT document->>'body' AS body FROM article_documents WHERE url=%s "
+            "AND document->>'sha256'=%s AND document->>'review_only'='true'",
+            (checked.get('requested_url'), checked.get('document_hash'))
+        ).fetchone() if checked.get('document_hash') else None
+        return {'recovered_body': recovered['body'] if recovered else '', 'verification_history': conn.execute('SELECT * FROM article_verification_history WHERE result_id=%s ORDER BY id DESC',
                                                      (result_id,)).fetchall(),
                 'event_history': conn.execute('SELECT * FROM article_event_history WHERE result_id=%s ORDER BY id DESC',
                                               (result_id,)).fetchall(),
