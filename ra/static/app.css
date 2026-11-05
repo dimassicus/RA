@@ -17,3 +17,5 @@
 .heatmap{border-collapse:separate;border-spacing:3px}.heatmap th:first-child{position:sticky;left:0;background:#fff;z-index:1;min-width:200px;max-width:270px;white-space:normal}.heatmap td{text-align:center;min-width:108px;padding:0;border:0;border-radius:7px}.heatmap td a{display:block;padding:14px 8px;color:inherit}.heatmap td .subtext{color:inherit;opacity:.9}.heatmap td strong{font-size:16px}.heatmap td a:hover{outline:2px solid currentColor;border-radius:7px;text-decoration:none}
 
 .check-progress{max-width:100%}.check-progress label{display:flex;justify-content:space-between;align-items:center;font-weight:650;margin-bottom:.4rem}.check-progress label:not(:first-child){margin-top:1.1rem}.check-progress progress{width:100%;height:.8rem;accent-color:#096b67;display:block}.check-progress p{margin:.4rem 0}.check-progress strong{font-variant-numeric:tabular-nums}
+.column-sort{font:inherit;letter-spacing:inherit;text-transform:inherit;font-weight:700}
+.column-filter{display:block;margin-top:5px;padding:4px 6px;font-size:12px;width:10rem;max-width:100%}
