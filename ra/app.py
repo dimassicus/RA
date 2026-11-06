@@ -78,9 +78,19 @@ def create_app() -> Flask:
     def keyword_settings(factors):
         catalog = risk_factors if factors else keywords
         label = "risk factor" if factors else "keyword"
+        editing = request.args.get("factor", type=int)
+        draft = {}
         if request.method == "POST":
             try:
-                if request.form.get("action") != "retry":
+                if factors and request.form.get("action") == "translation":
+                    editing = request.form.get("id", type=int)
+                    draft = request.form
+                    catalog.save_translation(editing, draft.get("previous", ""), draft.get("language", ""),
+                                             draft.get("original", ""), draft.get("translation", ""))
+                    keywords.schedule()
+                    flash("Translation saved.", "success")
+                    return redirect(url_for("keyword_settings", factors=True, factor=editing, _anchor=f"translations-{editing}"))
+                elif request.form.get("action") != "retry":
                     row_id = int(request.form.get("id") or 0)
                     catalog.save(row_id, request.form.get("english", ""),
                                  request.form.get("scope" if factors else "direction", ""),
@@ -91,10 +101,11 @@ def create_app() -> Flask:
                 flash(f"This English {label} already exists.", "error")
             except ValueError as exc:
                 flash(str(exc), "error")
-            return redirect(url_for("keyword_settings", factors=factors))
+            if not draft:
+                return redirect(url_for("keyword_settings", factors=factors))
         return render_template("keywords.html", rows=catalog.records(), languages=catalog.languages(),
                                language_name=keywords.language_name, factors=factors, label=label,
-                               options=risk_factors.SCOPES if factors else keywords.DIRECTIONS,
+                               options=risk_factors.SCOPES if factors else keywords.DIRECTIONS, editing=editing, draft=draft,
                                error=keywords.last_error)
 
     @app.get("/scores")

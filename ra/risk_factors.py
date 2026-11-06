@@ -89,6 +89,29 @@ def save(row_id, english, scope, enabled, previous):
     reload()
 
 
+def save_translation(row_id, english, code, previous, phrase):
+    phrase = " ".join(phrase.split())
+    if not row_id or not 3 <= len(english) <= 180:
+        raise ValueError("Choose an existing risk factor.")
+    if code not in languages() or not 1 <= len(phrase) <= 500:
+        raise ValueError("Choose an active language and enter a translation of up to 500 characters.")
+    if keywords.percentage_values(english) != keywords.percentage_values(phrase):
+        raise ValueError("Keep the percentages from the English description.")
+    try:
+        checked = keywords.review_translations({english: phrase}, code, True, {})
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        raise ValueError("Translation review unavailable. Try again when local Qwen is ready.") from exc
+    if checked.get(english) is not True:
+        raise ValueError("Qwen could not confirm the translation. Check the wording, direction and thresholds.")
+    with db.connect() as conn:
+        updated = conn.execute("UPDATE risk_factors SET translations=translations || %s, search_cues=search_cues - %s::text "
+                               "WHERE id=%s AND english=%s AND COALESCE(translations->>%s,'')=%s",
+                               (Jsonb({code: phrase}), code, row_id, english, code, previous))
+        if not updated.rowcount:
+            raise ValueError("The factor or translation changed. Compare the current wording before saving again.")
+    reload()
+
+
 def expand_queries(code):
     """Use varied native news wording to retrieve candidates, independently of the theme assessment."""
     rows = [r for r in records() if r["enabled"] and code not in r["search_cues"]
@@ -110,8 +133,9 @@ def expand_queries(code):
                 cues = list(dict.fromkeys(p.strip() for p in phrases if isinstance(p, str) and 1 < len(p.strip()) <= 80
                                          and not re.search(r'[":()<>\n\r]', p)))
                 if 2 <= len(cues) <= 4:
-                    conn.execute("UPDATE risk_factors SET search_cues=search_cues || %s WHERE id=%s AND english=%s",
-                                 (Jsonb({code: cues}), row["id"], row["english"]))
+                    conn.execute("UPDATE risk_factors SET search_cues=search_cues || %s WHERE id=%s AND english=%s "
+                                 "AND translations->>%s IS NOT DISTINCT FROM %s",
+                                 (Jsonb({code: cues}), row["id"], row["english"], code, row["translations"].get(code)))
         reload()
 
 

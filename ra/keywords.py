@@ -217,6 +217,16 @@ def percentage_values(text):
                   re.findall(r"(\d+(?:[.,]\d+)?)\s*%|%\s*(\d+(?:[.,]\d+)?)", text))
 
 
+def review_translations(candidates, code, factors, meanings):
+    subject = "risk factor description" if factors else "keyword"
+    constraints = " Preserve the event, direction, strict thresholds, time windows and parentheses." if factors else ""
+    return model_json(f"Verify each English {subject} and its proposed {language_name(code)} ({code}) translation. "
+                      "Accept only an accurate financial-news meaning in the target language. "
+                      "Reject explanations, unrelated text, and untranslated English unless it is a local loanword." + constraints,
+                      {"translations": candidates, "intended_meanings": meanings},
+                      object_schema({term: {"type": "boolean"} for term in candidates}))
+
+
 def translate_batch(rows, code, *, factors=False):
     terms = [r["english"] for r in rows]
     from .translation import installed_keyword_translations
@@ -250,10 +260,7 @@ def translate_batch(rows, code, *, factors=False):
                       and isinstance(proposed.get(term), str) and 0 < len(proposed[term].strip()) <= (500 if factors else 120)
                       and (not factors or not percentage_values(term) or percentage_values(term) == percentage_values(proposed[term]))}
         if candidates:
-            checked = model_json(f"Verify each English {subject} and its proposed {language} ({code}) translation. "
-                                 "Accept only an accurate financial-news meaning in the target language. "
-                                 "Reject explanations, unrelated text, and untranslated English unless it is a local loanword." + constraints,
-                                 {"translations": candidates, "intended_meanings": meanings}, object_schema({term: {"type": "boolean"} for term in candidates}))
+            checked = review_translations(candidates, code, factors, meanings)
             accepted.update({term: phrase for term, phrase in candidates.items() if checked.get(term) is True})
         if len(accepted) == len(terms):
             break
@@ -262,8 +269,8 @@ def translate_batch(rows, code, *, factors=False):
         for row in rows:
             term = row["english"]
             if term in accepted:
-                conn.execute(f"UPDATE {table} SET translations=translations || %s WHERE id=%s AND english=%s",
-                             (Jsonb({code: accepted[term]}), row["id"], term))
+                conn.execute(f"UPDATE {table} SET translations=translations || %s WHERE id=%s AND english=%s "
+                             "AND NOT (translations ? %s)", (Jsonb({code: accepted[term]}), row["id"], term, code))
 
 
 _sync_lock = threading.Lock()

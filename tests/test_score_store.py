@@ -500,3 +500,40 @@ def test_risk_factor_editing_translation_and_retry(database, monkeypatch):
     risk_factors.seed(database)
     risk_factors.seed(database)
     assert len(risk_factors.records()) == len(risk_factors.SEEDS) + 1
+
+
+def test_edit_one_risk_translation_from_list(database, monkeypatch):
+    from ra import keywords, risk_factors, translation
+    english = "Market drops more than 5%"
+    original = "Queda do mercado superior a 5%"
+    corrected = "O mercado recua mais de 5%"
+    row = database.execute("INSERT INTO risk_factors(english,scope,translations,search_cues) "
+                           "VALUES (%s,'country',%s,%s) RETURNING *", (english,
+                           db.Jsonb({"pt": original, "el": "old Greek"}),
+                           db.Jsonb({"pt": ["old Portuguese cue"], "el": ["Greek cue"]}))).fetchone()
+    monkeypatch.setattr(risk_factors, "_rows", risk_factors._rows)
+    monkeypatch.setattr(risk_factors, "languages", lambda: ["pt", "el", "es"])
+    monkeypatch.setattr(keywords, "schedule", lambda: None)
+    monkeypatch.setattr(keywords, "model_json", lambda prompt, data, schema: {english: data["translations"][english] == corrected})
+    client = create_app().test_client()
+    with client.session_transaction() as session:
+        session["csrf_token"] = "token"
+    form = dict(action="translation", id=row["id"], previous=english, language="pt", original=original, translation=corrected)
+    assert "Edit Spanish translation" in client.get("/risk-factors").text
+    assert client.post("/risk-factors", data=form).status_code == 400
+    form["csrf_token"] = "token"
+    def submit(**changes):
+        return client.post("/risk-factors", data={**form, **changes}, follow_redirects=True).text
+    assert "Keep the percentages" in submit(translation="queda de 6%")
+    assert "Choose an active language" in submit(language="xx")
+    rejected = submit(translation="incorrect 5%")
+    assert "could not confirm" in rejected and "incorrect 5%</textarea>" in rejected
+    assert risk_factors.records()[0]["translations"]["pt"] == original
+    assert "Translation saved" in submit()
+    assert "factor or translation changed" in submit()
+    monkeypatch.setattr(translation, "installed_keyword_translations", lambda terms, code: {english: original})
+    monkeypatch.setattr(keywords, "model_json", lambda *args: {english: True})
+    keywords.translate_batch([row], "pt", factors=True)
+    saved, = risk_factors.records()
+    assert saved["translations"] == {"pt": corrected, "el": "old Greek"} and saved["search_cues"] == {"el": ["Greek cue"]}
+    assert risk_factors.search_phrase(risk_factors.active("country")[0], "pt") == corrected
