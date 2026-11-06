@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 
 from psycopg.types.json import Jsonb
 
-from . import db, score_store
+from . import db, risk_factors, score_store
 from .article_content import READER_VERSION, canonical_url, retrieve
 from .verification import verify
 
@@ -42,11 +42,14 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
         with db.connect() as conn:
             conn.execute('INSERT INTO article_documents (url,document) VALUES (%s,%s) ON CONFLICT (url) '
                          'DO UPDATE SET document=EXCLUDED.document,fetched_at=now()', (url, Jsonb(document)))
-    assessment = verify(document, subject_for(article, run), article)
+    subject = subject_for(article, run)
+    assessment = verify(document, subject, article)
+    themes = risk_factors.assess(article, document, subject, [r for r in risk_factors.records() if r["enabled"]])
     assessment['requested_url'] = url
     with db.connect() as conn:
         score_store._lock(conn)
         current = conn.execute('SELECT verification FROM search_results WHERE id=%s FOR UPDATE', (result_id,)).fetchone()
+        conn.execute('UPDATE search_results SET risk_factor_review=%s WHERE id=%s', (Jsonb(themes), result_id))
         if current['verification'] != assessment:
             conn.execute('INSERT INTO article_verification_history (result_id,previous,assessment) VALUES (%s,%s,%s)',
                          (result_id, Jsonb(current['verification']), Jsonb(assessment)))

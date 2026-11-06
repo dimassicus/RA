@@ -11,7 +11,7 @@ from pathlib import Path
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from psycopg.errors import UniqueViolation
 
-from . import db, governance_roster, keywords, intake_worker, model_store, news_apis, preliminary, worker
+from . import db, governance_roster, keywords, risk_factors, intake_worker, model_store, news_apis, preliminary, worker
 from .importer import stage_workbook
 from .exposure import topic_links
 from .company_report import load_report
@@ -73,23 +73,28 @@ def create_app() -> Flask:
             news_api_providers=news_apis.configured_providers(),
         )
 
-    @app.route("/keywords", methods=["GET", "POST"])
-    def keyword_settings():
+    @app.route("/risk-factors", defaults={"factors": True}, methods=["GET", "POST"])
+    @app.route("/keywords", defaults={"factors": False}, methods=["GET", "POST"])
+    def keyword_settings(factors):
+        catalog = risk_factors if factors else keywords
+        label = "risk factor" if factors else "keyword"
         if request.method == "POST":
             try:
                 if request.form.get("action") != "retry":
                     row_id = int(request.form.get("id") or 0)
-                    keywords.save(row_id, request.form.get("english", ""), request.form.get("direction", ""),
-                                  request.form.get("enabled") == "yes", request.form.get("previous", ""))
+                    catalog.save(row_id, request.form.get("english", ""),
+                                 request.form.get("scope" if factors else "direction", ""),
+                                 request.form.get("enabled") == "yes", request.form.get("previous", ""))
                 keywords.schedule()
-                flash("Keyword settings saved. Missing translations queued.", "success")
+                flash(f"{label.capitalize()} settings saved. Missing translations queued.", "success")
             except UniqueViolation:
-                flash("This English keyword already exists.", "error")
+                flash(f"This English {label} already exists.", "error")
             except ValueError as exc:
                 flash(str(exc), "error")
-            return redirect(url_for("keyword_settings"))
-        return render_template("keywords.html", rows=keywords.records(), languages=keywords.languages(),
-                               language_name=keywords.language_name, directions=keywords.DIRECTIONS,
+            return redirect(url_for("keyword_settings", factors=factors))
+        return render_template("keywords.html", rows=catalog.records(), languages=catalog.languages(),
+                               language_name=keywords.language_name, factors=factors, label=label,
+                               options=risk_factors.SCOPES if factors else keywords.DIRECTIONS,
                                error=keywords.last_error)
 
     @app.get("/scores")
@@ -309,11 +314,12 @@ def create_app() -> Flask:
             abort(404)
         all_results = classify_results(run, db.get_results(run_id))
         view = request.args.get("view", "risk")
-        if view not in ("risk", "review", "older", "background", "scored", "exposure", "governance", "all"):
+        if view not in ("risk", "review", "older", "background", "scored", "exposure", "governance", "factors", "all"):
             abort(400, "Unknown lead view")
         results = [item for item in all_results if view == "all" or item["relevance"] == view
                    or (view == "scored" and item.get("score_included"))
                    or (view == "exposure" and item.get("exposure_paths"))
+                   or (view == "factors" and item.get("risk_factor_review", {}).get("matches"))
                    or (view == "governance" and item["governance"])]
         if view in ("risk", "older", "scored"):
             grouped = {}
@@ -331,6 +337,7 @@ def create_app() -> Flask:
             counts={**{key: sum(item["relevance"] == key for item in all_results)
                     for key in ("risk", "review", "older", "background")},
                     "governance": sum(bool(item["governance"]) for item in all_results),
+                    "factors": sum(bool(item.get("risk_factor_review", {}).get("matches")) for item in all_results),
                     "exposure": sum(bool(item.get("exposure_paths")) for item in all_results),
                     "scored": sum(bool(item.get("score_included")) for item in all_results)},
             rosters=governance_roster.observations(run_id) if view == "governance" else [],
@@ -495,6 +502,7 @@ def create_app() -> Flask:
 def main():
     db.init_schema()
     keywords.reload_rules()
+    risk_factors.reload()
     keywords.schedule()
     score_store.refresh_scores()
     intake_worker.start()

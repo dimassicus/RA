@@ -1,26 +1,31 @@
 {% extends 'base.html' %}
-{% block title %}Monitoring keywords · RA{% endblock %}
+{% set heading = 'Risk factors' if factors else 'Monitoring keywords' %}
+{% set field = 'scope' if factors else 'direction' %}
+{% set field_label = 'Search scope' if factors else 'Sentiment' %}
+{% set limit = 180 if factors else 80 %}
+{% block title %}{{ heading }} · RA{% endblock %}
 {% block content %}
-<h1>Monitoring keywords</h1>
-<p>English keywords flag headlines for review. Choose the expected sentiment. Company scores require evidence of impact.</p>
+<h1>{{ heading }}</h1>
+{% if factors %}<p>Describe a theme to watch in company, sector or country news. RA looks for paraphrases, indirect evidence and partial matches. Each match shows the source wording for review.</p>
+{% else %}<p>English keywords flag headlines for review. Choose the expected sentiment. Company scores require evidence of impact.</p>{% endif %}
 <section class="panel form-panel">
-  <h2>Add a keyword</h2>
+  <h2>Add a {{ label }}</h2>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="enabled" value="yes">
-    <div class="form-grid"><label>English word or phrase<input name="english" required maxlength="80" placeholder="e.g. covenant breach"></label>
-    <label>Sentiment<select name="direction">{% for direction in directions %}<option>{{ direction }}</option>{% endfor %}</select></label></div>
+    <div class="form-grid"><label>{{ 'Short English description' if factors else 'English word or phrase' }}<input name="english" required maxlength="{{ limit }}" placeholder="{{ 'e.g. A lender suspends the company’s credit line' if factors else 'e.g. covenant breach' }}"></label>
+    <label>{{ field_label }}<select name="{{ field }}">{% for direction in options %}<option>{{ direction }}</option>{% endfor %}</select></label></div>
     <div class="form-actions"><button class="button primary">Add and translate</button></div>
   </form>
 </section>
-<section class="panel list-panel"><h2>Keyword list</h2>
-  <p>Translation languages follow active companies’ registration countries. Missing Argos pairs use MyMemory online, with local Qwen as backup. Qwen checks each phrase before use. Refresh to see progress.</p>
+<section class="panel list-panel"><h2>{{ label|capitalize }} list</h2>
+  <p>Translation languages follow {{ 'active watchlist countries and search editions' if factors else 'active companies’ registration countries' }}. Missing Argos pairs use MyMemory online, with local Qwen as backup. Qwen checks each phrase before use. Refresh to see progress.</p>
   {% if error %}<p role="status">{{ error }}</p>{% endif %}
   <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary" name="action" value="retry">Retry missing translations</button></form>
-  <div class="table-scroll"><table><thead><tr><th>English keyword</th><th>Sentiment</th><th>Active</th><th>Translations</th><th></th></tr></thead><tbody>
+  <div class="table-scroll"><table><thead><tr><th>English {{ label }}</th><th>{{ field_label }}</th><th>Active</th><th>Translations</th><th></th></tr></thead><tbody>
   {% for row in rows %}
     {% set fid = 'keyword-' ~ row.id %}
-    <tr><td><input form="{{ fid }}" aria-label="English keyword {{ row.english }}" name="english" value="{{ row.english }}" required maxlength="80"></td>
-      <td><select form="{{ fid }}" name="direction" aria-label="Sentiment for {{ row.english }}">{% for direction in directions %}<option {% if direction == row.direction %}selected{% endif %}>{{ direction }}</option>{% endfor %}</select></td>
+    <tr><td><input form="{{ fid }}" aria-label="English {{ label }} {{ row.english }}" name="english" value="{{ row.english }}" required maxlength="{{ limit }}"></td>
+      <td><select form="{{ fid }}" name="{{ field }}" aria-label="{{ field_label }} for {{ row.english }}">{% for direction in options %}<option {% if direction == row[field] %}selected{% endif %}>{{ direction }}</option>{% endfor %}</select></td>
       <td><input form="{{ fid }}" name="enabled" type="checkbox" value="yes" aria-label="Enable {{ row.english }}" {% if row.enabled %}checked{% endif %}></td>
       <td><details><summary>{{ languages|select('in', row.translations)|list|length }}/{{ languages|length }} languages</summary>
       {% for code in languages %}<div>{{ language_name(code) }} · {{ row.translations.get(code, 'Pending') }}</div>{% endfor %}</details></td>

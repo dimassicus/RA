@@ -181,3 +181,39 @@ def test_sector_market_applies_to_each_company_in_shared_cache():
              "exposure_paths": ["Sector · fertilizer"], "language": "pt-BR"}
     assert scope_sector_paths(stale, {"country_registration": "Brazil"})["exposure_paths"] == []
     assert stale["exposure_paths"]
+
+
+def test_factor_queries_are_scoped_localized_and_preserve_successful_leads(monkeypatch):
+    from ra import risk_factors
+    from ra.exposure import check_topic, search_topic
+    from ra.search import company_search_plan
+    rows = [
+        dict(english="Currency devaluation (more than 10% in one week)", scope="country",
+             translations={"pt": "Desvalorização cambial (mais de 10% em uma semana)"}, enabled=True),
+        dict(english="A lender freezes company credit", scope="company",
+             translations={"pt": "Banco suspende o crédito"}, enabled=True),
+        dict(english="Disabled factor", scope="company", translations={}, enabled=False),
+    ]
+    monkeypatch.setattr(risk_factors, "_rows", rows)
+    company = {"name": "Acme Manufacturing", "country_registration": "Brazil"}
+    plan = company_search_plan(company)
+    assert ('"Acme Manufacturing" Banco suspende o crédito', "Brazil") in plan
+    assert not any("devaluation" in q or "Disabled" in q for q, _ in plan)
+    calls = []
+    def select(branch, topic, *, edition, factor=None):
+        if not factor:
+            return []
+        def fetch(url):
+            from urllib.parse import parse_qs, urlsplit
+            query = parse_qs(urlsplit(url).query)["q"][0]
+            calls.append(query)
+            if not edition:
+                raise OSError("timeout")
+            return ("<rss><channel><item><title>Brasil: real cai 12%</title><link>https://example.org/real</link>"
+                    "</item></channel></rss>").encode()
+        return search_topic(branch, topic, fetch, edition=edition, factor=factor)
+    hits, error = check_topic("country", "brazil", select, ["brazil"], include_factors=True)
+    assert len(hits) == 1 and rows[0]["english"] in hits[0][1]
+    assert "timeout" in error and "10%" not in calls[0]
+    assert "Brasil" in calls[1] and "Desvalorização cambial" in calls[1]
+    assert check_topic("sector", "fertilizer", select, ["brazil"], include_factors=True) == ([], "")

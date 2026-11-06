@@ -462,3 +462,41 @@ def test_registry_failure_preserves_last_good_comparison_and_retries(database):
     assert row['notes'] == ['Newly listed · New director', 'Previously listed · Old director']
     registry.record(second, key, company, url, lambda _: ('Board', {'new':'New director'}))
     assert not registry.observations(second, key)[0]['coverage_note']
+
+
+def test_risk_factor_editing_translation_and_retry(database, monkeypatch):
+    from ra import keywords, risk_factors, translation
+    monkeypatch.setattr(risk_factors, "_rows", risk_factors._rows)
+    scheduled = []
+    monkeypatch.setattr(keywords, "schedule", lambda: scheduled.append(True))
+    monkeypatch.setattr(risk_factors, "languages", lambda: ["pt"])
+    text = "Currency falls more than 10% in seven days"
+    good = "A moeda cai mais de 10% em sete dias"
+    monkeypatch.setattr(translation, "installed_keyword_translations", lambda terms, code: {text:good.replace("10%", "5%")})
+    def model(prompt, data, schema):
+        if "english" in schema["properties"]:
+            return {"english": True}
+        if "translations" in data:
+            return {text: data["translations"][text] == good}
+        return {text:good}
+    monkeypatch.setattr(keywords, "model_json", model)
+    client = create_app().test_client()
+    with client.session_transaction() as session:
+        session["csrf_token"] = "token"
+    form = dict(csrf_token="token", english=text, scope="country", enabled="yes")
+    assert client.post("/risk-factors", data=form).location.endswith("/risk-factors")
+    assert scheduled and client.get("/risk-factors").status_code == 200
+    row, = risk_factors.records()
+    keywords.translate_batch([row], "pt", factors=True)
+    row, = risk_factors.records()
+    assert row["translations"] == {"pt": good} and not keywords.records()
+    assert "1/1 languages" in client.get("/risk-factors").text
+    edit = dict(form, id=row["id"], previous=text, english="Payment restrictions", enabled="")
+    client.post("/risk-factors", data=edit)
+    row, = risk_factors.records()
+    assert not row["enabled"] and row["translations"] == {}
+    client.post("/risk-factors", data={**edit, "english":"Stale edit"})
+    assert risk_factors.records()[0]["english"] == "Payment restrictions"
+    risk_factors.seed(database)
+    risk_factors.seed(database)
+    assert len(risk_factors.records()) == len(risk_factors.SEEDS) + 1

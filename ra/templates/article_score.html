@@ -16,6 +16,9 @@
 <p><a href="https://www.google.com/search?{{ {'q': '"' ~ lookup_title ~ '" ' ~ article.publisher}|urlencode }}" target="_blank" rel="noopener noreferrer">Search the original-language headline and publisher ↗</a></p>{% endif %}
 {% if article.verification.get('recovery') %}<p>Article lookup: {{ article.verification.recovery }}</p>{% endif %}
 {% if article.verification.get('source_url') %}<p><a href="{{ article.verification.source_url }}" target="_blank" rel="noopener noreferrer">Checked source ↗</a> · {{ article.verification.get('method','') }} · {{ article.verification.get('language','') }}</p>{% endif %}
+{% set themes = article.get('risk_factor_review', {}) %}
+{% if themes %}<h3>Risk factor review</h3><p>{{ themes.status|capitalize }} · {{ themes.coverage }}</p>
+{% for match in themes.matches %}<p><strong>{{ match.factor }}</strong> · {{ match.kind|capitalize }} match · {{ match.connection }}</p><blockquote>{{ match.quote }} <small>({{ match.from }})</small></blockquote>{% else %}{% if themes.status == 'checked' %}<p>No thematic matches found.</p>{% endif %}{% endfor %}{% endif %}
 {% if recovered_body %}<details><summary>Read recovered publisher text</summary>
 {% for paragraph in recovered_body.splitlines() %}<p>{{ paragraph }}</p>{% endfor %}</details>{% endif %}
 {% for evidence in article.verification.get('evidence', []) %}<blockquote>{{ evidence.sentence }}<p class="subtext">{{ evidence.rule }} · {{ '%+d'|format(evidence.score) }}</p></blockquote>{% endfor %}

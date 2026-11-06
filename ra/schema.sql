@@ -237,3 +237,15 @@ CREATE INDEX IF NOT EXISTS governance_rosters_source_idx ON governance_rosters (
 
 ALTER TABLE governance_rosters ADD COLUMN IF NOT EXISTS coverage_note TEXT NOT NULL DEFAULT '';
 ALTER TABLE governance_rosters ADD COLUMN IF NOT EXISTS evidence_url TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS risk_factors (
+    id bigserial PRIMARY KEY,
+    english text NOT NULL,
+    seed_key text UNIQUE,
+    scope text NOT NULL CHECK (scope IN ('company', 'sector', 'country')),
+    enabled boolean NOT NULL DEFAULT true,
+    translations jsonb NOT NULL DEFAULT '{}'
+);
+CREATE UNIQUE INDEX IF NOT EXISTS risk_factors_english_idx ON risk_factors (lower(english));
+ALTER TABLE risk_factors ADD COLUMN IF NOT EXISTS search_cues jsonb NOT NULL DEFAULT '{}';
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS risk_factor_review jsonb NOT NULL DEFAULT '{}';

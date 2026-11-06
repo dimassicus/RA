@@ -3,6 +3,7 @@ import re
 import unicodedata
 from functools import lru_cache
 
+from . import risk_factors
 from .aliases import contains, normalized
 from .relevance import headline
 from .exposure_terms import CHANNEL_TERMS, MARKET_ALIASES, REGION_MARKETS, NAMES, TRADE, FUNDING, CURRENCY, OPERATIONS, SUPPLY, PRICES
@@ -109,7 +110,7 @@ def _native_text(value):
     return value.translate(str.maketrans({"’": "'", "‘": "'", "ʻ": "'", "ʼ": "'"}))
 
 
-def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None):
+def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None, factor=None):
     names = [topic] + [alias for alias, canonical in TOPIC_NAMES[branch].items() if canonical == topic]
     channels = CHANNELS[branch]
     if edition:
@@ -121,7 +122,8 @@ def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None)
         channels = {label: [term for code in languages for term in CHANNEL_TERMS[code][label].split("|")]
                     for label in channels}
     terms = [term for phrases in channels.values() for term in phrases]
-    query = "(" + " OR ".join(f'"{name}"' for name in names) + ") (" + " OR ".join(f'"{term}"' for term in terms) + ")"
+    query = "(" + " OR ".join(f'"{name}"' for name in names) + ")"
+    query += " " + factor[1] if factor else " (" + " OR ".join(f'"{term}"' for term in terms) + ")"
     if branch == "sector" and markets and topic in markets:
         places = sorted(markets[topic])
         if edition in places:
@@ -145,23 +147,38 @@ def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None)
             phrase = fold(term)
             return phrase in title if language.startswith("th") else contains(title, phrase)
         if any(matches(name) for name in names):
+            if factor:
+                hits.append(({**item, "source_kind": "context"}, "whether this factor applies: " + factor[0]))
+                continue
             labels = [label for label, phrases in channels.items() if any(matches(term) for term in phrases)]
             if labels:
                 hits.append(({**item, "source_kind": "context"}, ", ".join(labels)))
     return hits
 
 
-def check_topic(branch, topic, search, editions=()):
+def check_topic(branch, topic, search, editions=(), *, include_factors=False):
     hits, errors = {}, []
     for edition in ("", *sorted(editions)):
-        try:
-            found = search(branch, topic, edition=edition)
-        except Exception as exc:
-            errors.append(f"{branch.title()} {topic} ({edition or 'English'}): {type(exc).__name__}: {exc}")
-            continue
-        for item, channel in found:
-            _, labels = hits.setdefault(item["url"], (item, {}))
-            labels.update(dict.fromkeys(channel.split(", ")))
+        queries = [None]
+        if include_factors:
+            lang = LOCALES[edition][0].split("-")[0] if edition else "en"
+            languages = (lang, "ru") if lang in ("az", "uz") else (lang,)
+            for row in risk_factors.active(branch):
+                for code in languages:
+                    phrase = risk_factors.search_phrase(row, code)
+                    if phrase:
+                        queries.append((row["english"], phrase))
+        for factor in dict.fromkeys(queries):
+            try:
+                options = {"factor": factor} if factor else {}
+                found = search(branch, topic, edition=edition, **options)
+            except Exception as exc:
+                detail = f", {factor[0]}" if factor else ""
+                errors.append(f"{branch.title()} {topic} ({edition or 'English'}{detail}): {type(exc).__name__}: {exc}")
+                continue
+            for item, channel in found:
+                _, labels = hits.setdefault(item["url"], (item, {}))
+                labels.update(dict.fromkeys([channel] if factor else channel.split(", ")))
     return [(item, ", ".join(labels)) for item, labels in hits.values()], " | ".join(errors)
 
 

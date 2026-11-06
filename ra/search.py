@@ -11,7 +11,7 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
-from . import keywords, news_apis
+from . import keywords, news_apis, risk_factors
 from .aliases import parse_aliases, provider_name, discovery_names, ambiguous, company_names, normalized as identity_normalized
 
 
@@ -95,13 +95,20 @@ def governance_searches(subject):
     names = [provider_name(subject), *parse_aliases(subject.get("aliases", ""))]
     plans = []
     local_anchor = names[0]
+    factors = risk_factors.active("company")
     for code, edition in editions:
         # Prefer a reviewed local-script alias when the register uses another alphabet.
         script = {"el": r"[Α-ω]", "ar": r"[ء-ي]", "ru": r"[А-я]"}.get(code)
         anchor = next((n for n in names if script and re.search(script, n)), names[0])
         if code == lang:
             local_anchor = anchor
-        for groups in (("executive role", "leadership action", "management change"), ("ownership",)):
+        for factor in factors:
+            groups = risk_factors.GOVERNANCE_GROUPS.get(factor["english"])
+            if groups is None:
+                phrase = risk_factors.search_phrase(factor, code)
+                if phrase:
+                    plans.append((f'"{anchor}" {phrase}', edition))
+                continue
             terms = keywords.discovery_terms(groups, code)
             if code == "en" and "chief executive officer" in terms:
                 terms.append("CEO")
@@ -121,7 +128,10 @@ def governance_searches(subject):
         expr = " OR ".join("site:" + site for site in domains[region])
         plans.append((f'"{local_anchor}" ({expr})', country))
     # Keep name searches independent of vocabulary, including executives leaving for another issuer.
-    for field in ("top_management", "key_owners"):
+    enabled = {factor["english"] for factor in factors}
+    for field, factor in (("top_management", risk_factors.MANAGEMENT), ("key_owners", risk_factors.OWNERSHIP)):
+        if factor not in enabled:
+            continue
         names = [re.sub(r"\s*\([^)]*\)", "", part).strip().replace('"', '') for part in
                  re.split(r"[,;\n]", subject.get(field) or "")]
         persons = list(dict.fromkeys(n[:100] for n in names if len(n) >= 4))

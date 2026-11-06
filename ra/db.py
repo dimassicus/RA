@@ -49,6 +49,8 @@ def init_schema():
         conn.execute(Path(__file__).with_name("schema.sql").read_text())
         from .keywords import seed
         seed(conn)
+        from . import risk_factors
+        risk_factors.seed(conn)
         # Existing rows used registration_number as a combined identifier field.
         for row in conn.execute(
             "SELECT id, country_registration, registration_number FROM companies "
@@ -362,7 +364,7 @@ def list_runs(limit: int = 12):
         ).fetchall()
 
 
-def run_topic_check(run_id, search, editions, branch, topic):
+def run_topic_check(run_id, search, editions, branch, topic, *, include_factors=False):
     from .exposure import check_topic
     with connect() as conn:
         claimed = conn.execute(
@@ -370,7 +372,8 @@ def run_topic_check(run_id, search, editions, branch, topic):
             "ON CONFLICT DO NOTHING RETURNING run_id", (run_id, branch, topic),
         ).fetchone()
         if claimed:
-            hits, error = check_topic(branch, topic, search, editions.get((branch, topic), ()))
+            hits, error = check_topic(branch, topic, search, editions.get((branch, topic), ()),
+                                      include_factors=include_factors)
             # Preserve publication instants for reinsertion after a worker restart.
             stored = [({**hit, "published_at": hit["published_at"].isoformat() if hit["published_at"] else None}, channel)
                       for hit, channel in hits]

@@ -9,6 +9,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Table, TableStyle
 
+from .risk_factors import notes as factor_notes
 from .headline_review import review_note
 from .company_report import driver, evidence_rows, rating_rows
 from .relevance import headline
@@ -40,7 +41,7 @@ def source_note(s):
     a = s["article"]
     v = a.get("verification") or {}
     status = s["state"].replace("_", " ")
-    notes = [*s.get("governance", []), status, review_note(a), v.get("reason") or "", *(a.get("exposure_paths") or [])]
+    notes = [*s.get("governance", []), *factor_notes(a), status, review_note(a), v.get("reason") or "", *(a.get("exposure_paths") or [])]
     return " · ".join(n for n in notes if n)
 
 

@@ -70,9 +70,10 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
         conn.execute("DELETE FROM search_errors WHERE run_id = %s", (run_id,))
     topic_cache = {}
     editions = topic_editions(run["subjects"])
+    include_factors = topic_searcher is None
     if topic_searcher is None:
         topic_searcher = partial(search_topic, markets=sector_markets(run["subjects"]))
-    check = partial(db.run_topic_check, run_id, topic_searcher, editions)
+    check = partial(db.run_topic_check, run_id, topic_searcher, editions, include_factors=include_factors)
     for subject in plan_subjects(run["subjects"], run_id):
         subject_key = str(subject.get("id") or f"one-off:{run_id}")
         name = subject["name"]
