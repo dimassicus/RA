@@ -20,6 +20,34 @@ from .score_store import refresh_scores
 _queue: queue.Queue[int] = queue.Queue()
 _thread: threading.Thread | None = None
 
+# The local app and its single search worker share one immutable activity snapshot.
+_activity = None
+
+
+def _report(run_id, message, done=None, total=None):
+    global _activity
+    _activity = (run_id, message, done, total, time.monotonic())
+
+
+def search_progress(run):
+    if run["status"] == "queued":
+        with db.connect() as conn:
+            ahead = conn.execute("SELECT id FROM search_runs WHERE id<>%s AND "
+                                 "(status='running' OR (status='queued' AND id<%s)) "
+                                 "ORDER BY (status='running') DESC,id", (run["id"], run["id"])).fetchall()
+        message = "Waiting for the search worker."
+        if ahead:
+            message = f"Waiting behind run #{ahead[0]['id']} · {len(ahead)} search{'es' if len(ahead) != 1 else ''} ahead."
+        return {"message": message, "done": 0, "total": 1}
+    if run["status"] == "running":
+        snapshot = _activity
+        if snapshot and snapshot[0] == run["id"]:
+            _, message, done, total, updated = snapshot
+            age = int(time.monotonic() - updated)
+            return {"message": message, "done": done, "total": total, "age": age}
+        return {"message": "Starting search…", "done": None, "total": None}
+    return None
+
 
 def enqueue(run_id: int):
     _queue.put(run_id)
@@ -68,18 +96,31 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
         )
         conn.execute("DELETE FROM search_results WHERE run_id = %s", (run_id,))
         conn.execute("DELETE FROM search_errors WHERE run_id = %s", (run_id,))
+    report = partial(_report, run_id)
+    report("Preparing company searches")
     topic_cache = {}
     editions = topic_editions(run["subjects"])
     include_factors = topic_searcher is None
     if topic_searcher is None:
-        topic_searcher = partial(search_topic, markets=sector_markets(run["subjects"]))
+        markets = sector_markets(run["subjects"])
+
+        def topic_searcher(branch, topic, *, edition="", factor=None):
+            detail = f" · {factor[0]}" if factor else ""
+            report(f"Searching {branch} news: {topic} ({edition or 'English edition'}){detail}")
+            return search_topic(branch, topic, edition=edition, markets=markets, factor=factor)
     check = partial(db.run_topic_check, run_id, topic_searcher, editions, include_factors=include_factors)
     for subject in plan_subjects(run["subjects"], run_id):
         subject_key = str(subject.get("id") or f"one-off:{run_id}")
         name = subject["name"]
+
+        def company_progress(message, done=None, total=None):
+            report(f"{name} · {message}", done, total)
+
+        company_progress("Checking company news and official sources")
         search_failure = ""
         try:
-            articles, errors = searcher(subject)
+            articles, errors = (search_company(subject, progress=company_progress) if searcher is search_company
+                                else searcher(subject))
         except Exception as exc:
             search_failure = f"{type(exc).__name__}: {exc}"
             articles, errors = [], [search_failure]
@@ -94,13 +135,15 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
             elif search_failure:
                 summary = 'Disclosure check incomplete. ' + search_failure
             governance_roster.save_note(run_id, subject_key, subject, index_url, publisher, summary)
+        company_progress("Checking leadership and ownership records")
         try:
             roster_check(run_id, subject_key, subject)
         except (ValueError, OSError) as exc:
             errors.append(f"Registry roster: {exc}")
         articles = add_exposure_leads(subject, articles, errors, topic_cache, check)
         with db.connect() as conn:
-            for article in articles:
+            for index, article in enumerate(articles):
+                company_progress(f"Processing lead {index + 1} of {len(articles)}", index, len(articles))
                 language = detect_language(article["title"], article["language"])
                 title_en, provider = translate_text(
                     article["title"], language, name, article["publisher"]
@@ -135,7 +178,8 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
             )
         time.sleep(0.25)
     from .headline_review import review_saved
-    review_saved(run_id)
+    report("Checking headline translations with Qwen")
+    review_saved(run_id, progress=report)
     with db.connect() as conn:
         counts = conn.execute(
             "SELECT result_count, error_count FROM search_runs WHERE id = %s", (run_id,)

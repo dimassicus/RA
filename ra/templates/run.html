@@ -8,6 +8,12 @@
 
 {% set v = verification_jobs %}
 <section class="panel check-progress" aria-label="Verification progress">
+  {% if search_progress %}
+  <label for="search-bar">Search progress</label>
+  <progress id="search-bar"{% if search_progress.total %} max="{{ search_progress.total }}" value="{{ search_progress.done }}"{% endif %}></progress>
+  <p id="search-step" role="status">{{ search_progress.message }}</p>
+  <small id="search-age" class="subtext">{% if search_progress.age is defined %}Last worker update {{ search_progress.age }}s ago.{% endif %}</small>
+  {% endif %}
   <label for="publisher-bar">Publisher article checks <strong id="publisher-percent">{{ v.get('percent',0) }}%</strong></label>
   <progress id="publisher-bar" max="100" value="{{ v.get('percent',0) }}"></progress>
   <p id="publisher-count">{{ v.get('completed',0) + v.get('failed',0) }} of {{ v.get('total',0) }} leads processed · {{ v.get('queued',0) }} queued · {{ v.get('running',0) }} running · {{ v.get('failed',0) }} failed · {{ v.get('attention',0) }} need attention</p>
@@ -68,6 +74,16 @@
       if (data.status !== {{ run.status|tojson }} || data.completed_companies > {{ run.completed_companies }}) {
         window.location.reload(); return;
       }
+      const step = data.discovery;
+      const bar = document.getElementById('search-bar');
+      if (step.total) {
+        bar.max = step.total;
+        bar.value = step.done;
+      } else {
+        bar.removeAttribute('value');
+      }
+      document.getElementById('search-step').textContent = step.message;
+      document.getElementById('search-age').textContent = step.age == null ? '' : 'Last worker update ' + step.age + 's ago.';
       {% endif %}
       const v = data.verification;
       for (const [id, percentage] of [['publisher',v.percent], ['translation',v.translation_percent]]) {

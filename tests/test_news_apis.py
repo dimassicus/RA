@@ -32,7 +32,8 @@ def test_both_providers_keep_direct_links_language_and_provenance(monkeypatch):
     assert gnews[0]["language"] == "pt"
     assert the_news[0]["discovery_service"] == "TheNewsAPI"
     assert the_news[0]["url"] == "https://other.test/two"
-    assert captured[0][1]["q"] == ['"Fertilizantes Heringer"']
+    assert captured[0][1]["q"][0].startswith('"Fertilizantes Heringer" NOT "sports"')
+    assert captured[1][1]["exclude_categories"] == ["sports,entertainment"]
     assert captured[1][1]["search"] == ['"Fertilizantes Heringer"']
     assert captured[0][1]["from"] == ["2026-10-27T12:00:00Z"]
     assert captured[1][1]["published_after"] == ["2026-10-27T12:00:00"]

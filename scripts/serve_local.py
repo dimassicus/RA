@@ -160,7 +160,7 @@ def load_local_env(environment: dict[str, str]) -> None:
     aliases = {"BRAVE API": "RA_BRAVE_API_KEY", "JINA API": "RA_JINA_API_KEY",
                "Firecrawler API": "RA_FIRECRAWL_API_KEY"}
     allowed.update(aliases.values())
-    allowed.update({"RA_BRAVE_DAILY_LIMIT", "RA_JINA_DAILY_LIMIT", "RA_FIRECRAWL_DAILY_LIMIT"})
+    allowed.add("RA_BRAVE_DAILY_LIMIT")
     for line in ENV_FILE.read_text().splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#") or "=" not in stripped:

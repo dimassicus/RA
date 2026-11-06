@@ -21,13 +21,20 @@ def configured(provider):
 def request(provider, path, *, headers=None, body=None):
     """Fixed TLS destination, no redirects, one atomic reservation before sending."""
     prefix = f'RA_{provider.upper()}'
-    try:
-        limit = int(os.environ.get(prefix + '_DAILY_LIMIT', '20'))
-    except ValueError:
-        limit = 0
-    if not db.reserve_news_api_request(provider.lower(), limit):
-        raise ValueError(f'{provider} daily request limit reached')
     key = os.environ[prefix + '_API_KEY'].strip()
+    if provider == 'Firecrawl':
+        reserved_day = db.reserve_firecrawl_credit()
+        if reserved_day is None:
+            raise ValueError('Firecrawl monthly credit limit reached')
+    elif provider == 'Jina':
+        db.reserve_news_api_request('jina', None)
+    else:
+        try:
+            limit = int(os.environ.get(prefix + '_DAILY_LIMIT', '20'))
+        except ValueError:
+            limit = 0
+        if not db.reserve_news_api_request(provider.lower(), limit):
+            raise ValueError(f'{provider} daily request limit reached')
     auth = {'X-Subscription-Token': key} if provider == 'Brave' else {'Authorization': 'Bearer ' + key}
     connection = http.client.HTTPSConnection(HOSTS[provider], timeout=22)
     try:
@@ -38,6 +45,9 @@ def request(provider, path, *, headers=None, body=None):
         except (ValueError, http.client.HTTPException, OSError):
             raise ValueError(f'{provider} request failed') from None
         if response.status != 200:
+            # These API rejections precede a scrape. Retain the reservation on ambiguous failures.
+            if provider == 'Firecrawl' and response.status in (400, 401, 402, 403, 422, 429):
+                db.release_firecrawl_credit(reserved_day)
             raise ValueError(f'{provider} HTTP {response.status}')
         raw = response.read(MAX_BYTES + 1)
         if len(raw) > MAX_BYTES:
@@ -48,6 +58,10 @@ def request(provider, path, *, headers=None, body=None):
             result = None
         if not isinstance(result, dict):
             raise ValueError(f'{provider} returned invalid data')
+        if provider == 'Firecrawl' and isinstance(result.get('data'), dict):
+            metadata = result['data'].get('metadata')
+            if isinstance(metadata, dict) and metadata.get('creditsUsed') == 0:
+                db.release_firecrawl_credit(reserved_day)
         return result
     finally:
         connection.close()

@@ -28,9 +28,9 @@ def connect():
     return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
 
-def reserve_news_api_request(provider: str, daily_limit: int) -> bool:
+def reserve_news_api_request(provider: str, daily_limit: int | None) -> bool:
     """Atomically reserve one request against the provider's UTC-day budget."""
-    if daily_limit < 1:
+    if daily_limit is not None and daily_limit < 1:
         return False
     with connect() as conn:
         row = conn.execute(
@@ -38,10 +38,32 @@ def reserve_news_api_request(provider: str, daily_limit: int) -> bool:
             "VALUES (%s, (now() AT TIME ZONE 'UTC')::date, 1) "
             "ON CONFLICT (provider, usage_date) DO UPDATE "
             "SET request_count = news_api_usage.request_count + 1 "
-            "WHERE news_api_usage.request_count < %s RETURNING request_count",
-            (provider, daily_limit),
+            "WHERE %s::integer IS NULL OR news_api_usage.request_count < %s RETURNING request_count",
+            (provider, daily_limit, daily_limit),
         ).fetchone()
     return row is not None
+
+
+def reserve_firecrawl_credit():
+    """One basic Markdown scrape costs at most one credit. Include earlier daily reservations."""
+    with connect() as conn:
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext('ra.firecrawl.monthly'))")
+        row = conn.execute("""
+            WITH period AS (SELECT (now() AT TIME ZONE 'UTC')::date AS today)
+            INSERT INTO news_api_usage (provider, usage_date, request_count)
+            SELECT 'firecrawl', today, 1 FROM period
+            WHERE (SELECT COALESCE(sum(request_count), 0) FROM news_api_usage
+                   WHERE provider = 'firecrawl' AND usage_date BETWEEN date_trunc('month', today)::date AND today) < 1000
+            ON CONFLICT (provider, usage_date) DO UPDATE SET request_count = news_api_usage.request_count + 1
+            RETURNING usage_date
+        """).fetchone()
+    return row["usage_date"] if row else None
+
+
+def release_firecrawl_credit(day):
+    with connect() as conn:
+        conn.execute("UPDATE news_api_usage SET request_count = request_count - 1 "
+                     "WHERE provider = 'firecrawl' AND usage_date = %s AND request_count > 0", (day,))
 
 
 def init_schema():
@@ -366,6 +388,7 @@ def list_runs(limit: int = 12):
 
 def run_topic_check(run_id, search, editions, branch, topic, *, include_factors=False):
     from .exposure import check_topic
+    from .news_topics import excluded_story
     with connect() as conn:
         claimed = conn.execute(
             "INSERT INTO exposure_checks (run_id,branch,topic) VALUES (%s,%s,%s) "
@@ -382,7 +405,9 @@ def run_topic_check(run_id, search, editions, branch, topic, *, include_factors=
             return hits, error
         row = conn.execute("SELECT hits,error FROM exposure_checks WHERE run_id=%s AND branch=%s AND topic=%s",
                            (run_id, branch, topic)).fetchone()
-        return row["hits"], row["error"]
+        # A restarted run may have cached its topic hits before discovery exclusions were added.
+        return [(hit, channel) for hit, channel in row["hits"]
+                if not excluded_story(hit["title"], hit["url"], publisher=hit.get("publisher", ""))], row["error"]
 
 
 def exposure_coverage(run_id):

@@ -68,14 +68,19 @@ def search_phrase(row, code):
     return " ".join(re.sub(r'[":()<>+=]', " ", unicodedata.normalize("NFC", text)).split())
 
 
-def save(row_id, english, scope, enabled, previous):
+def validated_description(english, scope, previous):
     text = " ".join(english.split())
     if not 3 <= len(text) <= 180 or not re.fullmatch(r"[A-Za-z][A-Za-z0-9 %,.'’&()/<>+=:–—-]*", text):
         raise ValueError("Enter a short English risk description, up to 180 characters.")
     if scope not in SCOPES:
         raise ValueError("Choose company, sector or country.")
-    if text not in SEEDS and not (row_id and text == previous):
+    if text not in SEEDS and text != previous:
         keywords.validate_english(text, "short English description of a condition to monitor in financial news")
+    return text
+
+
+def save(row_id, english, scope, enabled, previous):
+    text = validated_description(english, scope, previous if row_id else "")
     with db.connect() as conn:
         if row_id:
             updated = conn.execute("UPDATE risk_factors SET english=%s,scope=%s,enabled=%s,"
@@ -89,11 +94,11 @@ def save(row_id, english, scope, enabled, previous):
     reload()
 
 
-def save_translation(row_id, english, code, previous, phrase):
+def reviewed_translation(english, code, phrase, active_languages):
     phrase = " ".join(phrase.split())
-    if not row_id or not 3 <= len(english) <= 180:
+    if not 3 <= len(english) <= 180:
         raise ValueError("Choose an existing risk factor.")
-    if code not in languages() or not 1 <= len(phrase) <= 500:
+    if code not in active_languages or not 1 <= len(phrase) <= 500:
         raise ValueError("Choose an active language and enter a translation of up to 500 characters.")
     if keywords.percentage_values(english) != keywords.percentage_values(phrase):
         raise ValueError("Keep the percentages from the English description.")
@@ -103,6 +108,13 @@ def save_translation(row_id, english, code, previous, phrase):
         raise ValueError("Translation review unavailable. Try again when local Qwen is ready.") from exc
     if checked.get(english) is not True:
         raise ValueError("Qwen could not confirm the translation. Check the wording, direction and thresholds.")
+    return phrase
+
+
+def save_translation(row_id, english, code, previous, phrase):
+    if not row_id:
+        raise ValueError("Choose an existing risk factor.")
+    phrase = reviewed_translation(english, code, phrase, languages())
     with db.connect() as conn:
         updated = conn.execute("UPDATE risk_factors SET translations=translations || %s, search_cues=search_cues - %s::text "
                                "WHERE id=%s AND english=%s AND COALESCE(translations->>%s,'')=%s",
@@ -110,6 +122,50 @@ def save_translation(row_id, english, code, previous, phrase):
         if not updated.rowcount:
             raise ValueError("The factor or translation changed. Compare the current wording before saving again.")
     reload()
+
+
+def save_all(form):
+    edits = []
+    active_languages = languages()
+    for key in form.getlist("id"):
+        if not key.isascii() or not key.isdecimal() or len(key) > 18:
+            raise ValueError("Invalid risk factor ID.")
+        prefix = key + "."
+        previous = form[prefix + "previous"]
+        try:
+            english = validated_description(form[prefix + "english"], form[prefix + "scope"], previous)
+            originals, translations = {}, {}
+            for code in form.getlist(prefix + "language"):
+                if code not in active_languages:
+                    raise ValueError("Choose an active language.")
+                originals[code] = form[prefix + code + ".original"]
+                try:
+                    translations[code] = reviewed_translation(english, code, form[prefix + code + ".translation"], active_languages)
+                except ValueError as exc:
+                    raise ValueError(f"{keywords.language_name(code)}: {exc}") from exc
+        except ValueError as exc:
+            raise ValueError(f"{previous}: {exc}") from exc
+        if any(form[prefix + field] not in ("true", "false") for field in ("enabled", "previous_enabled")):
+            raise ValueError("Invalid Active setting.")
+        before = (previous, form[prefix + "previous_scope"], form[prefix + "previous_enabled"] == "true")
+        after = (english, form[prefix + "scope"], form[prefix + "enabled"] == "true")
+        edits.append((int(key), before, after, originals, translations))
+
+    # Finish model calls before taking locks. Apply the entire batch or roll it back.
+    with db.connect() as conn, conn.transaction():
+        for row_id, before, after, originals, translations in sorted(edits, key=lambda edit: edit[0]):
+            row = conn.execute("SELECT * FROM risk_factors WHERE id=%s FOR UPDATE", (row_id,)).fetchone()
+            if (not row or (row["english"], row["scope"], row["enabled"]) != before
+                    or any(row["translations"].get(code, "") != text for code, text in originals.items())):
+                raise ValueError(f"{before[0]} changed since you opened the list. Compare the latest values before retrying.")
+            same_english = before[0] == after[0]
+            saved = row["translations"] if same_english else {}
+            cues = row["search_cues"] if same_english else {}
+            conn.execute("UPDATE risk_factors SET english=%s,scope=%s,enabled=%s,translations=%s,search_cues=%s WHERE id=%s",
+                         (*after, Jsonb(saved | translations), Jsonb({k: v for k, v in cues.items() if k not in translations}), row_id))
+    if edits:
+        reload()
+    return len(edits)
 
 
 def expand_queries(code):

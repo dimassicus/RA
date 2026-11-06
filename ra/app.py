@@ -108,6 +108,19 @@ def create_app() -> Flask:
                                options=risk_factors.SCOPES if factors else keywords.DIRECTIONS, editing=editing, draft=draft,
                                error=keywords.last_error)
 
+    @app.post("/risk-factors/save-all")
+    def save_all_risk_factors():
+        try:
+            count = risk_factors.save_all(request.form)
+        except UniqueViolation:
+            return jsonify(error="An English risk factor with that description already exists."), 409
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        if count:
+            keywords.schedule()
+            flash("All risk factor edits saved.", "success")
+        return jsonify(saved=count)
+
     @app.get("/scores")
     def scores():
         weeks = request.args.get("weeks", "12")
@@ -354,7 +367,7 @@ def create_app() -> Flask:
             rosters=governance_roster.observations(run_id) if view == "governance" else [],
             exposure_checks=db.exposure_coverage(run_id) if view == "exposure" else [],
             score_labels=LABELS, verification_jobs=verification_store.job_summary(run_id),
-            all_count=len(all_results),
+            search_progress=worker.search_progress(run), all_count=len(all_results),
             selected_count=sum(bool(item["report_selected"]) for item in all_results),
             hidden_selected=[item["id"] for item in all_results
                              if item["report_selected"] and item["id"] not in visible_ids],
@@ -366,7 +379,7 @@ def create_app() -> Flask:
         if not run:
             abort(404)
         payload = {key: run[key] for key in ("status", "total_companies", "completed_companies", "result_count", "error_count")}
-        return jsonify(**payload, verification=verification_store.job_summary(run_id))
+        return jsonify(**payload, discovery=worker.search_progress(run), verification=verification_store.job_summary(run_id))
 
     @app.get("/runs/<int:run_id>/company-report")
     def download_company_report(run_id):

@@ -74,7 +74,7 @@ def test_provider_uses_one_preferred_alias_request(monkeypatch, provider, env, p
         return True
     news_apis.search(provider, VIETNAM, fetcher=fetch, reserve=reserve, now=NOW)
     assert len(calls) == len(reservations) == 1
-    assert calls[0][param] == ['"PVFCCo"']
+    assert calls[0][param][0].split(" NOT ")[0] == '"PVFCCo"'
 
 
 def test_empty_new_fields_preserve_pre_alias_intake_fingerprint():

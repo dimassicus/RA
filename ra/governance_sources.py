@@ -9,6 +9,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from .aliases import contains, normalized
+from .news_topics import excluded_story
 from .article_content import fetch_bytes, retrieve
 from .preliminary import country_code, id_equal
 
@@ -350,7 +351,7 @@ def recent_notices(subject, publisher, url, fetch, now=None, errors=None):
             for title, dest, date, lang in notice_rows(subject, publisher, html):
                 if date.date() < start:
                     reached_older = True
-                elif date.date() <= today:
+                elif date.date() <= today and not excluded_story(title, dest):
                     results.append(dict(title=title, url=dest, publisher=publisher, published_at=date.replace(tzinfo=zone),
                                         query=url, language=lang, source_kind='official', discovery_service=publisher,
                                         signal_terms=risk_signals(title, lang)))

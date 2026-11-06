@@ -10,6 +10,7 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from . import db
+from .news_topics import excluded_query_terms, excluded_story
 
 
 PROVIDERS = {
@@ -106,6 +107,9 @@ def parse_articles(provider: str, payload: dict, query: str) -> list[dict]:
             continue
         source = record.get("source")
         publisher = str(source.get("name") or "") if isinstance(source, dict) else str(source or "")
+        if excluded_story(title, url, publisher=publisher, categories=record.get("categories") or (),
+                          summary=str(record.get("description") or record.get("snippet") or "")):
+            continue
         published = record.get("publishedAt") if provider == "gnews" else record.get("published_at")
         articles.append({
             "title": title, "url": url, "publisher": publisher,
@@ -134,12 +138,19 @@ def search(provider: str, subject: dict, fetcher=fetch_json,
     if provider == "gnews":
         if len(phrase) > 200:
             raise ProviderError("company name exceeds GNews query limit")
-        params = {"q": phrase, "max": 10, "from": since, "sortby": "publishedAt", "apikey": key}
+        from .search import LOCALES, normalized
+        locale = LOCALES.get(normalized(subject.get("country_registration", "")), ("en",))[0]
+        query = phrase
+        for term in excluded_query_terms(locale):
+            exclusion = f' NOT "{term}"'
+            if len(query + exclusion) <= 200:
+                query += exclusion
+        params = {"q": query, "max": 10, "from": since, "sortby": "publishedAt", "apikey": key}
         endpoint = "https://gnews.io/api/v4/search"
     else:
         # TheNewsAPI accepts UTC without a timezone suffix (GNews requires it).
         params = {"search": phrase, "published_after": since.removesuffix("Z"), "sort": "published_on",
-                  "limit": 3, "api_token": key}
+                  "limit": 3, "api_token": key, "exclude_categories": "sports,entertainment"}
         endpoint = "https://api.thenewsapi.com/v1/news/all"
     if not reserve(provider, daily_limit(provider)):
         raise ProviderError("daily request budget exhausted; this company was not checked")

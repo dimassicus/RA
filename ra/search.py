@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
 from . import keywords, news_apis, risk_factors
+from .news_topics import excluded_query_terms, excluded_story
 from .aliases import parse_aliases, provider_name, discovery_names, ambiguous, company_names, normalized as identity_normalized
 
 
@@ -147,8 +148,9 @@ def company_search_plan(subject):
 
 def feed_url(query: str, country: str) -> tuple[str, str]:
     language, region, edition = LOCALES.get(normalized(country), ("en-US", "US", "US:en"))
+    exclusions = " ".join(f'-"{term}"' for term in excluded_query_terms(language))
     return "https://news.google.com/rss/search?" + urlencode(
-        {"q": query + " when:7d", "hl": language, "gl": region, "ceid": edition}
+        {"q": f"{query} {exclusions} when:7d", "hl": language, "gl": region, "ceid": edition}
     ), language
 
 
@@ -165,12 +167,17 @@ def parse_feed(content: bytes, query: str, language: str, limit: int = 30) -> li
     if root.tag != "rss":
         raise ValueError("Unexpected news feed format")
     articles = []
-    for item in root.findall("./channel/item")[:limit]:
+    for item in root.findall("./channel/item"):
+        if len(articles) >= limit:
+            break
         title = (item.findtext("title") or "").strip()
         url = (item.findtext("link") or "").strip()
         if not title or not url.startswith("https://"):
             continue
         source = item.find("source")
+        publisher = source.text.strip() if source is not None and source.text else ""
+        if excluded_story(title, url, publisher=publisher, categories=[c.text for c in item.findall("category")]):
+            continue
         date_text = item.findtext("pubDate")
         try:
             published_at = parsedate_to_datetime(date_text).astimezone(timezone.utc) if date_text else None
@@ -179,7 +186,7 @@ def parse_feed(content: bytes, query: str, language: str, limit: int = 30) -> li
         articles.append({
             "title": title,
             "url": url,
-            "publisher": source.text.strip() if source is not None and source.text else "",
+            "publisher": publisher,
             "published_at": published_at,
             "query": query,
             "language": language,
@@ -251,6 +258,8 @@ def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None) 
             url = document.get("link_url") or document.get("permalink") or ""
             if not title or not url.startswith("https://"):
                 continue
+            if excluded_story(title, url):
+                continue
             date_text = document.get("file_published_date") or document.get("file_date")
             try:
                 published_at = datetime.fromisoformat(date_text.replace("Z", "+00:00")) if date_text else None
@@ -266,7 +275,7 @@ def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None) 
     return articles
 
 
-def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_json_post) -> tuple[list[dict], list[str]]:
+def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_json_post, *, progress=None) -> tuple[list[dict], list[str]]:
     articles, errors = [], []
     seen_urls = set()
     from .governance_sources import notice_source, recent_notices
@@ -306,7 +315,10 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
             errors.append(f"{provider}: {exc}")
         except Exception as exc:
             errors.append(f"{provider}: {type(exc).__name__}: request could not be completed")
-    for query, edition in company_search_plan(subject):
+    queries = company_search_plan(subject)
+    for index, (query, edition) in enumerate(queries):
+        if progress:
+            progress(f"Searching company news · query {index + 1} of {len(queries)}", index, len(queries))
         url, language = feed_url(query, edition)
         try:
             for article in parse_feed(fetcher(url), query, language):

@@ -82,3 +82,38 @@ def test_launcher_accepts_existing_recovery_labels(tmp_path, setup):
     result = {}
     serve_local.load_local_env(result)
     assert result == {'RA_BRAVE_API_KEY':'b', 'RA_JINA_API_KEY':'j', 'RA_FIRECRAWL_API_KEY':'f'}
+
+
+def test_uncapped_jina_and_monthly_firecrawl(setup):
+    from unittest.mock import Mock
+    import datetime
+
+    day = datetime.date(2026, 11, 6)
+    connection = Mock()
+    response = connection.getresponse.return_value
+    response.status = 200
+    response.read.return_value = b'{}'
+    setup.setattr(providers.http.client, 'HTTPSConnection', lambda *args, **kwargs: connection)
+    daily = Mock(return_value=True)
+    setup.setattr(providers.db, 'reserve_news_api_request', daily)
+    setup.setenv('RA_JINA_DAILY_LIMIT', '20')
+    for _ in range(21):
+        providers.request('Jina', '/article')
+    daily.assert_called_with('jina', None)
+    setup.setenv('RA_FIRECRAWL_DAILY_LIMIT', '0')
+    setup.setattr(providers.db, 'reserve_firecrawl_credit', Mock(side_effect=[day, None, day, day]))
+    release = Mock()
+    setup.setattr(providers.db, 'release_firecrawl_credit', release)
+    providers.request('Firecrawl', '/v2/scrape', body={'url': URL})
+    with pytest.raises(ValueError, match='monthly credit limit'):
+        providers.request('Firecrawl', '/v2/scrape', body={'url': URL})
+    assert connection.request.call_count == 22
+    release.assert_not_called()
+    response.status = 429
+    with pytest.raises(ValueError, match='HTTP 429'):
+        providers.request('Firecrawl', '/v2/scrape', body={'url': URL})
+    release.assert_called_once_with(day)
+    response.status = 200
+    response.read.return_value = b'{"data":{"metadata":{"creditsUsed":0}}}'
+    providers.request('Firecrawl', '/v2/scrape', body={'url': URL})
+    assert release.call_count == 2

@@ -101,13 +101,15 @@ def review_note(article):
     return "Translation review: " + status.replace("_", " ")
 
 
-def review_saved(run_id):
+def review_saved(run_id, *, progress=None):
     with db.connect() as conn:
         rows = conn.execute(
             "SELECT id,title,language,title_en FROM search_results WHERE run_id=%s AND title_en<>'' "
             "AND lower(split_part(language,'-',1)) <> 'en' AND COALESCE(headline_review->>'status','unavailable')='unavailable' "
             "ORDER BY id", (run_id,)).fetchall()
-    for row in rows:
+    for index, row in enumerate(rows):
+        if progress:
+            progress(f"Qwen · Checking headline translation {index + 1} of {len(rows)}", index, len(rows))
         result = audit(row["title"], row["language"], row["title_en"])
         with db.connect() as conn:
             conn.execute("UPDATE search_results SET headline_review=%s WHERE id=%s AND title_en=%s AND language=%s",

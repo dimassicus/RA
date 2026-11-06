@@ -26,7 +26,9 @@ def test_google_news_queries_are_limited_to_seven_days():
     from urllib.parse import parse_qs, urlparse
     from ra.search import feed_url
     url, language = feed_url('"Acme Manufacturing"', "Brazil")
-    assert parse_qs(urlparse(url).query)["q"] == ['"Acme Manufacturing" when:7d']
+    query = parse_qs(urlparse(url).query)["q"][0]
+    assert query.startswith('"Acme Manufacturing" ') and query.endswith(" when:7d")
+    assert '-"futebol"' in query and '-"cinema"' in query
     assert language == "pt-BR"
 
 
@@ -217,3 +219,44 @@ def test_factor_queries_are_scoped_localized_and_preserve_successful_leads(monke
     assert "timeout" in error and "10%" not in calls[0]
     assert "Brasil" in calls[1] and "Desvalorização cambial" in calls[1]
     assert check_topic("sector", "fertilizer", select, ["brazil"], include_factors=True) == ([], "")
+
+
+def test_topics_dropped_at_intake_before_signals_and_result_limit(monkeypatch):
+    from ra import news_apis, search
+    from ra.news_topics import excluded_story
+
+    def check_signals(title, language=""):
+        assert "extends debt" in title
+        return []
+
+    monkeypatch.setattr(search, "signal_terms", check_signals)
+    feed = b"""<rss><channel>
+      <item><title>Acme reports losses</title><category>Sports</category><link>https://x.test/a</link></item>
+      <item><title>Acme reports losses</title><link>https://x.test/culture/b</link></item>
+      <item><title>Acme extends debt</title><link>https://x.test/c</link></item>
+    </channel></rss>"""
+    assert [r["title"] for r in parse_feed(feed, "Acme", "en", limit=1)] == ["Acme extends debt"]
+    for provider, field in (("thenewsapi", "data"), ("gnews", "articles")):
+        rows = [{"title": "Acme files an appeal", "url": "https://x.test/d", "description": "The football club lost."},
+                {"title": "Acme files an appeal", "url": "https://x.test/e", "categories": ["entertainment"]},
+                {"title": "Acme extends debt", "url": "https://x.test/f"}]
+        assert [r["title"] for r in news_apis.parse_articles(provider, {field: rows}, "Acme")] == ["Acme extends debt"]
+    for title in ("Campeonato brasileiro de futebol", "Champions League draw", "Liên hoan phim Việt Nam",
+                  "Фестиваль в Баку", "İstanbul sanat sergisi", "مهرجان القاهرة", "Διεθνές φεστιβάλ",
+                  "Futbol bo‘yicha terma jamoa", "Bakı şəhərində konsert"):
+        assert excluded_story(title, "https://x.test/a"), title
+    for title in ("Agriculture exports fall", "Bank reviews risk culture", "Polymer film factory closes"):
+        assert not excluded_story(title, "https://x.test/a"), title
+    assert excluded_story("Brazil names replacements", "https://x.test/b", publisher="ESPN Brasil")
+
+
+def test_exposure_excludes_sport_and_culture_even_when_risk_factor_matches():
+    from ra.exposure import search_topic
+    feed = b"""<rss><channel>
+      <item><title>Brazil fertilizer sponsor faces losses after football deal</title><link>https://x.test/s</link></item>
+      <item><title>Brazil fertilizer sponsor funds a museum</title><link>https://x.test/c</link></item>
+      <item><title>Brazil fertilizer shipments face restrictions</title><link>https://x.test/r</link></item>
+    </channel></rss>"""
+    for scope, topic in (("country", "brazil"), ("sector", "fertilizer")):
+        hits = search_topic(scope, topic, fetcher=lambda _: feed, factor=("New restrictions", "restrictions"))
+        assert [item["url"] for item, channel in hits] == ["https://x.test/r"]

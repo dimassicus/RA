@@ -424,7 +424,8 @@ def test_registry_history_is_per_issuer_idempotent_and_reported(database):
     from ra import governance_roster as registry
     from ra.company_report import load_report
     company, first, _ = seed(database)
-    company = dict(company, tax_id='22266175000188')
+    # A synthetic CNPJ keeps this registry fixture independent of Heringer's live IR site.
+    company = dict(company, tax_id='12345678000195')
     key = str(company['id'])
     member = {'nome_socio':'Jane Example', 'qualificacao_socio':'Diretor'}
     def registry_data(url):
@@ -537,3 +538,82 @@ def test_edit_one_risk_translation_from_list(database, monkeypatch):
     saved, = risk_factors.records()
     assert saved["translations"] == {"pt": corrected, "el": "old Greek"} and saved["search_cues"] == {"el": ["Greek cue"]}
     assert risk_factors.search_phrase(risk_factors.active("country")[0], "pt") == corrected
+
+
+def test_save_all_risk_factors(database, monkeypatch):
+    from ra import keywords, risk_factors
+    first, second = list(risk_factors.SEEDS)[:2]
+    ids = [database.execute("INSERT INTO risk_factors(english,scope,translations,search_cues) "
+                            "VALUES (%s,'company',%s,%s) RETURNING id",
+                            (name, db.Jsonb({"pt": "original", "es": "otra"}),
+                             db.Jsonb({"pt": ["old cue"], "es": ["otra"]}))).fetchone()["id"]
+           for name in (first, second)]
+    monkeypatch.setattr(risk_factors, "_rows", risk_factors._rows)
+    monkeypatch.setattr(risk_factors, "languages", lambda: ["pt", "es"])
+    monkeypatch.setattr(keywords, "validate_english", lambda *args: None)
+    reviews, scheduled = [], []
+    def review(terms, code, factors, context):
+        reviews.append((terms, code))
+        return {english: text != "rejected" for english, text in terms.items()}
+    monkeypatch.setattr(keywords, "review_translations", review)
+    monkeypatch.setattr(keywords, "schedule", lambda: scheduled.append(True))
+    client = create_app().test_client()
+    assert 'id="save-all"' in client.get("/risk-factors").text
+    with client.session_transaction() as session:
+        session["csrf_token"] = "token"
+    form = {"csrf_token": "token", "id": list(map(str, ids))}
+    for row_id, english in zip(ids, (first, second)):
+        form.update({f"{row_id}.{field}": value for field, value in {
+            "previous": english, "english": english, "scope": "country", "previous_scope": "company",
+            "enabled": "false", "previous_enabled": "true", "language": "pt",
+            "pt.original": "original", "pt.translation": "updated",
+        }.items()})
+    renamed = "Major change in shareholding"
+    form[f"{ids[1]}.english"] = renamed
+    def submit(**overrides):
+        return client.post("/risk-factors/save-all", data=form | overrides)
+    assert submit(csrf_token="bad").status_code == 400
+    assert "Portuguese" in submit(**{f"{ids[1]}.pt.translation": "rejected"}).json["error"]
+    assert "changed" in submit(**{f"{ids[1]}.pt.original": "stale"}).json["error"]
+    assert all(row["enabled"] and row["scope"] == "company" for row in risk_factors.records())
+    assert not scheduled
+    assert submit().json == {"saved": 2}
+    a, b = sorted(risk_factors.records(), key=lambda row: row["id"])
+    assert a["translations"] == {"pt": "updated", "es": "otra"} and a["search_cues"] == {"es": ["otra"]}
+    assert b["english"] == renamed and b["translations"] == {"pt": "updated"} and b["search_cues"] == {}
+    assert reviews[-1] == ({renamed: "updated"}, "pt")
+    assert all(not row["enabled"] and row["scope"] == "country" for row in (a, b))
+    assert len(scheduled) == 1
+
+
+def test_live_search_queue_and_worker_step(database, monkeypatch):
+    active = db.create_run("selected", [{"name": "Heringer"}])
+    waiting = db.create_run("selected", [{"name": "Heringer"}])
+    database.execute("UPDATE search_runs SET status='running' WHERE id=%s", (active,))
+    client = create_app().test_client()
+    def progress(run_id):
+        return client.get(f"/api/runs/{run_id}/status").json["discovery"]
+    assert f"Waiting behind run #{active}" in progress(waiting)["message"]
+    monkeypatch.setattr(worker, "_activity", None)
+    worker._report(active, "Heringer · Searching company news · query 2 of 8", 1, 8)
+    step = progress(active)
+    assert (step["done"], step["total"]) == (1, 8) and step["age"] >= 0
+    assert step["message"] in client.get(f"/runs/{active}").text
+    worker._report(active, "Checking leadership and ownership records")
+    assert progress(active)["done"] is None
+    database.execute("UPDATE search_runs SET status='completed' WHERE id=%s", (active,))
+    assert progress(active) is None and "Waiting for the search worker" in progress(waiting)["message"]
+
+
+def test_firecrawl_monthly_credit_boundary(database):
+    today = database.execute("SELECT (now() AT TIME ZONE 'UTC')::date AS day").fetchone()['day']
+    start = today.replace(day=1)
+    with database.cursor() as cur:
+        cur.executemany("INSERT INTO news_api_usage VALUES (%s,%s,%s)", [
+            ('firecrawl', start - timedelta(days=1), 1000), ('firecrawl', start, 999), ('jina', today, 20)])
+    assert db.reserve_firecrawl_credit() == today
+    assert db.reserve_firecrawl_credit() is None
+    assert db.reserve_news_api_request('jina', None)
+    db.release_firecrawl_credit(today)
+    assert db.reserve_firecrawl_credit() == today
+    assert db.reserve_firecrawl_credit() is None
