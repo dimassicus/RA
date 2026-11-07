@@ -491,11 +491,14 @@ def test_keyword_edit_translate_and_disable_in_review(database, monkeypatch):
         raise keywords.ProviderError("offline test")
     monkeypatch.setattr(keywords.online_translation, "translate", offline)
     term = "covenant breach"
-    def model(prompt, data, schema):
+    def model(prompt, data, schema, **kwargs):
         if "english" in schema["properties"]:
             return {"english": True}
         if schema["properties"][term]["type"] == "boolean":
+            assert not kwargs
             return {term: data["translations"][term] == "violação de cláusula"}
+        from ra.headline_review import GEMMA
+        assert kwargs == {"model": GEMMA}
         return {term: "violação de cláusula" if isinstance(data["terms"], dict) else "unrelated wording"}
     monkeypatch.setattr(keywords, "model_json", model)
     client = create_app().test_client()
@@ -574,11 +577,14 @@ def test_risk_factor_editing_translation_and_retry(database, monkeypatch):
     text = "Currency falls more than 10% in seven days"
     good = "A moeda cai mais de 10% em sete dias"
     monkeypatch.setattr(translation, "installed_keyword_translations", lambda terms, code: {text:good.replace("10%", "5%")})
-    def model(prompt, data, schema):
+    def model(prompt, data, schema, **kwargs):
         if "english" in schema["properties"]:
             return {"english": True}
         if "translations" in data:
+            assert not kwargs
             return {text: data["translations"][text] == good}
+        from ra.headline_review import GEMMA
+        assert kwargs == {"model": GEMMA}
         return {text:good}
     monkeypatch.setattr(keywords, "model_json", model)
     client = create_app().test_client()

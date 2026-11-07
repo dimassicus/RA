@@ -12,7 +12,7 @@ def offline_tests(monkeypatch):
     monkeypatch.setattr(qa.online_translation, "translate", unavailable)
 
 
-def test_fallback_abstains_before_trying_gemma_and_preserves_publisher(monkeypatch):
+def test_fallback_uses_only_gemma_and_preserves_publisher(monkeypatch):
     import json
     calls = []
     def local(port, path, body, timeout):
@@ -26,13 +26,24 @@ def test_fallback_abstains_before_trying_gemma_and_preserves_publisher(monkeypat
     monkeypatch.setattr(qa, "local_request", local)
     monkeypatch.setattr(translation, "argos_translate", lambda *a: ("", "no model"))
     candidate, provider = translation.translate_text("Компания погасила кредит - Пресса", "ru", publisher="Пресса")
-    assert calls == [qa.QWEN, qa.GEMMA]
+    assert calls == [qa.GEMMA]
     assert candidate == "The company repaid its loan. - Пресса" and qa.GEMMA in provider
 
 
 def test_invalid_envelopes_leave_original_for_review(monkeypatch):
     monkeypatch.setattr(qa, "local_request", lambda *a, **kw: {"model":"other","choices":[]})
     candidate, provider = qa.fallback("سندات", "ar", "", "no Argos")
+    assert not candidate and "needs review" in provider
+
+
+def test_gemma_failure_does_not_fall_back_to_qwen(monkeypatch):
+    calls = []
+    def unavailable(port, path, body, timeout):
+        calls.append(body["model"])
+        raise ConnectionRefusedError()
+    monkeypatch.setattr(qa, "local_request", unavailable)
+    candidate, provider = qa.fallback("Empresa paga dívida", "pt", "", "no Argos")
+    assert calls == [qa.GEMMA]
     assert not candidate and "needs review" in provider
 
 
@@ -78,7 +89,8 @@ def test_missing_argos_uses_online_for_any_language_before_local(monkeypatch):
     assert calls == [("Headline", "uz", "en"), ("Headline", "sw", "en")]
 
 
-def test_readiness_requires_api_and_loaded_qwen(monkeypatch):
+def test_readiness_requires_api_and_downloaded_qwen_without_loading(monkeypatch):
+    monkeypatch.setattr(qa.local_models, "cli_path", lambda: "/lms")
     def disconnected(*args, **kwargs):
         raise ConnectionRefusedError()
     monkeypatch.setattr(qa, "local_request", disconnected)
@@ -88,12 +100,16 @@ def test_readiness_requires_api_and_loaded_qwen(monkeypatch):
     assert not qa.readiness()["ready"]
     monkeypatch.setattr(qa, "local_request", lambda *a, **kw: {"data": [{"id": qa.QWEN, "state": "loaded"}]})
     assert qa.readiness()["ready"]
+    monkeypatch.setattr(qa, "local_request", lambda *a, **kw: {"data": [{"id": qa.QWEN, "state": "not-loaded"}]})
+    assert qa.readiness()["ready"]
+    monkeypatch.setattr(qa.local_models, "_activity", "Loading Gemma 31B…")
+    assert qa.readiness()["message"] == "Loading Gemma 31B…"
 
 
 def test_successful_audit_requests_reasoning_off(monkeypatch):
     qa._audit.cache_clear()
     def reviewer(*args, **kwargs):
-        assert kwargs == {"enabled": False, "shadow_only": True, "retry_reason": ""}
+        assert kwargs == {"enabled": False, "shadow_only": True, "retry_reason": "", "request_fn": qa.local_request}
         return {"assessments": [{"verdict": "faithful", "issues": []}]}, {"model": qa.QWEN, "protocol": "shadow-v1"}
     monkeypatch.setattr(qa, "review", reviewer)
     assert qa.audit("Empresa paga dívida", "pt", "Company repays debt")["reasoning"] == "off"

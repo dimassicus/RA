@@ -99,7 +99,7 @@ def shadow_schema(labels):
     return obj({"reviews":dict(array(row), minItems=len(labels), maxItems=len(labels))})
 
 
-def review(source,source_lang,target_lang,candidates,model,port,*,enabled,shadow_only=False,retry_reason=''):
+def review(source,source_lang,target_lang,candidates,model,port,*,enabled,shadow_only=False,retry_reason='',request_fn=None):
     if not source.strip() or not candidates or any(not t.strip() for t in candidates.values()):
         raise ValueError('Empty input')
     content=json.dumps({'source_language':source_lang,'target_language':target_lang,
@@ -120,7 +120,7 @@ def review(source,source_lang,target_lang,candidates,model,port,*,enabled,shadow
             '\nThe previous response failed validation: ' + retry_reason[:250] +
             '. Recheck the original source and candidate. Copy evidence fragments exactly from each respective text. '
             'If you cannot substantiate an error with valid quotations, return uncertain with issues:[].')
-    envelope=local_request(port,'/v1/chat/completions',request,timeout=600)
+    envelope=(request_fn or local_request)(port,'/v1/chat/completions',request,timeout=600)
     try:
         choices=envelope['choices']
         if len(choices)!=1 or choices[0].get('finish_reason')!='stop':

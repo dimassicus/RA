@@ -8,9 +8,9 @@
   <a class="button secondary" href="{{ url_for('keyword_settings', factors=true) }}">Risk factors</a>
 </div>
 <section class="panel form-panel">
-  <h2>Translation reviewer</h2>
+  <h2>Local models</h2>
   <p role="status">{{ reviewer.message }}</p>
-  <p>Start the LM Studio server on port 1234 and load Qwen 27B. RA requests reasoning off.</p>
+  <p>Start the LM Studio server on port 1234. Keep Gemma 31B and Qwen 27B downloaded. RA loads one at a time: Gemma translates when needed, Qwen reviews. Both use reasoning off. Loading and switching appear in the run’s live status.</p>
   <a href="{{ url_for('setup') }}">Check readiness again</a>
 </section>
 <section class="panel list-panel">
