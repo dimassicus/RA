@@ -234,6 +234,42 @@ def test_source_cache_weekly_dedup_review_and_grouping_corrections(database):
     assert score_store.week_detail(company['id'], start)[0]['score'] == 2
 
 
+def test_multilingual_source_cache_retries_and_analyst_decisions(database, monkeypatch):
+    from ra import headline_review, translation, verification_store
+    company, run_id, article = seed(database)
+    source = {'status': 'available', 'language': 'vi', 'body': 'Original company financial statement.',
+              'sha256': 'original-body-hash', 'final_url': article['url'], 'method': 'test document'}
+    monkeypatch.setattr(headline_review, 'readiness', lambda: {'ready': False, 'message': 'Start LM Studio'})
+    result = verification_store.verify_article(article['id'], fetcher=lambda url: source)
+    assert result['status'] == 'needs_review' and not score_store.get_article(article['id'])['score_included']
+    assert verification_store.job_summary(run_id)['source_retryable'] == 1
+    assert verification_store.retry_failed_run(run_id) == 1
+    monkeypatch.setattr(headline_review, 'readiness', lambda: {'ready': True})
+    monkeypatch.setattr(translation, 'argos_translate', lambda *a, **kw: (
+        'Acme Manufacturing reports net losses of 40 million dollars.', 'Argos test'))
+    calls = []
+    def audit(*args, **kwargs):
+        calls.append(args)
+        return {'status': 'faithful', 'issues': [], 'model': headline_review.QWEN, 'reasoning': 'off'}
+    monkeypatch.setattr(headline_review, 'audit', audit)
+    no_fetch = lambda url: pytest.fail('Saved source must be reused')
+    result = verification_store.verify_article(article['id'], fetcher=no_fetch)
+    assert result['status'] == 'supported' and result['score'] == -1
+    assert result['evidence'][0]['original_passages'] == [source['body']]
+    assert score_store.get_article(article['id'])['score_included']
+    cached = database.execute('SELECT document FROM article_documents WHERE url=%s', (article['url'],)).fetchone()['document']
+    assert cached['body'] == source['body'] and cached['translation']['status'] == 'faithful'
+    with create_app().test_client() as client:
+        page = client.get(f"/articles/{article['id']}/score").text
+        assert 'Original source passage' in page and source['body'] in page
+        assert '1/1 passages approved' in page
+    score_store.review_score(article['id'], 0, False, 'Analyst excludes this source after further checks')
+    assert verification_store.verify_article(article['id'], fetcher=no_fetch) == result
+    assert len(calls) == 1
+    saved = score_store.get_article(article['id'])
+    assert saved['score_status'] == 'reviewed' and saved['score'] == 0 and not saved['score_included']
+
+
 def test_source_queue_limits_endpoints_and_failure_visibility(database):
     from ra import verification_store
     from psycopg.types.json import Jsonb

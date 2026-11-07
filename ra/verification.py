@@ -7,14 +7,15 @@ import re
 
 from .aliases import company_names, headline_identity, normalized
 from .scoring import COMPILED, UNCERTAIN, NEGATION
+from . import article_translation
 
-VERSION = 'source-attribution-v1'
+VERSION = 'source-attribution-v2'
 # Deliberately closed vocabulary between the company name and event phrase.
 # 'Acme's supplier filed for bankruptcy' must never become Acme's bankruptcy.
-BRIDGE = re.compile(r'(?:(?:s|has|have|had|is|was|were|has been|will|its|the|a|an|'
+BRIDGE = re.compile(r'(?:(?:s|has|have|had|is|was|were|has been|will|its|the|a|an|that it|that the company|'
                     r'files|filed|filing|for|reports|reported|announces|announced|'
-                    r'confirms|confirmed|suffers|suffered|enters|entered|seeks|sought|'
-                    r'ceo|chairman|president|chief executive|net|annual|quarterly|'
+                    r'confirms|confirmed|declares|declared|suffers|suffered|enters|entered|seeks|sought|'
+                    r'company|ceo|chairman|president|chief executive|net|annual|quarterly|'
                     r'foi|esta|em|entrou|pede|pediu|anuncia|anunciou|informa|'
                     r'informou|registra|registrou|teve|apresenta|apresentou|'
                     r'sua|seu|o|a|de|em|processo|pedido|decreta|decretou)\s*)*')
@@ -35,8 +36,13 @@ def verify(document, subject, article):
     if article.get('discovery_service') == 'FCA Warning RSS':
         return {**result, 'reason': 'Possible clone warning; analyst must identify the affected legal entity'}
     # An English headline is not a translation of the full article.
-    if document.get('language', '').split('-')[0] not in ('en', 'pt'):
-        return {**result, 'reason': 'Full-article language is not supported by attribution rules; analyst reading required'}
+    translated = document.get('language', '').lower().split('-')[0] not in ('en', 'pt')
+    if translated:
+        result['translation'] = article_translation.summary(document)
+        try:
+            body = article_translation.checked_text(document)
+        except ValueError as exc:
+            return {**result, 'reason': str(exc)}
     sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', body) if s.strip()]
     names = sorted(company_names(subject), key=len, reverse=True)
     identity_seen, ambiguous = False, False
@@ -82,8 +88,11 @@ def verify(document, subject, article):
             if not linked:
                 ambiguous = True
                 continue
-            result['evidence'].append({'score': score, 'rule': label, 'phrase': phrase,
-                                       'field': 'source article', 'sentence': sentence[:1200]})
+            evidence = {'score': score, 'rule': label, 'phrase': phrase,
+                        'field': 'reviewed article translation' if translated else 'source article', 'sentence': sentence[:1200]}
+            if translated:
+                evidence['original_passages'] = article_translation.original_passages(document, sentence)
+            result['evidence'].append(evidence)
     if not identity_seen:
         return {**result, 'status': 'unmatched', 'reason': 'Extracted source text does not establish this company identity'}
     if ambiguous:
@@ -93,6 +102,8 @@ def verify(document, subject, article):
     dominant = min(result['evidence'], key=lambda e: (-abs(e['score']), e['score']))
     result.update(status='supported', score=dominant['score'],
                   reason='Source explicitly attributes an event to the named company: ' + dominant['rule'])
+    if translated:
+        result['reason'] += '; full-article translation independently approved by Qwen (reasoning off)'
     # Used for narrow near-copy grouping; never group on event category alone.
     result['signature'] = normalized(' '.join(e['sentence'] for e in result['evidence']))
     return result

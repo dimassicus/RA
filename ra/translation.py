@@ -57,12 +57,14 @@ def installed_keyword_translations(terms, target_code):
             for term, result in zip(terms, outputs)}
 
 
-def argos_translate(text: str, language: str, company_name: str = "", publisher: str = "") -> tuple[str, str]:
+def argos_translate(text: str, language: str, company_name: str = "", publisher: str = "", *, complete=False) -> tuple[str, str]:
     """Return English text and provenance, or empty strings when unavailable."""
     text = (text or "").strip()
     source_code = language.split("-", 1)[0].lower()
     if not text:
         return "", ""
+    if complete and len(text) > 1000:
+        return "", "Article passage exceeds offline translation limit"
     if source_code == "en":
         return text, "original English"
     if source_code == "pt":
@@ -72,7 +74,7 @@ def argos_translate(text: str, language: str, company_name: str = "", publisher:
         ):
             if text.casefold().startswith(portuguese_prefix.casefold()):
                 body, provider = argos_translate(
-                    text[len(portuguese_prefix):], language, company_name, publisher
+                    text[len(portuguese_prefix):], language, company_name, publisher, complete=complete
                 )
                 return (english_prefix + body, provider) if body else ("", provider)
         if text.casefold() == "fato relevante":
@@ -108,6 +110,7 @@ def argos_translate(text: str, language: str, company_name: str = "", publisher:
         result = translator.translate_batch(
             [tokens], target_prefix=[[prefix]] if prefix else None,
             replace_unknowns=True, beam_size=4, length_penalty=0.2,
+            **({"max_input_length": 0, "max_decoding_length": 2048} if complete else {}),
         )[0]
         translated = tokenizer.decode_pieces(result.hypotheses[0]).replace("▁", " ").strip()
         if prefix and translated.startswith(prefix):

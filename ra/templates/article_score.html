@@ -10,7 +10,16 @@
 </section>
 <section class="panel form-panel"><h2>Full-article company and event check</h2>
 <p><strong>{{ article.verification.get('status', 'pending')|replace('_',' ') }}</strong> · {{ article.verification.get('reason', 'Source text has not been checked yet.') }}</p>
-<p class="subtext">RA checks publisher evidence automatically. A pending check needs no action. Qwen separately checks the English headline. “Supported” means an explicit statement in the extracted source, not independent confirmation. English and Portuguese rules require the named company to be the subject of the event sentence. Other languages, unclear timing and ambiguous attribution need analyst review.</p>
+<p class="subtext">RA checks publisher evidence automatically. “Supported” means an explicit statement in the extracted source, not independent confirmation. English and Portuguese use source-text rules directly. Other languages use complete article translations, independently checked by Qwen before the same company-impact rules run. Missing passages, translation uncertainty, unclear timing and ambiguous attribution require analyst review. A faithful translation alone cannot change a score.</p>
+{% set translation = article.verification.get('translation') %}
+{% if translation %}<p><strong>Full-article translation:</strong> {{ translation.get('reviewed', 0) }}/{{ translation.get('total', 0) }} passages approved · {{ translation.get('status', 'pending')|replace('_',' ') }}. {{ translation.get('reason', '') }}</p>
+<p class="subtext">{{ translation.get('providers', [])|join(' · ') }}</p>{% endif %}
+{% if body_translation %}<details><summary>Read article translations and checks</summary>
+{% for part in body_translation.get('parts', []) %}<h3>Passage {{ loop.index }}</h3>
+<p><strong>Original:</strong> {{ part.source }}</p><p><strong>English:</strong> {{ part.get('english') or 'Translation unavailable' }}</p>
+{% set check = part.get('review', {}) %}<p>{{ part.get('provider', '') }} · {{ check.get('status', 'pending')|replace('_',' ') }} · {{ check.get('reason', '') }}</p>
+{% for issue in check.get('issues', []) %}<p>{{ issue.explanation }}<br>Original: {{ issue.source_quote }}<br>Translation: {{ issue.translation_quote }}</p>{% endfor %}
+{% endfor %}</details>{% endif %}
 {% if job %}<p>Source job: {{ job.status }}{% if job.error %} · {{ job.error }}{% endif %}. Refresh this page to see completed checks.</p>{% endif %}
 {% if article.verification.get('status') == 'unavailable' %}
 <p><a href="https://www.google.com/search?{{ {'q': '"' ~ lookup_title ~ '" ' ~ article.publisher}|urlencode }}" target="_blank" rel="noopener noreferrer">Search the original-language headline and publisher ↗</a></p>{% endif %}
@@ -21,7 +30,8 @@
 {% for match in themes.matches %}<p><strong>{{ match.factor }}</strong> · {{ match.kind|capitalize }} match · {{ match.connection }}</p><blockquote>{{ match.quote }} <small>({{ match.from }})</small></blockquote>{% else %}{% if themes.status == 'checked' %}<p>No thematic matches found.</p>{% endif %}{% endfor %}{% endif %}
 {% if recovered_body %}<details><summary>Read recovered publisher text</summary>
 {% for paragraph in recovered_body.splitlines() %}<p>{{ paragraph }}</p>{% endfor %}</details>{% endif %}
-{% for evidence in article.verification.get('evidence', []) %}<blockquote>{{ evidence.sentence }}<p class="subtext">{{ evidence.rule }} · {{ '%+d'|format(evidence.score) }}</p></blockquote>{% endfor %}
+{% for evidence in article.verification.get('evidence', []) %}<blockquote>{{ evidence.sentence }}<p class="subtext">{{ evidence.rule }} · {{ '%+d'|format(evidence.score) }} · {{ evidence.field }}</p>
+{% for passage in evidence.get('original_passages', []) %}<details><summary>Original source passage</summary><p>{{ passage }}</p></details>{% endfor %}</blockquote>{% endfor %}
 <form method="post" action="{{ url_for('verify_article', result_id=article.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Publisher URL (optional, for a Google News link that does not redirect)<input name="source_url" type="url" placeholder="https://publisher.example/article" value="{{ article.verification.get('requested_url', '') }}" maxlength="4096"></label><button class="button secondary" {% if article.run_status in ('running','queued') or (job and job.status in ('running','queued')) %}disabled{% endif %}>Check full article</button></form>
 <p class="subtext">Public HTML and text PDFs only. Sources are cached seven days; access failures 24 hours. Publisher recovery may use Brave, Jina or Firecrawl requests. Unreadable sources remain excluded until analyst review.</p>
 {% if verification_history %}<details><summary>Source check history ({{ verification_history|length }})</summary><ul>{% for entry in verification_history %}<li>{{ entry.created_at.strftime('%d %b %Y %H:%M %Z') }} · {{ entry.assessment.status }} · {{ entry.assessment.reason }}</li>{% endfor %}</ul></details>{% endif %}

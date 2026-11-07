@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 
 from psycopg.types.json import Jsonb
 
-from . import db, risk_factors, score_store
+from . import article_translation, db, risk_factors, score_store
 from .article_content import READER_VERSION, canonical_url, retrieve
 from .verification import verify
 
@@ -42,6 +42,12 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
         with db.connect() as conn:
             conn.execute('INSERT INTO article_documents (url,document) VALUES (%s,%s) ON CONFLICT (url) '
                          'DO UPDATE SET document=EXCLUDED.document,fetched_at=now()', (url, Jsonb(document)))
+    prepared = article_translation.prepare(document)
+    if prepared != document:
+        with db.connect() as conn:
+            conn.execute('UPDATE article_documents SET document=%s WHERE url=%s AND document=%s',
+                         (Jsonb(prepared), url, Jsonb(document)))
+    document = prepared
     subject = subject_for(article, run)
     assessment = verify(document, subject, article)
     themes = risk_factors.assess(article, document, subject, [r for r in risk_factors.records() if r["enabled"]])
@@ -115,7 +121,9 @@ def job_summary(run_id):
                 (j.status IS NULL AND r.verification->>'status'<>'pending')) AS completed,
               count(*) FILTER (WHERE r.verification->>'status' IN ('unavailable','needs_review')
                                 OR j.status='failed') AS attention,
-              count(*) FILTER (WHERE (r.verification->>'status'='unavailable' OR j.status='failed')
+              count(*) FILTER (WHERE (r.verification->>'status'='unavailable' OR j.status='failed'
+                                OR r.verification->'translation'->>'status' IN ('needs_review','unavailable')
+                                OR r.verification->>'reason'='Full-article language is not supported by attribution rules; analyst reading required')
                                 AND COALESCE(j.status,'') NOT IN ('queued','running')) AS source_retryable,
               count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en' AND r.title_en='') AS missing,
               count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en' AND r.title_en<>'') AS translations,
@@ -140,12 +148,14 @@ def details(result_id):
         members = conn.execute('SELECT * FROM search_results WHERE event_group=%s AND event_group<>\'\' ORDER BY id',
                                (article['event_group'],)).fetchall()
         checked = article['verification'] or {}
-        recovered = conn.execute(
-            "SELECT document->>'body' AS body FROM article_documents WHERE url=%s "
-            "AND document->>'sha256'=%s AND document->>'review_only'='true'",
+        source = conn.execute(
+            "SELECT document FROM article_documents WHERE url=%s AND document->>'sha256'=%s",
             (checked.get('requested_url'), checked.get('document_hash'))
         ).fetchone() if checked.get('document_hash') else None
-        return {'recovered_body': recovered['body'] if recovered else '', 'verification_history': conn.execute('SELECT * FROM article_verification_history WHERE result_id=%s ORDER BY id DESC',
+        document = source['document'] if source else {}
+        return {'recovered_body': document.get('body', '') if document.get('review_only') else '',
+                'body_translation': document.get('translation', {}),
+                'verification_history': conn.execute('SELECT * FROM article_verification_history WHERE result_id=%s ORDER BY id DESC',
                                                      (result_id,)).fetchall(),
                 'event_history': conn.execute('SELECT * FROM article_event_history WHERE result_id=%s ORDER BY id DESC',
                                               (result_id,)).fetchall(),
@@ -161,7 +171,9 @@ def retry_failed_run(run_id):
         jobs = conn.execute("""
             INSERT INTO verification_jobs (result_id)
             SELECT r.id FROM search_results r LEFT JOIN verification_jobs j ON j.result_id=r.id
-            WHERE r.run_id=%s AND (j.status='failed' OR r.verification->>'status'='unavailable')
+            WHERE r.run_id=%s AND (j.status='failed' OR r.verification->>'status'='unavailable'
+              OR r.verification->'translation'->>'status' IN ('needs_review','unavailable')
+              OR r.verification->>'reason'='Full-article language is not supported by attribution rules; analyst reading required')
               AND COALESCE(j.status,'') NOT IN ('queued','running')
             ON CONFLICT (result_id) DO UPDATE SET status='queued',error='',updated_at=now()
             WHERE verification_jobs.status NOT IN ('queued','running')

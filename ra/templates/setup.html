@@ -15,7 +15,7 @@
 </section>
 <section class="panel list-panel">
   <h2>Recover a process</h2>
-  <p>Translation retries use saved articles. Source retries revisit failed or inaccessible publishers and may use API credits. Restarting a search creates a new run using the original company list.</p>
+  <p>Headline translation retries use saved articles. Source retries also retry incomplete full-article translations and older language-limited checks, reusing saved source text while its cache is valid. Revisiting failed or inaccessible publishers may use API credits. Restarting a search creates a new run using the original company list.</p>
   <div class="table-scroll"><table>
     <thead><tr><th>Run</th><th>Progress</th><th>Recovery</th></tr></thead>
     <tbody>{% for run in runs %}{% set v = run.checks %}
@@ -29,7 +29,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="form-actions">
               <button class="button secondary" name="stage" value="translations" {% if v.reviewed == v.translation_total %}disabled{% endif %}>Retry translations</button>
-              <button class="button secondary" name="stage" value="sources" {% if not v.source_retryable %}disabled{% endif %}>Retry failed sources ({{ v.source_retryable }})</button>
+              <button class="button secondary" name="stage" value="sources" {% if not v.source_retryable %}disabled{% endif %}>Retry source checks ({{ v.source_retryable }})</button>
               {% if run.status in ('failed','partial') %}<button class="button secondary" name="stage" value="search">Restart search as new run</button>{% endif %}
             </div>
           </form>
