@@ -84,3 +84,14 @@ def test_error_payload_and_missing_list_are_not_silent_success():
         with pytest.raises(news_apis.ProviderError) as error:
             news_apis.parse_articles("thenewsapi", payload, '"Acme"')
         assert "contains-secret" not in str(error.value)
+
+
+def test_malformed_publication_value_does_not_discard_other_provider_articles():
+    from ra.news_apis import parse_articles
+    rows = parse_articles('gnews', {'articles': [
+        {'title': 'Acme business update', 'url': 'https://example.test/a', 'publishedAt': 12345},
+        {'title': 'Acme financial results', 'url': 'https://example.test/b', 'publishedAt': '2026-11-07T10:00:00Z'},
+    ]}, 'Acme')
+    assert len(rows) == 2
+    assert rows[0]['published_at'] is None
+    assert rows[1]['published_at'].isoformat() == '2026-11-07T10:00:00+00:00'

@@ -111,3 +111,22 @@ def test_repeated_url_counts_once_and_review_takes_precedence():
     assert result["mean_score"] == 1
     assert result["article_ids"] == [3]
     assert result["contributions"][0]["score"] == 1
+
+
+def test_latest_analyst_exclusion_overrides_older_inclusion():
+    older = {**assessed(-3), "score_status": "reviewed", "score_updated_at": NOW}
+    newer = {**older, "id": 2, "score_included": False, "score_updated_at": NOW + timedelta(minutes=1)}
+    result = aggregate_week([newer, older])
+    assert result["score"] is None
+    assert result["excluded_ids"] == [2]
+
+
+def test_score_hash_changes_when_future_publication_becomes_eligible():
+    row = article("Acme Manufacturing files for bankruptcy", verification={
+        "status": "supported", "score": -3, "evidence": [], "reason": "Source confirms bankruptcy"})
+    before = score_article(row, SUBJECT, NOW - timedelta(seconds=1))
+    after = score_article(row, SUBJECT, NOW)
+    later = score_article(row, SUBJECT, NOW + timedelta(days=1))
+    assert not before["score_included"] and after["score_included"]
+    assert before["score_input_hash"] != after["score_input_hash"]
+    assert after["score_input_hash"] == later["score_input_hash"]

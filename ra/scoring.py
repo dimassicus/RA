@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 from .relevance import headline
 from .aliases import headline_identity, normalized
 
-VERSION = "source-credit-v3"
+VERSION = "source-credit-v4"
 WEEK_TIMEZONE = ZoneInfo("Europe/Moscow")
 LABELS = {-3: "Severe negativity", -2: "Strong negativity", -1: "Limited negativity",
           0: "Neutral / no directional evidence", 1: "Limited positivity",
@@ -57,10 +57,14 @@ def week_start(value: datetime) -> object:
     return date - timedelta(days=date.weekday())
 
 
-def input_hash(article: dict, subject: dict) -> str:
+def input_hash(article: dict, subject: dict, now: datetime | None = None) -> str:
     values = {key: article.get(key) for key in
               ("title", "title_en", "publisher", "publisher_en", "language", "published_at", "source_kind", "discovery_service", "verification")}
     values["subject"] = subject
+    published = article.get("published_at")
+    if published and published.tzinfo is None:
+        published = published.replace(tzinfo=timezone.utc)
+    values["publication_date_valid"] = bool(published and published <= (now or datetime.now(timezone.utc)))
     return hashlib.sha256(json.dumps(values, sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -84,7 +88,7 @@ def score_article(article: dict, subject: dict, now: datetime | None = None) -> 
             evidence.append({"score": score, "rule": label, "phrase": phrase, "field": field})
     result = {"score": 0, "score_auto": 0, "score_status": "provisional",
               "score_included": True, "score_version": VERSION,
-              "score_evidence": evidence, "score_input_hash": input_hash(article, subject),
+              "score_evidence": evidence, "score_input_hash": input_hash(article, subject, now),
               "score_reason": "No directional credit evidence in the available headline"}
     problem = ""
     if article.get("source_kind") == "context":
@@ -128,7 +132,9 @@ def aggregate_week(articles: list[dict]) -> dict:
     unique = {}
     for article in articles:
         key = article.get("event_group") or article["url"]
-        rank = (article.get("score_status") == "reviewed", bool(article.get("score_included")), article.get("score_updated_at") or article["created_at"], article["id"])
+        reviewed = article.get("score_status") == "reviewed"
+        rank = (reviewed, bool(article.get("score_included")) if not reviewed else False,
+                article.get("score_updated_at") or article["created_at"], article["id"])
         if key not in unique or rank > unique[key][0]:
             unique[key] = (rank, article)
     records = [item[1] for item in unique.values()]

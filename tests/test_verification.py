@@ -34,6 +34,9 @@ def document(body, **extra):
     ('Acme Manufacturing emerges from bankruptcy after completing its court-approved debt restructuring.', -2),
     ('Acme Manufacturing emerges from bankruptcy after completing the court-approved repayment agreement.', 3),
     ('Acme Manufacturing pede recuperação judicial.', -2),
+    ('Acme Manufacturing teve um prejuízo líquido de R$ 13 milhões.', -1),
+    ('A Acme Manufacturing teve um prejuízo líquido de R$ 13 milhões.', -1),
+    ('A Acme Manufacturing anunciou uma recuperação judicial.', -2),
 ])
 def test_source_attribution_and_direction(sentence, score):
     result = verify(document(sentence), SUBJECT, ARTICLE)
@@ -65,6 +68,10 @@ def test_source_attribution_and_direction(sentence, score):
     'Acme Manufacturing expects to return to profit.',
     'ACM files for bankruptcy.',
     'Acme Manufacturing updates its website.',
+    'A Acme Manufacturing informou que Outra Empresa teve um prejuízo líquido de R$ 13 milhões.',
+    'A Acme Manufacturing negou um prejuízo líquido de R$ 13 milhões.',
+    'A Acme Manufacturing teve um prejuízo líquido em 2020.',
+    'A Acme Manufacturing anunciou uma possível recuperação judicial.',
 ])
 def test_misattribution_and_uncertainty_do_not_enter_weekly_scores(body):
     result = verify(document(body), SUBJECT, ARTICLE)
@@ -110,6 +117,18 @@ def test_html_and_pdf_extraction_exclude_navigation_and_gates():
 
 def json_html(obj):
     return f'<script type="application/ld+json">{json.dumps(obj)}</script>'.encode()
+
+
+def test_structured_article_html_preserves_paragraphs_without_markup_or_related_text():
+    sentence = 'Acme Manufacturing reports net losses of 40 million dollars.'
+    body = '<p>' + sentence + '</p><p>' + ('The financial statement describes operating expenses. ' * 4) + '</p>'
+    body += '<aside>Acme Manufacturing files for bankruptcy.</aside>'
+    text, method = extract(json_html({'@type': 'NewsArticle', 'articleBody': body}), 'text/html')
+    assert method == 'JSON-LD articleBody'
+    assert text.startswith(sentence + '\n')
+    assert '<p>' not in text and 'bankruptcy' not in text
+    result = verify(document(text), SUBJECT, ARTICLE)
+    assert result['status'] == 'supported' and result['score'] == -1
 
 
 @pytest.mark.parametrize('url', ['http://example.org/a', 'https://user:secret@example.org/a',

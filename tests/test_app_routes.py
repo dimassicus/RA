@@ -74,3 +74,10 @@ def test_watchlist_country_and_sector_filters(monkeypatch):
         assert ("warning", "Start LM Studio API") in session["_flashes"]
     client.post("/search/all", data={"csrf_token": "token", "country": "missing"})
     assert len(recorded) == 4
+
+
+def test_non_ascii_form_token_is_rejected_without_server_error():
+    with create_app().test_client() as client:
+        with client.session_transaction() as session:
+            session["csrf_token"] = "token"
+        assert client.post("/companies/import", data={"csrf_token": "токен"}).status_code == 400

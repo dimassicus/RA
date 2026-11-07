@@ -79,9 +79,12 @@ def enqueue(result_id, source_url=''):
         if not valid:
             raise ValueError('Use a public HTTPS publisher URL')
     with db.connect() as conn:
-        conn.execute("INSERT INTO verification_jobs (result_id,source_url) VALUES (%s,%s) ON CONFLICT (result_id) "
-                     "DO UPDATE SET status='queued',source_url=EXCLUDED.source_url,error='',updated_at=now() "
-                     "WHERE verification_jobs.status NOT IN ('queued','running')", (result_id, source_url))
+        queued = conn.execute("INSERT INTO verification_jobs (result_id,source_url) VALUES (%s,%s) ON CONFLICT (result_id) "
+                              "DO UPDATE SET status='queued',source_url=EXCLUDED.source_url,error='',updated_at=now() "
+                              "WHERE verification_jobs.status NOT IN ('queued','running')", (result_id, source_url))
+        if queued.rowcount:
+            conn.execute("DELETE FROM article_documents WHERE url=%s AND document->>'status'<>'available'",
+                         (canonical_url(source_url or article['url']),))
     _wake.set()
 
 

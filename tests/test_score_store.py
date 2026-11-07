@@ -492,6 +492,43 @@ def test_setup_retries_sources_without_duplicate_jobs_or_reusing_failed_cache(da
     assert verification_store.job_summary(run_id)['source_retryable'] == 0
 
 
+def test_single_article_retry_refetches_failure_but_keeps_successful_cache(database):
+    from ra import verification_store
+    _, _, article = seed(database)
+    url = 'https://publisher.example/original'
+    database.execute("INSERT INTO article_documents(url,document) VALUES (%s,'{\"status\":\"unavailable\"}')", (url,))
+    verification_store.enqueue(article['id'], url)
+    assert database.execute('SELECT count(*) n FROM article_documents').fetchone()['n'] == 0
+    database.execute("INSERT INTO article_documents(url,document) VALUES (%s,'{\"status\":\"available\"}')", (url,))
+    database.execute("UPDATE verification_jobs SET status='completed' WHERE result_id=%s", (article['id'],))
+    verification_store.enqueue(article['id'], url)
+    assert database.execute('SELECT count(*) n FROM article_documents').fetchone()['n'] == 1
+
+
+def test_score_refresh_reconsiders_future_publication_without_changing_analyst_decisions(database, monkeypatch):
+    from ra import scoring
+    _, _, article = seed(database)
+    published = article['published_at']
+    class Clock(datetime):
+        instant = published - timedelta(seconds=1)
+        @classmethod
+        def now(cls, tz=None):
+            return cls.instant.astimezone(tz)
+    monkeypatch.setattr(scoring, 'datetime', Clock)
+    database.execute("UPDATE search_results SET verification=%s WHERE id=%s", (db.Jsonb({
+        'status': 'supported', 'score': -3, 'evidence': [], 'reason': 'Source confirms bankruptcy'}), article['id']))
+    score_store.refresh_scores()
+    assert not score_store.get_article(article['id'])['score_included']
+    assert score_store.refresh_scores()['articles_updated'] == 0
+    Clock.instant = published
+    assert score_store.refresh_scores()['articles_updated'] == 1
+    assert score_store.get_article(article['id'])['score_included']
+    score_store.review_score(article['id'], 0, False, 'Analyst excludes this event after source review')
+    Clock.instant += timedelta(days=1)
+    assert score_store.refresh_scores()['articles_updated'] == 0
+    assert not score_store.get_article(article['id'])['score_included']
+
+
 def test_setup_routes_retry_only_requested_stage_and_preserve_original_search(database, monkeypatch):
     from ra import headline_review as qa
     _, run_id, article = seed(database, status='partial')

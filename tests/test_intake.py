@@ -1,4 +1,7 @@
 from pathlib import Path
+from io import BytesIO
+
+import pytest
 
 from ra import db, preliminary, search
 from ra.app import create_app
@@ -46,6 +49,32 @@ def test_duplicate_matching_keeps_registration_and_tax_id_distinct(monkeypatch):
                                   "tax_id": "22.266.175/0001-88"}) == saved
     assert db.find_company_match({"name": "Example Company", "country_registration": "Brazil",
                                   "registration_number": "22.266.175/0001-88"}) is None
+
+
+def test_matching_registration_does_not_override_conflicting_tax_id(monkeypatch):
+    saved = {"id": 1, "name": "Example Company", "country_registration": "Brazil",
+             "registration_number": "REG12345", "tax_id": "11111111111"}
+    monkeypatch.setattr(db, "list_companies", lambda active=None: [saved])
+    assert db.find_company_match({**saved, "tax_id": "22222222222"}) is None
+
+
+def test_invalid_workbook_is_a_validation_error():
+    with pytest.raises(ValueError, match="valid.*xlsx"):
+        read_workbook(BytesIO(b"This is not a workbook"))
+
+
+def test_workbook_import_enqueues_drafts_when_worker_already_started(monkeypatch):
+    from ra import app, intake_worker
+    queued = []
+    monkeypatch.setattr(app, "stage_workbook", lambda source: (2, 0))
+    monkeypatch.setattr(db, "list_intake", lambda statuses: [{"id": 41}, {"id": 42}])
+    monkeypatch.setattr(intake_worker, "_started", True)
+    monkeypatch.setattr(intake_worker._queue, "put", queued.append)
+    with create_app().test_client() as client:
+        with client.session_transaction() as session:
+            session["csrf_token"] = "token"
+        assert client.post("/companies/import", data={"csrf_token": "token"}).status_code == 302
+    assert queued == [41, 42]
 
 
 def test_verified_registry_match_fills_only_empty_fields(monkeypatch):

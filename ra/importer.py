@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from zipfile import BadZipFile
 
 from openpyxl import load_workbook
 
@@ -36,7 +37,10 @@ HEADER_MAP = {
 
 
 def read_workbook(path: str | Path) -> list[tuple[int, dict]]:
-    workbook = load_workbook(path, read_only=True, data_only=True)
+    try:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+    except (BadZipFile, KeyError) as exc:
+        raise ValueError("Choose a valid .xlsx workbook") from exc
     try:
         sheet = workbook.active
         rows = sheet.iter_rows(values_only=True)

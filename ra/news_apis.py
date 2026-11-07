@@ -80,7 +80,7 @@ def fetch_json(url: str) -> dict:
 
 
 def _published(value: str | None) -> datetime | None:
-    if not value:
+    if not isinstance(value, str) or not value:
         return None
     try:
         date = datetime.fromisoformat(value.replace("Z", "+00:00"))

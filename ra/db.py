@@ -195,7 +195,7 @@ def find_company_match(data: dict):
     local = [company for company in list_companies(None)
              if company["country_registration"].strip().casefold() == country]
     for company in local:
-        if _company_ids_match(data, company, country):
+        if _company_ids_match(data, company, country) and not _company_ids_conflict(data, company, country):
             return company
     for company in local:
         known = {_name_key(company["name"]), _name_key(company.get("short_name", ""))} - {""}

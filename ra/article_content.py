@@ -18,7 +18,7 @@ from html.parser import HTMLParser
 from io import BytesIO
 from urllib.parse import urljoin, urlsplit, urlunsplit, parse_qsl, urlencode
 
-READER_VERSION = "public-source-v3"
+READER_VERSION = "public-source-v4"
 MAX_BYTES = 2_000_000
 MAX_TEXT = 100_000
 
@@ -193,6 +193,10 @@ def extract(raw, content_type, parsed=None):
             raise ValueError('Multiple articles on one page; a direct article URL is required')
         body = max(bodies, key=len) if bodies else ''.join(parser.parts)
         method = 'JSON-LD articleBody' if bodies else 'HTML article/main text'
+        if bodies:
+            structured = ArticleHTML()
+            structured.feed('<article>' + body + '</article>')
+            body = ''.join(structured.parts)
         if re.search(r'(?:subscribe|sign in|log in) to (?:continue|read|access)|enable javascript|verify you are human', body, re.I):
             raise ValueError('Access gate detected; source needs manual review')
     else:

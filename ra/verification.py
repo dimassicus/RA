@@ -9,7 +9,7 @@ from .aliases import company_names, headline_identity, normalized
 from .scoring import COMPILED, UNCERTAIN, NEGATION
 from . import article_translation
 
-VERSION = 'source-attribution-v2'
+VERSION = 'source-attribution-v3'
 # Deliberately closed vocabulary between the company name and event phrase.
 # 'Acme's supplier filed for bankruptcy' must never become Acme's bankruptcy.
 BRIDGE = re.compile(r'(?:(?:s|has|have|had|is|was|were|has been|will|its|the|a|an|that it|that the company|'
@@ -18,7 +18,7 @@ BRIDGE = re.compile(r'(?:(?:s|has|have|had|is|was|were|has been|will|its|the|a|a
                     r'company|ceo|chairman|president|chief executive|net|annual|quarterly|'
                     r'foi|esta|em|entrou|pede|pediu|anuncia|anunciou|informa|'
                     r'informou|registra|registrou|teve|apresenta|apresentou|'
-                    r'sua|seu|o|a|de|em|processo|pedido|decreta|decretou)\s*)*')
+                    r'sua|seu|o|a|um|uma|de|em|processo|pedido|decreta|decretou)\s*)*')
 HISTORICAL = re.compile(r'\b(?:previously|historically|last year|years? ago|in 20\d\d|em 20\d\d|ano passado|anteriormente)\b')
 CONTEXT = re.compile(r'\b(?:denies?|denied|rumou?r\w*|alleged|hypothetical|cancelled|canceled|withdrawn|dismissed|resolved|lifted|no longer|forecast\w*|expects?|expected|plans?|planned|risk of|could|might|may|would|will|nega|negou|preve|pretende|pode)\b')
 OTHER_ENTITY = re.compile(r'\b(?:subsidiar\w*|supplier\w*|rival\w*|competitor\w*|parent|affiliate\w*|fornecedor\w*)\b')
@@ -78,7 +78,7 @@ def verify(document, subject, article):
             linked = False
             for name in names:
                 # Company must be the grammatical subject at the start of this sentence.
-                match = re.match(r'^(?:the |a empresa |empresa )?' + re.escape(name) + r'(?!\w)', folded)
+                match = re.match(r'^(?:the |a empresa |empresa |a )?' + re.escape(name) + r'(?!\w)', folded)
                 if not match or match.end() > start:
                     continue
                 bridge = folded[match.end():start].strip()

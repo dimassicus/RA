@@ -59,7 +59,7 @@ def create_app() -> Flask:
         if request.method == "POST":
             supplied = request.form.get("csrf_token", "")
             expected = session.get("csrf_token", "")
-            if not expected or not hmac.compare_digest(supplied, expected):
+            if not expected or not supplied.isascii() or not hmac.compare_digest(supplied, expected):
                 abort(400, "Invalid form token. Refresh the page and try again.")
 
     @app.get("/")
@@ -324,7 +324,8 @@ def create_app() -> Flask:
             else:
                 source = ROOT / "companies.xlsx"
             added, skipped = stage_workbook(source)
-            intake_worker.start()
+            for draft in db.list_intake(("queued",)):
+                intake_worker.enqueue(draft["id"])
             flash(f"Workbook intake: {added} drafts staged for research and review, {skipped} identical rows already staged. No watchlist records were saved.", "success")
         except (ValueError, OSError, UniqueViolation) as exc:
             flash(f"Workbook import failed: {exc}", "error")
