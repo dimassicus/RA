@@ -5,6 +5,7 @@
 {% set limit = 180 if factors else 80 %}
 {% block title %}{{ heading }} · RA{% endblock %}
 {% block content %}
+<p class="back"><a href="{{ url_for('setup') }}">← Back to Setup</a></p>
 <h1>{{ heading }}</h1>
 {% if factors %}<p>Describe a theme to watch in company, sector or country news. RA looks for paraphrases, indirect evidence and partial matches. Each match shows the source wording for review.</p>
 {% else %}<p>English keywords flag headlines for review. Choose the expected sentiment. Company scores require evidence of impact.</p>{% endif %}

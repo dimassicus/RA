@@ -6,6 +6,7 @@ from functools import partial
 import queue
 import threading
 import time
+import logging
 
 from . import db, governance_roster
 from .search import search_company
@@ -68,7 +69,15 @@ def start_worker():
 
 def _work_loop():
     while True:
-        run_id = _queue.get()
+        try:
+            run_id = _queue.get(timeout=60)
+        except queue.Empty:
+            from .headline_review import retry_pending
+            try:
+                retry_pending()
+            except Exception:
+                logging.exception("Saved translation retry failed; will retry next minute")
+            continue
         try:
             process_run(run_id)
         except Exception as exc:
@@ -92,7 +101,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
     with db.connect() as conn:
         conn.execute(
             "UPDATE search_runs SET status = 'running', started_at = COALESCE(started_at, now()), "
-            "completed_companies = 0, result_count = 0, error_count = 0 WHERE id = %s", (run_id,)
+            "completed_companies = 0, result_count = 0, error_count = 0, retry_translations = TRUE WHERE id = %s", (run_id,)
         )
         conn.execute("DELETE FROM search_results WHERE run_id = %s", (run_id,))
         conn.execute("DELETE FROM search_errors WHERE run_id = %s", (run_id,))

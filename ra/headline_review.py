@@ -1,5 +1,6 @@
 """Local translation and shadow review. Reviewer judgments never feed credit scoring."""
 import json
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from urllib.error import URLError
 
@@ -19,9 +20,20 @@ QWEN = "qwen/qwen3.8-27b"
 GEMMA = "google/gemma-4-31b-qat"
 
 
+def readiness():
+    try:
+        models = local_request(PORT, "/api/v0/models", timeout=3)["data"]
+        if not any(model.get("id") == QWEN and model.get("state") == "loaded" for model in models):
+            return {"ready": False, "message": "Load Qwen 27B in LM Studio. Translation checks will retry automatically."}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"ready": False, "message": "LM Studio API unavailable on port 1234. Start its server; translation checks will retry automatically."}
+    return {"ready": True, "message": "Qwen 27B ready · reasoning off."}
+
+
 @lru_cache(maxsize=1024)
-def _audit(source, language, candidate):
-    data, meta = review(source, language, "en", {"A": candidate}, QWEN, PORT, enabled=False, shadow_only=True)
+def _audit(source, language, candidate, retry_reason=''):
+    data, meta = review(source, language, "en", {"A": candidate}, QWEN, PORT,
+                       enabled=False, shadow_only=True, retry_reason=retry_reason)
     if meta["model"] != QWEN:
         raise ValueError("Unexpected reviewer model")
     assessment, = data["assessments"]
@@ -29,11 +41,11 @@ def _audit(source, language, candidate):
             "model": meta["model"], "protocol": meta["protocol"], "reasoning": "off"}
 
 
-def audit(source, language, candidate):
+def audit(source, language, candidate, *, retry_reason=''):
     if not candidate or language.split("-")[0] == "en":
         return {}
     try:
-        return _audit(source, language, candidate)
+        return _audit(source, language, candidate, retry_reason)
     except ReviewError as exc:
         return {"status": "inconclusive", "model": QWEN, "reasoning": "off",
                 "reason": str(exc)[:250]}
@@ -102,6 +114,8 @@ def review_note(article):
 
 
 def review_saved(run_id, *, progress=None):
+    if not readiness()["ready"]:
+        return
     with db.connect() as conn:
         rows = conn.execute(
             "SELECT id,title,language,title_en FROM search_results WHERE run_id=%s AND title_en<>'' "
@@ -114,3 +128,55 @@ def review_saved(run_id, *, progress=None):
         with db.connect() as conn:
             conn.execute("UPDATE search_results SET headline_review=%s WHERE id=%s AND title_en=%s AND language=%s",
                          (Jsonb(result), row["id"], row["title_en"], row["language"]))
+        if result.get("status") == "unavailable":
+            break
+
+
+def retry_pending():
+    """Recover saved translations in small batches while the search worker is idle."""
+    with db.connect() as conn:
+        rows = conn.execute("""
+            SELECT r.* FROM search_results r JOIN search_runs s ON s.id=r.run_id
+            WHERE s.retry_translations AND s.status IN ('completed','partial','failed')
+              AND lower(split_part(r.language,'-',1))<>'en'
+              AND (r.title_en='' OR COALESCE(r.headline_review->>'status','pending')
+                   IN ('pending','unavailable','inconclusive'))
+              AND COALESCE((r.headline_review->>'retry_count')::integer,0)<3
+              AND COALESCE((r.headline_review->>'retry_after')::timestamptz,'-infinity')<=now()
+            ORDER BY r.run_id DESC,r.id LIMIT 5
+        """).fetchall()
+    if not rows or not readiness()["ready"]:
+        return
+    from .translation import translate_text
+    for row in rows:
+        english, provider = row["title_en"], row["translation_provider"]
+        if not english:
+            english, provider = translate_text(row["title"], row["language"], row["subject_name"], row["publisher"])
+        result = dict(audit(row["title"], row["language"], english,
+                            retry_reason=row["headline_review"].get("reason", ""))) if english else {
+            "status": "inconclusive", "reason": "English translation unavailable", "reasoning": "off"}
+        # Service outages wait for reconnection without consuming model-output retries.
+        result["retry_count"] = row["headline_review"].get("retry_count", 0) + (result["status"] != "unavailable")
+        result["retry_after"] = (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat()
+        with db.connect() as conn:
+            conn.execute("""
+                UPDATE search_results SET title_en=%s,translation_provider=%s,headline_review=%s
+                WHERE id=%s AND title=%s AND title_en=%s AND language=%s AND headline_review=%s
+            """, (english, provider, Jsonb(result), row["id"], row["title"], row["title_en"],
+                  row["language"], Jsonb(row["headline_review"])))
+        if result["status"] == "unavailable":
+            break
+
+
+def request_retry(run_id):
+    with db.connect() as conn:
+        run = conn.execute("SELECT status FROM search_runs WHERE id=%s FOR UPDATE", (run_id,)).fetchone()
+        if not run or run["status"] in ("queued", "running"):
+            raise ValueError("Wait for the search to finish before retrying translations.")
+        conn.execute("UPDATE search_runs SET retry_translations=TRUE WHERE id=%s", (run_id,))
+        return conn.execute("""
+            UPDATE search_results SET headline_review=(headline_review-'retry_count')-'retry_after'
+            WHERE run_id=%s AND lower(split_part(language,'-',1))<>'en'
+              AND (title_en='' OR COALESCE(headline_review->>'status','pending')
+                   IN ('pending','unavailable','inconclusive'))
+        """, (run_id,)).rowcount

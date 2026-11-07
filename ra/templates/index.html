@@ -7,6 +7,8 @@
   <div class="hero-stats"><span><strong>{{ companies|length }}</strong> active companies</span><span><strong>{{ runs|length }}</strong> recent runs</span></div>
 </section>
 
+<p class="{{ 'identity-note' if reviewer.ready else 'callout' }}" role="status">{{ reviewer.message }}</p>
+
 <p class="identity-note">News API keys: GNews {{ 'configured' if 'gnews' in news_api_providers else 'not configured' }} · TheNewsAPI {{ 'configured' if 'thenewsapi' in news_api_providers else 'not configured' }}. The page never displays key values.</p>
 
 <div class="action-grid">

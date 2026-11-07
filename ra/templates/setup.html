@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Setup · RA{% endblock %}
+{% block content %}
+<p class="back"><a href="{{ url_for('dashboard') }}">← Back to watchlist</a></p>
+<h1>Setup</h1>
+<div class="form-actions">
+  <a class="button secondary" href="{{ url_for('keyword_settings', factors=false) }}">Keywords</a>
+  <a class="button secondary" href="{{ url_for('keyword_settings', factors=true) }}">Risk factors</a>
+</div>
+<section class="panel form-panel">
+  <h2>Translation reviewer</h2>
+  <p role="status">{{ reviewer.message }}</p>
+  <p>Start the LM Studio server on port 1234 and load Qwen 27B. RA requests reasoning off.</p>
+  <a href="{{ url_for('setup') }}">Check readiness again</a>
+</section>
+<section class="panel list-panel">
+  <h2>Recover a process</h2>
+  <p>Translation retries use saved articles. Source retries revisit failed or inaccessible publishers and may use API credits. Restarting a search creates a new run using the original company list.</p>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Run</th><th>Progress</th><th>Recovery</th></tr></thead>
+    <tbody>{% for run in runs %}{% set v = run.checks %}
+      <tr>
+        <td><a href="{{ url_for('run_detail', run_id=run.id) }}">#{{ run.id }}</a> · {{ run.status }}<br>{{ run.created_at.strftime('%d %b %Y %H:%M %Z') }}</td>
+        <td>{{ v.reviewed }}/{{ v.translation_total }} translation reviews completed<br>{{ v.review_failed }} failed reviews · {{ v.missing }} missing translations<br>{{ v.completed + v.failed }}/{{ v.total }} source checks processed</td>
+        <td>
+          {% if run.status in ('queued','running') %}Search in progress
+          {% else %}
+          <form method="post" action="{{ url_for('retry_run_stage', run_id=run.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="form-actions">
+              <button class="button secondary" name="stage" value="translations" {% if v.reviewed == v.translation_total %}disabled{% endif %}>Retry translations</button>
+              <button class="button secondary" name="stage" value="sources" {% if not v.source_retryable %}disabled{% endif %}>Retry failed sources ({{ v.source_retryable }})</button>
+              {% if run.status in ('failed','partial') %}<button class="button secondary" name="stage" value="search">Restart search as new run</button>{% endif %}
+            </div>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}<tr><td colspan="3">No searches yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endblock %}

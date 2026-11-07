@@ -19,8 +19,10 @@
   <p id="publisher-count">{{ v.get('completed',0) + v.get('failed',0) }} of {{ v.get('total',0) }} leads processed · {{ v.get('queued',0) }} queued · {{ v.get('running',0) }} running · {{ v.get('failed',0) }} failed · {{ v.get('attention',0) }} need attention</p>
   <p class="subtext">100% means every check finished. An inaccessible article still counts as processed. Only supported company impact or an analyst decision can affect a score.</p>
   <label for="translation-bar">Headline translation checks · Qwen <strong id="translation-percent">{{ v.get('translation_percent',0) }}%</strong></label>
+  <p id="reviewer-status" role="status">{{ reviewer.message }}</p>
   <progress id="translation-bar" max="100" value="{{ v.get('translation_percent',0) }}"></progress>
-  <p id="translation-count">{{ v.get('reviewed',0) }} of {{ v.get('translations',0) }} translations checked · {{ v.get('missing',0) }} missing translations</p>
+  <p id="translation-count">{{ v.get('reviewed',0) }} of {{ v.get('translation_total',0) }} required reviews completed · {{ v.get('review_failed',0) }} failed attempts · {{ v.get('missing',0) }} missing translations · {{ v.get('review_attention',0) }} reviewed translations need attention</p>
+  <p class="subtext">Failed attempts and missing translations remain incomplete. Completed reviews can flag translation errors or uncertainty. RA retries when Qwen reconnects and the search worker is idle; unresolved translations receive up to three automatic retries.</p>
   <p class="subtext">Counters update live. Save any edits before <a href="{{ request.full_path }}">refreshing lead details</a>.</p>
   <small id="check-live" class="subtext">Updates automatically while this page is open.</small>
 </section>
@@ -93,8 +95,10 @@
       document.getElementById('publisher-count').textContent =
         (v.completed + v.failed) + ' of ' + v.total + ' leads processed · ' + v.queued + ' queued · ' + v.running +
         ' running · ' + v.failed + ' failed · ' + v.attention + ' need attention';
-      document.getElementById('translation-count').textContent = v.reviewed + ' of ' + v.translations +
-        ' translations checked · ' + v.missing + ' missing translations';
+      document.getElementById('reviewer-status').textContent = data.reviewer.message;
+      document.getElementById('translation-count').textContent = v.reviewed + ' of ' + v.translation_total +
+        ' required reviews completed · ' + v.review_failed + ' failed attempts · ' + v.missing +
+        ' missing translations · ' + v.review_attention + ' reviewed translations need attention';
       document.getElementById('check-live').textContent = 'Updated ' + new Date().toLocaleTimeString() +
         '. Changes to your report selection are preserved.';
     } catch (_) {

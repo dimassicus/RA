@@ -115,14 +115,21 @@ def job_summary(run_id):
                 (j.status IS NULL AND r.verification->>'status'<>'pending')) AS completed,
               count(*) FILTER (WHERE r.verification->>'status' IN ('unavailable','needs_review')
                                 OR j.status='failed') AS attention,
+              count(*) FILTER (WHERE (r.verification->>'status'='unavailable' OR j.status='failed')
+                                AND COALESCE(j.status,'') NOT IN ('queued','running')) AS source_retryable,
               count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en' AND r.title_en='') AS missing,
               count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en' AND r.title_en<>'') AS translations,
               count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en' AND r.title_en<>''
-                                AND r.headline_review ? 'status') AS reviewed
+                                AND r.headline_review->>'status' IN ('faithful','material_error','uncertain')) AS reviewed,
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en'
+                                AND r.headline_review->>'status' IN ('unavailable','inconclusive')) AS review_failed,
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en'
+                                AND r.headline_review->>'status' IN ('material_error','uncertain')) AS review_attention
             FROM search_results r LEFT JOIN verification_jobs j ON j.result_id=r.id
             WHERE r.run_id=%s""", (run_id,)).fetchone()
+    counts['translation_total'] = counts['translations'] + counts['missing']
     for done, total, percent in ((counts['completed'] + counts['failed'], 'total', 'percent'),
-                                 (counts['reviewed'], 'translations', 'translation_percent')):
+                                 (counts['reviewed'], 'translation_total', 'translation_percent')):
         counts[percent] = 100 * done // counts[total] if counts[total] else 0
     return counts
 
@@ -144,6 +151,29 @@ def details(result_id):
                                               (result_id,)).fetchall(),
                 'job': conn.execute('SELECT * FROM verification_jobs WHERE result_id=%s', (result_id,)).fetchone(),
                 'members': members}
+
+
+def retry_failed_run(run_id):
+    with db.connect() as conn:
+        run = conn.execute('SELECT status FROM search_runs WHERE id=%s FOR UPDATE', (run_id,)).fetchone()
+        if not run or run['status'] in ('queued', 'running'):
+            raise ValueError('Wait for the search to finish before retrying source checks.')
+        jobs = conn.execute("""
+            INSERT INTO verification_jobs (result_id)
+            SELECT r.id FROM search_results r LEFT JOIN verification_jobs j ON j.result_id=r.id
+            WHERE r.run_id=%s AND (j.status='failed' OR r.verification->>'status'='unavailable')
+              AND COALESCE(j.status,'') NOT IN ('queued','running')
+            ON CONFLICT (result_id) DO UPDATE SET status='queued',error='',updated_at=now()
+            WHERE verification_jobs.status NOT IN ('queued','running')
+            RETURNING result_id,source_url
+        """, (run_id,)).fetchall()
+        for job in jobs:
+            article = conn.execute('SELECT url FROM search_results WHERE id=%s', (job['result_id'],)).fetchone()
+            url = canonical_url(job['source_url'] or article['url'])
+            # Failed cached fetches must reach the publisher again on an explicit retry.
+            conn.execute("DELETE FROM article_documents WHERE url=%s AND document->>'status'<>'available'", (url,))
+    _wake.set()
+    return len(jobs)
 
 
 def review_group(result_id, action, target_id, reason):

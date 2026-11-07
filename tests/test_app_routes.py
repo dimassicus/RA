@@ -1,7 +1,14 @@
 from datetime import datetime, timezone
+import pytest
 
 from ra import db, verification_store
 from ra.app import create_app
+
+
+@pytest.fixture(autouse=True)
+def reviewer_offline(monkeypatch):
+    from ra import headline_review
+    monkeypatch.setattr(headline_review, "readiness", lambda: {"ready": False, "message": "Start LM Studio API"})
 
 
 def test_saved_run_page_accepts_trailing_slash(monkeypatch):
@@ -63,5 +70,7 @@ def test_watchlist_country_and_sector_filters(monkeypatch):
                               ({"country": "brazil", "sector": "copper"}, [3])]:
         assert client.post("/search/all", data={"csrf_token": "token", **filters}).status_code == 302
         assert recorded[-1] == ("selected" if filters else "all", expected)
+    with client.session_transaction() as session:
+        assert ("warning", "Start LM Studio API") in session["_flashes"]
     client.post("/search/all", data={"csrf_token": "token", "country": "missing"})
     assert len(recorded) == 4

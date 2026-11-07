@@ -1,9 +1,44 @@
 from datetime import timezone
+from io import BytesIO
+from urllib.error import URLError
+import ssl
+import pytest
 
 from ra.search import (
     FCA_WARNINGS_RSS_URL, fca_warning_list, has_uk_presence, heringer_official_notices,
     is_heringer, parse_feed, search_company, search_queries, signal_terms,
 )
+
+
+def test_feed_retries_handshake_timeouts_and_stops_after_three_attempts(monkeypatch):
+    from ra import search
+    calls, sleeps = [], []
+    def fetch(*args, **kwargs):
+        calls.append(kwargs['timeout'])
+        if len(calls) < 3:
+            raise URLError(TimeoutError('The handshake operation timed out'))
+        return BytesIO(b'<rss/>')
+    monkeypatch.setattr(search, 'urlopen', fetch)
+    monkeypatch.setattr(search.time, 'sleep', sleeps.append)
+    assert search.fetch_feed('https://news.google.com/rss/search?q=test') == b'<rss/>'
+    assert calls == [20, 20, 20] and sleeps == [1, 2]
+    def failed(*args, **kwargs):
+        raise TimeoutError('read timed out')
+    monkeypatch.setattr(search, 'urlopen', failed)
+    sleeps.clear()
+    with pytest.raises(TimeoutError):
+        search.fetch_feed('https://news.google.com/rss/search?q=test')
+    assert sleeps == [1, 2]
+
+
+def test_feed_certificate_errors_are_reported_without_retries(monkeypatch):
+    from ra import search
+    def failed(*args, **kwargs):
+        raise URLError(ssl.SSLCertVerificationError('certificate verify failed'))
+    monkeypatch.setattr(search, 'urlopen', failed)
+    monkeypatch.setattr(search.time, 'sleep', lambda *args: pytest.fail('Unexpected retry'))
+    with pytest.raises(URLError):
+        search.fetch_feed('https://news.google.com/rss/search?q=test')
 
 
 def test_heringer_adapter_requires_brazilian_identity():

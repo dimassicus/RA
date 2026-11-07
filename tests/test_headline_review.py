@@ -76,3 +76,48 @@ def test_missing_argos_uses_online_for_any_language_before_local(monkeypatch):
         assert translation.translate_text("Headline - Brand", lang, publisher="Brand") == (
             "Company repays debt - Brand", "MyMemory online")
     assert calls == [("Headline", "uz", "en"), ("Headline", "sw", "en")]
+
+
+def test_readiness_requires_api_and_loaded_qwen(monkeypatch):
+    def disconnected(*args, **kwargs):
+        raise ConnectionRefusedError()
+    monkeypatch.setattr(qa, "local_request", disconnected)
+    assert not qa.readiness()["ready"]
+    assert "1234" in qa.readiness()["message"]
+    monkeypatch.setattr(qa, "local_request", lambda *a, **kw: {"data": [{"id": qa.GEMMA, "state": "loaded"}]})
+    assert not qa.readiness()["ready"]
+    monkeypatch.setattr(qa, "local_request", lambda *a, **kw: {"data": [{"id": qa.QWEN, "state": "loaded"}]})
+    assert qa.readiness()["ready"]
+
+
+def test_successful_audit_requests_reasoning_off(monkeypatch):
+    qa._audit.cache_clear()
+    def reviewer(*args, **kwargs):
+        assert kwargs == {"enabled": False, "shadow_only": True, "retry_reason": ""}
+        return {"assessments": [{"verdict": "faithful", "issues": []}]}, {"model": qa.QWEN, "protocol": "shadow-v1"}
+    monkeypatch.setattr(qa, "review", reviewer)
+    assert qa.audit("Empresa paga dívida", "pt", "Company repays debt")["reasoning"] == "off"
+    qa._audit.cache_clear()
+
+
+def test_retry_feedback_keeps_reasoning_off_and_evidence_validation(monkeypatch):
+    import json
+    from scripts.translation_review import simple
+    answer = {'reviews': [{'candidate': 'A', 'verdict': 'uncertain', 'issues': []}]}
+    def local(port, path, body, timeout):
+        assert body['reasoning_effort'] == 'none'
+        assert body['chat_template_kwargs']['enable_thinking'] is False
+        assert 'previous response failed validation' in body['messages'][0]['content']
+        issue = body['response_format']['json_schema']['schema']['properties']['reviews']['items']['properties']['issues']['items']
+        assert issue['properties']['source']['minItems'] == 1
+        assert issue['properties']['source']['maxItems'] == 6
+        return {'model': qa.QWEN, 'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(answer)}}]}
+    monkeypatch.setattr(simple, 'local_request', local)
+    result, _ = simple.review('original', 'es', 'en', {'A': 'translation'}, qa.QWEN, qa.PORT,
+                             enabled=False, shadow_only=True, retry_reason='Evidence does not match an original text span')
+    assert result['assessments'][0]['verdict'] == 'uncertain'
+    answer['reviews'][0] = {'candidate': 'A', 'verdict': 'material_error', 'issues': [{
+        'category': 'identity', 'source': ['invented'], 'translation': ['translation'], 'explanation': 'Mismatch'}]}
+    with pytest.raises(qa.ReviewError):
+        simple.review('original', 'es', 'en', {'A': 'translation'}, qa.QWEN, qa.PORT,
+                      enabled=False, shadow_only=True, retry_reason='Evidence does not match an original text span')

@@ -21,7 +21,7 @@ from .publisher_lookup import original_title
 from .search import company_search_plan
 from .reports import make_pdf, make_xlsx
 from .relevance import classify_results
-from . import score_store, verification_store
+from . import score_store, verification_store, headline_review
 from .scoring import LABELS, RUBRIC, VERSION, week_start
 
 
@@ -71,6 +71,7 @@ def create_app() -> Flask:
             archived=db.list_companies(False), runs=db.list_runs(), intake=db.list_intake(),
             model_coverage=model_store.coverage([company["country_registration"] for company in companies]),
             news_api_providers=news_apis.configured_providers(),
+            reviewer=headline_review.readiness(),
         )
 
     @app.route("/risk-factors", defaults={"factors": True}, methods=["GET", "POST"])
@@ -120,6 +121,40 @@ def create_app() -> Flask:
             keywords.schedule()
             flash("All risk factor edits saved.", "success")
         return jsonify(saved=count)
+
+    @app.get("/setup")
+    def setup():
+        runs = db.list_runs()
+        for run in runs:
+            run["checks"] = verification_store.job_summary(run["id"])
+        return render_template("setup.html", runs=runs, reviewer=headline_review.readiness())
+
+    @app.post("/setup/runs/<int:run_id>/retry")
+    def retry_run_stage(run_id):
+        run = db.get_run(run_id)
+        if not run:
+            abort(404)
+        if run["status"] in ("queued", "running"):
+            abort(409, "Wait for the search to finish.")
+        stage = request.form.get("stage")
+        if stage == "translations":
+            count = headline_review.request_retry(run_id)
+            reviewer = headline_review.readiness()
+            flash(f"{count} unfinished translations queued for retry when the search worker is idle. "
+                  + reviewer["message"], "success" if reviewer["ready"] else "warning")
+        elif stage == "sources":
+            count = verification_store.retry_failed_run(run_id)
+            flash(f"Queued {count} failed or inaccessible source checks. Publisher recovery may use API credits.", "success")
+        elif stage == "search":
+            if run["status"] not in ("failed", "partial"):
+                abort(409, "This search has no recorded failure.")
+            new_id = db.create_run(run["scope"], run["subjects"])
+            worker.enqueue(new_id)
+            flash(f"Search restarted as run #{new_id} using run #{run_id}'s company list.", "success")
+            return redirect(url_for("run_detail", run_id=new_id))
+        else:
+            abort(400, "Unknown process.")
+        return redirect(url_for("setup"))
 
     @app.get("/scores")
     def scores():
@@ -296,6 +331,9 @@ def create_app() -> Flask:
         return redirect(url_for("dashboard"))
 
     def begin_search(scope: str, subjects: list[dict]):
+        reviewer = headline_review.readiness()
+        if not reviewer["ready"]:
+            flash(reviewer["message"], "warning")
         run_id = db.create_run(scope, subjects)
         worker.enqueue(run_id)
         return redirect(url_for("run_detail", run_id=run_id))
@@ -367,6 +405,7 @@ def create_app() -> Flask:
             rosters=governance_roster.observations(run_id) if view == "governance" else [],
             exposure_checks=db.exposure_coverage(run_id) if view == "exposure" else [],
             score_labels=LABELS, verification_jobs=verification_store.job_summary(run_id),
+            reviewer=headline_review.readiness(),
             search_progress=worker.search_progress(run), all_count=len(all_results),
             selected_count=sum(bool(item["report_selected"]) for item in all_results),
             hidden_selected=[item["id"] for item in all_results
@@ -379,7 +418,8 @@ def create_app() -> Flask:
         if not run:
             abort(404)
         payload = {key: run[key] for key in ("status", "total_companies", "completed_companies", "result_count", "error_count")}
-        return jsonify(**payload, discovery=worker.search_progress(run), verification=verification_store.job_summary(run_id))
+        return jsonify(**payload, discovery=worker.search_progress(run), verification=verification_store.job_summary(run_id),
+                       reviewer=headline_review.readiness())
 
     @app.get("/runs/<int:run_id>/company-report")
     def download_company_report(run_id):

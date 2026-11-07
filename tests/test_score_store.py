@@ -20,6 +20,8 @@ from ra.scoring import week_start
 
 @pytest.fixture
 def database(monkeypatch):
+    from ra import headline_review
+    monkeypatch.setattr(headline_review, "readiness", lambda: {"ready": False, "message": "Offline test"})
     url = os.environ.get("RA_TEST_DATABASE_URL")
     if not url:
         pytest.skip("Set RA_TEST_DATABASE_URL to run isolated PostgreSQL integration tests")
@@ -380,6 +382,104 @@ def test_progress_measures_entire_run_and_separates_translation_from_source(data
     database.execute("UPDATE search_results SET verification='{\"status\":\"unavailable\"}' WHERE language='es'")
     v = client.get(endpoint).json['verification']
     assert v['percent'] == 100 and v['attention'] == 3
+    database.execute("UPDATE search_results SET headline_review='{\"status\":\"unavailable\"}' "
+                     "WHERE url='https://example.org/spanish/0'")
+    database.execute("INSERT INTO search_results (run_id,subject_key,subject_name,title,url,query,language) "
+                     "VALUES (%s,'x','X','missing','https://example.org/missing','q','es')", (run_id,))
+    v = client.get(endpoint).json['verification']
+    assert (v['translation_percent'], v['translation_total'], v['reviewed']) == (33, 3, 1)
+    assert (v['review_failed'], v['missing'], v['review_attention']) == (1, 1, 1)
+
+
+def test_translation_retries_resume_after_reconnection_and_preserve_user_edits(database, monkeypatch):
+    from ra import headline_review as qa, translation
+    _, run_id, article = seed(database)
+    database.execute("UPDATE search_results SET language='es',title_en='English',headline_review='{\"status\":\"unavailable\"}' WHERE id=%s", (article['id'],))
+    database.execute("UPDATE search_runs SET retry_translations=FALSE WHERE id=%s", (run_id,))
+    calls = []
+    def audit(*args, **kwargs):
+        calls.append(args)
+        return {"status": "faithful", "reasoning": "off"}
+    monkeypatch.setattr(qa, "audit", audit)
+    qa.retry_pending()
+    assert calls == []
+    monkeypatch.setattr(qa, "readiness", lambda: {"ready": True})
+    qa.retry_pending()
+    assert calls == []
+    assert qa.request_retry(run_id) == 1
+    qa.retry_pending()
+    assert len(calls) == 1
+    assert db.get_results(run_id)[0]['headline_review']['status'] == 'faithful'
+    qa.retry_pending()
+    assert len(calls) == 1
+
+    database.execute("UPDATE search_results SET title_en='',headline_review='{}' WHERE id=%s", (article['id'],))
+    def translate(*args):
+        database.execute("UPDATE search_results SET title_en='User correction' WHERE id=%s", (article['id'],))
+        return 'Automatic translation', 'test'
+    monkeypatch.setattr(translation, "translate_text", translate)
+    qa.retry_pending()
+    assert db.get_results(run_id)[0]['title_en'] == 'User correction'
+
+
+def test_translation_retry_limits_and_backoff(database, monkeypatch):
+    from ra import headline_review as qa, translation
+    _, run_id, article = seed(database)
+    database.execute("UPDATE search_results SET language='es',headline_review='{}' WHERE id=%s", (article['id'],))
+    monkeypatch.setattr(qa, "readiness", lambda: {"ready": True})
+    calls = []
+    def translate(*args):
+        calls.append(args)
+        return '', 'unsupported'
+    monkeypatch.setattr(translation, 'translate_text', translate)
+    for _ in range(3):
+        qa.retry_pending()
+        qa.retry_pending()
+        database.execute("UPDATE search_results SET headline_review=headline_review-'retry_after'")
+    qa.retry_pending()
+    assert len(calls) == 3
+    assert db.get_results(run_id)[0]['headline_review']['retry_count'] == 3
+
+
+def test_setup_retries_sources_without_duplicate_jobs_or_reusing_failed_cache(database):
+    from ra import verification_store
+    _, run_id, article = seed(database)
+    database.execute("UPDATE search_results SET verification='{\"status\":\"unavailable\"}' WHERE id=%s", (article['id'],))
+    database.execute("INSERT INTO verification_jobs(result_id,status,source_url) VALUES (%s,'failed','https://publisher.example/original')", (article['id'],))
+    database.execute("INSERT INTO article_documents(url,document) VALUES ('https://publisher.example/original','{\"status\":\"unavailable\"}')")
+    assert verification_store.job_summary(run_id)['source_retryable'] == 1
+    assert verification_store.retry_failed_run(run_id) == 1
+    assert verification_store.retry_failed_run(run_id) == 0
+    job = database.execute('SELECT * FROM verification_jobs WHERE result_id=%s', (article['id'],)).fetchone()
+    assert job['status'] == 'queued' and job['source_url'] == 'https://publisher.example/original'
+    assert database.execute('SELECT count(*) n FROM article_documents').fetchone()['n'] == 0
+    assert verification_store.job_summary(run_id)['source_retryable'] == 0
+
+
+def test_setup_routes_retry_only_requested_stage_and_preserve_original_search(database, monkeypatch):
+    from ra import headline_review as qa
+    _, run_id, article = seed(database, status='partial')
+    database.execute("UPDATE search_results SET language='es',title_en='English',headline_review='{\"status\":\"inconclusive\",\"retry_count\":3}' WHERE id=%s", (article['id'],))
+    client = create_app().test_client()
+    endpoint = f'/setup/runs/{run_id}/retry'
+    assert client.get('/setup').status_code == 200
+    assert client.post(endpoint, data={'stage': 'translations'}).status_code == 400
+    with client.session_transaction() as session:
+        session['csrf_token'] = 'token'
+    assert client.post(endpoint, data={'stage': 'translations', 'csrf_token': 'token'}).status_code == 302
+    assert 'retry_count' not in db.get_results(run_id)[0]['headline_review']
+    queued = []
+    monkeypatch.setattr(worker, 'enqueue', queued.append)
+    assert client.post(endpoint, data={'stage': 'search', 'csrf_token': 'token'}).status_code == 302
+    assert len(queued) == 1 and queued[0] != run_id
+    assert db.get_run(queued[0])['subjects'] == db.get_run(run_id)['subjects']
+    assert len(db.get_results(run_id)) == 1
+    assert db.get_run(run_id)['status'] == 'partial'
+    assert client.post(endpoint, data={'stage': 'unknown', 'csrf_token': 'token'}).status_code == 400
+    database.execute("UPDATE search_runs SET status='running' WHERE id=%s", (run_id,))
+    assert client.post(endpoint, data={'stage': 'translations', 'csrf_token': 'token'}).status_code == 409
+    with pytest.raises(ValueError):
+        qa.request_retry(run_id)
 
 
 def test_keyword_edit_translate_and_disable_in_review(database, monkeypatch):

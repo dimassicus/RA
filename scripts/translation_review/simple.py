@@ -91,14 +91,15 @@ def shadow_schema(labels):
     def array(item):
         return {"type":"array","items":item}
     string = {"type":"string"}
-    issue = obj({"category":{"type":"string","enum":sorted(CATEGORIES)}, "source":array(string),
-                 "translation":array(string), "explanation":string})
+    issue = obj({"category":{"type":"string","enum":sorted(CATEGORIES)},
+                 "source":dict(array(string), minItems=1, maxItems=6),
+                 "translation":dict(array(string), maxItems=6), "explanation":string})
     row = obj({"candidate":{"type":"string","enum":list(labels)},
                "verdict":{"type":"string","enum":["faithful","material_error","uncertain"]}, "issues":array(issue)})
     return obj({"reviews":dict(array(row), minItems=len(labels), maxItems=len(labels))})
 
 
-def review(source,source_lang,target_lang,candidates,model,port,*,enabled,shadow_only=False):
+def review(source,source_lang,target_lang,candidates,model,port,*,enabled,shadow_only=False,retry_reason=''):
     if not source.strip() or not candidates or any(not t.strip() for t in candidates.values()):
         raise ValueError('Empty input')
     content=json.dumps({'source_language':source_lang,'target_language':target_lang,
@@ -114,6 +115,11 @@ def review(source,source_lang,target_lang,candidates,model,port,*,enabled,shadow
             '],"correction":""}', ']}') + " Return reviews only; do not propose corrections."
         request["response_format"] = {"type":"json_schema","json_schema":{
             "name":"headline_review","strict":True,"schema":shadow_schema(candidates)}}
+    if retry_reason:
+        request['messages'][0]['content'] += (
+            '\nThe previous response failed validation: ' + retry_reason[:250] +
+            '. Recheck the original source and candidate. Copy evidence fragments exactly from each respective text. '
+            'If you cannot substantiate an error with valid quotations, return uncertain with issues:[].')
     envelope=local_request(port,'/v1/chat/completions',request,timeout=600)
     try:
         choices=envelope['choices']

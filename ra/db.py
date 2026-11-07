@@ -366,8 +366,8 @@ def create_run(scope: str, subjects: list[dict]):
 
     with connect() as conn:
         return conn.execute(
-            "INSERT INTO search_runs (scope, subjects, total_companies) "
-            "VALUES (%s, %s, %s) RETURNING id",
+            "INSERT INTO search_runs (scope, subjects, total_companies, retry_translations) "
+            "VALUES (%s, %s, %s, TRUE) RETURNING id",
             (scope, Jsonb(subjects), len(subjects)),
         ).fetchone()["id"]
 

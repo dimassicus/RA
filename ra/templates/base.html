@@ -9,7 +9,7 @@
 <body>
   <header class="site-header">
     <a href="{{ url_for('dashboard') }}" class="brand" aria-label="RA home"><span class="brand-mark">RA</span><span>Credit Monitor</span></a>
-    <nav><a href="{{ url_for('keyword_settings', factors=false) }}">Keywords</a> · <a href="{{ url_for('keyword_settings', factors=true) }}">Risk factors</a> · <a href="{{ url_for('scores') }}">Weekly scores</a> <span class="header-note">· Local research workspace</span></nav>
+    <nav aria-label="Main navigation"><a href="{{ url_for('setup') }}">Setup</a> · <a href="{{ url_for('scores') }}">Weekly scores</a></nav>
   </header>
   <main class="container">
     {% for category, message in get_flashed_messages(with_categories=true) %}

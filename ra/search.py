@@ -5,10 +5,12 @@ from __future__ import annotations
 import re
 import unicodedata
 import json
+import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
+from urllib.error import URLError
 from xml.etree import ElementTree
 
 from . import keywords, news_apis, risk_factors
@@ -156,8 +158,15 @@ def feed_url(query: str, country: str) -> tuple[str, str]:
 
 def fetch_feed(url: str) -> bytes:
     request = Request(url, headers={"User-Agent": "RA-Credit-Monitor/0.1 (+local research app)"})
-    with urlopen(request, timeout=20) as response:
-        return response.read(2_000_001)
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=20) as response:
+                return response.read(2_000_001)
+        except (TimeoutError, URLError) as exc:
+            reason = exc.reason if isinstance(exc, URLError) else exc
+            if not isinstance(reason, TimeoutError) or attempt == 2:
+                raise
+            time.sleep(2 ** attempt)
 
 
 def parse_feed(content: bytes, query: str, language: str, limit: int = 30) -> list[dict]:
