@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 from .relevance import headline
 from .aliases import headline_identity, normalized
 
-VERSION = "source-credit-v4"
+VERSION = "source-credit-v5"
 WEEK_TIMEZONE = ZoneInfo("Europe/Moscow")
 LABELS = {-3: "Severe negativity", -2: "Strong negativity", -1: "Limited negativity",
           0: "Neutral / no directional evidence", 1: "Limited positivity",
@@ -39,7 +39,7 @@ RULES = [
     (1, "limited improvement", r"(?:reduces?|reduced|narrows?|narrowed|cuts?|cut) (?:its )?losses|(?:losses|net loss) (?:narrow\w*|fall\w*|fell|shrink\w*|declin\w*|decreas\w*|reduc\w*)|(?:profit|earnings|revenue|sales) (?:grow\w*|ris\w*|rose|increas\w*|improv\w*)|(?:wins?|won|secures?|secured) (?:a |new |major )?contract|lucro (?:cresce|aumenta)|reduz (?:o )?prejuizo|queda (?:do|no) prejuizo"),
     (-3, "default or insolvency", r"bankrupt\w*|insolven\w*|liquidation|(?:payment |debt |bond )?default(?:s|ed)?|missed (?:debt |bond |interest )?payments?|fails? to (?:repay|pay creditors)|falencia|inadimplencia|vo no|pha san|iflas"),
     (-2, "material financial deterioration", r"restructur\w*|recuperacao (?:extra)?judicial|liquidity crisis|cash (?:crisis|shortfall)|profit warning|(?:credit |rating )downgrad\w*|downgrad\w* (?:its |the )?(?:credit |issuer |debt )?rating|negative outlook|debt crisis|konkordato\w*|temerrut\w*|(?:profit|earnings) (?:plung\w*|collaps\w*)"),
-    (-2, "operating disruption", r"shutdown\w*|plant closure|plant fire|explosion|(?:halts?|suspends?) (?:production|operations)|hibernacao|paralisacao|fechamento|suspensao (?:das? )?(?:operacoes|producao)"),
+    (-2, "operating disruption", r"shutdown\w*|plant closure|plant fire|explosion|(?:halts?|suspends?) (?:production|operations)|hibernacao|hibernar|paralisacao|fechamento|suspensao (?:das? )?(?:operacoes|producao)"),
     (-2, "legal or creditor pressure", r"(?:faces?|facing|hit by) (?:a |an )?(?:lawsuit|investigation|sanctions)|(?:fined|convicted)|(?:creditor |debt )?mediation|procedimento de mediacao|tutela de urgencia|arbitration|arbitragem|multas?|condena\w*"),
     (-1, "limited financial deterioration", r"loss(?:es)?|prejuizo\w*|(?:profit|earnings|revenue|sales) (?:fall\w*|fell|declin\w*|drop\w*|decreas\w*)|queda (?:do|no|de) lucro|lucro cai|zarar\w*|thua lo"),
     (-1, "staff or management disruption", r"layoffs?|resign\w*|renuncia\w*|demiss\w*|istifa\w*|strike|greve|tu chuc"),

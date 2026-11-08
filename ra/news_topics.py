@@ -30,6 +30,7 @@ TOPIC_PUBLISHERS = {
     "espn", "espn brasil", "espn deportes", "sky sports", "bbc sport", "globo esporte",
     "eurosport", "bein sports", "sporx", "sport24", "football az", "bongdaplus",
     "the art newspaper", "billboard", "pitchfork", "hollywood reporter", "the hollywood reporter",
+    "الوطن سبورت",
 }
 
 # Search all languages: the feed edition is often different from the headline language.
@@ -50,7 +51,7 @@ idman|çempionat|milli komanda|incəsənət|mədəniyyət|teatr|muzey|konsert|ch
 sanat|kültür|müze|müzik|futbolda|futbol üzrə|kino|kinoteatr|spor|futbolchilar|sanʼat|
 чемпионлар лигаси|футбол бўйича|терма жамоа|маданият|концерт дастури|sanat festivali|kültür sanat|
 ποδόσφαιρο|ποδοσφαίρου|μπάσκετ|πρωτάθλημα|ολυμπιακοί αγώνες|θέατρο|κινηματογράφος|συναυλία|μουσείο|φεστιβάλ|πολιτισμός|πολιτισμού|
-كرة القدم|لكرة القدم|الدوري الممتاز|كأس العالم|كرة السلة|الألعاب الأولمبية|مهرجان|مهرجانات|سينما|السينما|حفل موسيقي|مسرح|
+كرة القدم|لكرة القدم|الدوري الممتاز|كأس العالم|كرة السلة|الألعاب الأولمبية|قائمة منتخب مصر|مهرجان|مهرجانات|سينما|السينما|حفل موسيقي|مسرح|
 bóng đá|bóng chuyền|bóng rổ|đội tuyển|thể thao|điện ảnh|liên hoan phim|âm nhạc|lễ hội|nghệ thuật|bảo tàng|văn hóa|
 футбол|футболу|футбола|чемпионат|чемпионата|баскетбол|спортсмен|кино|театр|концерт|фестиваль|музей|
 coupe du monde|championnat|concerts|musée|théâtre|sepak bola|olahraga|pertandingan sepak bola|musik|budaya

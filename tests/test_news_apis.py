@@ -5,6 +5,26 @@ from urllib.parse import parse_qs, urlparse
 from ra import news_apis
 
 
+def test_network_failure_diagnostics_never_expose_url_or_key(monkeypatch):
+    import socket
+    import ssl
+    import pytest
+    from urllib.error import URLError
+
+    secret = "https://provider.test/?api_key=secret-value"
+    for reason, expected in ((TimeoutError(secret), "network request timed out"),
+                             (socket.gaierror(secret), "DNS lookup failed"),
+                             (ssl.SSLError(secret), "TLS connection failed"),
+                             (ConnectionResetError(secret), "network connection failed"),
+                             (secret, "network request failed")):
+        def reject(request, timeout):
+            raise URLError(reason)
+        monkeypatch.setattr(news_apis, "urlopen", reject)
+        with pytest.raises(news_apis.ProviderError) as error:
+            news_apis.fetch_json(secret)
+        assert str(error.value) == expected
+
+
 def test_both_providers_keep_direct_links_language_and_provenance(monkeypatch):
     monkeypatch.setenv("RA_GNEWS_API_KEY", "private-gnews-key")
     monkeypatch.setenv("RA_THENEWSAPI_API_KEY", "private-news-key")

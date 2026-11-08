@@ -18,7 +18,7 @@ from html.parser import HTMLParser
 from io import BytesIO
 from urllib.parse import urljoin, urlsplit, urlunsplit, parse_qsl, urlencode
 
-READER_VERSION = "public-source-v4"
+READER_VERSION = "public-source-v5"
 MAX_BYTES = 2_000_000
 MAX_TEXT = 100_000
 
@@ -172,6 +172,13 @@ def parse_html(raw, content_type):
     return parser, text
 
 
+def validate_pdf_text(body):
+    # Broken font mappings can produce enough gibberish to pass the length check.
+    corrupt = sum((ord(char) < 32 and char not in '\n\r\t') or char == '\ufffd' for char in body)
+    if corrupt > max(10, len(body) // 100):
+        raise ValueError('PDF text has corrupt character encoding; analyst reading required')
+
+
 def extract(raw, content_type, parsed=None):
     if raw.startswith(b'%PDF-') or 'application/pdf' in content_type:
         from pypdf import PdfReader
@@ -179,6 +186,7 @@ def extract(raw, content_type, parsed=None):
         if reader.is_encrypted or len(reader.pages) > 30:
             raise ValueError('Encrypted PDF or document over 30 pages; analyst reading required')
         body = '\n\n'.join(page.extract_text() or '' for page in reader.pages)
+        validate_pdf_text(body)
         method = 'PDF text (no OCR)'
     elif 'html' in content_type:
         parser, text = parsed or parse_html(raw, content_type)

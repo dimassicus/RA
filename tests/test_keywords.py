@@ -5,6 +5,24 @@ from ra.relevance import classify
 from ra.scoring import score_article
 
 
+@pytest.mark.parametrize('valid_later_quote', [True, False])
+def test_later_direct_theme_evidence_upgrades_partial_only_when_valid(monkeypatch, valid_later_quote):
+    from ra import risk_factors
+    first, later = 'Some conditions apply.', 'All conditions now apply.'
+    body = first + ' ' * (6000 - len(first)) + later
+    answers = iter([
+        {'matches': [{'id': 1, 'kind': 'partial', 'quote': first, 'connection': 'Some conditions.'}]},
+        {'matches': [{'id': 1, 'kind': 'direct', 'quote': later if valid_later_quote else 'Invented',
+                      'connection': 'All conditions.'}]},
+    ])
+    monkeypatch.setattr(keywords, 'model_json', lambda *a: next(answers))
+    result = risk_factors.assess({'title': 'Update'}, {'status': 'available', 'body': body}, {},
+                                [{'id': 1, 'english': 'Theme', 'scope': 'company'}])
+    assert len(result['matches']) == 1
+    assert result['matches'][0]['kind'] == ('direct' if valid_later_quote else 'partial')
+    assert result['status'] == ('checked' if valid_later_quote else 'inconclusive')
+
+
 def test_keyword_matches_language_and_sentiment_without_establishing_company_impact(monkeypatch):
     rows = [
         dict(english="covenant breach", direction="adverse", enabled=True, translations={"pt": "quebra de cláusula"}),

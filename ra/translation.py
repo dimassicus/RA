@@ -115,6 +115,9 @@ def argos_translate(text: str, language: str, company_name: str = "", publisher:
         translated = tokenizer.decode_pieces(result.hypotheses[0]).replace("▁", " ").strip()
         if prefix and translated.startswith(prefix):
             translated = translated[len(prefix):].strip()
+        for protected_marker in (marker, publisher_marker, *(term[0] for term in terms)):
+            if translated.count(protected_marker) != protected.count(protected_marker):
+                return "", "Argos changed protected names or terms; fallback required"
         if company_name:
             translated = translated.replace(marker, company_name)
         if publisher:

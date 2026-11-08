@@ -25,7 +25,8 @@ def detect_language(title: str, feed_locale: str = "") -> str:
     hint = feed_locale.split("-", 1)[0].lower()
     if re.match(r"^(fato relevante|comunicado ao mercado)\b", text, re.I):
         return "pt"
-    if len(re.findall(r"[\u0370-\u03ff\u1f00-\u1fff]", text)) >= 3:
+    greek = len(re.findall(r"[\u0370-\u03ff\u1f00-\u1fff]", text))
+    if greek >= 3 and greek > sum(c.isalpha() for c in text) / 2:
         return "el"
     if re.search(r"[ўқғҳ]", text, re.I):
         return "uz"

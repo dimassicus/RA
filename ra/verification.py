@@ -5,11 +5,12 @@ fact checking. No pronoun resolution, group-to-subsidiary inference or LLM calls
 """
 import re
 
-from .aliases import company_names, headline_identity, normalized
+from .aliases import LEGAL_SUFFIX, company_names, headline_identity, normalized
+from .article_content import validate_pdf_text
 from .scoring import COMPILED, UNCERTAIN, NEGATION
 from . import article_translation
 
-VERSION = 'source-attribution-v3'
+VERSION = 'source-attribution-v4'
 # Deliberately closed vocabulary between the company name and event phrase.
 # 'Acme's supplier filed for bankruptcy' must never become Acme's bankruptcy.
 BRIDGE = re.compile(r'(?:(?:s|has|have|had|is|was|were|has been|will|its|the|a|an|that it|that the company|'
@@ -24,6 +25,29 @@ CONTEXT = re.compile(r'\b(?:denies?|denied|rumou?r\w*|alleged|hypothetical|cance
 OTHER_ENTITY = re.compile(r'\b(?:subsidiar\w*|supplier\w*|rival\w*|competitor\w*|parent|affiliate\w*|fornecedor\w*)\b')
 
 
+def declared_hibernation(sentence, names):
+    """Recognize a formally defined issuer's own enumerated board decision."""
+    declaration = re.match(r'^A\s+(.{3,180}?)\s*\([“"\']Companhia[”"\']\)', sentence, re.I | re.S)
+    if not declaration or LEGAL_SUFFIX.sub('', normalized(declaration[1])) not in names:
+        return None
+    decision = re.search(r'\ba Diretoria da Companhia decidiu\s*\(I\)', sentence, re.I)
+    if not decision or decision.start() < declaration.end():
+        return None
+    if re.search(r'[“”"‘’\']', sentence[declaration.end():decision.start()]):
+        return None  # A quoted third-party statement does not inherit the issuer's definition.
+    action = re.search(r';\s*(?:e\s+)?\((?:II|III|IV)\)\s*hibernar\s+as\s+(?:plantas|unidades)\b'
+                       r'(?=\s+(?:localizadas|situadas)\s+em\b)',
+                       sentence[decision.end():], re.I)
+    if not action:
+        return None
+    prefix = sentence[decision.end():decision.end() + action.start()].translate(
+        str.maketrans({'“': '"', '”': '"', '‘': "'", '’': "'"}))
+    if prefix.count('"') % 2 or prefix.count("'") % 2:
+        return None
+    return {'company_declaration': declaration[0],
+            'decision': sentence[decision.start():decision.end() + action.end()]}
+
+
 def verify(document, subject, article):
     result = {'version': VERSION, 'status': 'needs_review', 'reason': '', 'evidence': [],
               'document_hash': document.get('sha256', ''), 'source_url': document.get('final_url', article['url']),
@@ -33,6 +57,11 @@ def verify(document, subject, article):
     if document.get('review_only'):
         return {**result, 'reason': 'Recovered publisher text requires analyst confirmation of the event and company impact'}
     body = document['body']
+    if document.get('method') == 'PDF text (no OCR)':
+        try:
+            validate_pdf_text(body)
+        except ValueError as exc:
+            return {**result, 'status': 'unavailable', 'reason': str(exc)}
     if article.get('discovery_service') == 'FCA Warning RSS':
         return {**result, 'reason': 'Possible clone warning; analyst must identify the affected legal entity'}
     # An English headline is not a translation of the full article.
@@ -43,7 +72,10 @@ def verify(document, subject, article):
             body = article_translation.checked_text(document)
         except ValueError as exc:
             return {**result, 'reason': str(exc)}
-    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', body) if s.strip()]
+    # PDF lines wrap sentences; S.A. is part of a company name, not a sentence ending.
+    line_break = r'\n{2,}' if document.get('method') == 'PDF text (no OCR)' else r'\n+'
+    sentences = [s.strip() for s in re.split(r'(?<!\bS\.A\.)(?<=[.!?])\s+|' + line_break,
+                                            body, flags=re.I) if s.strip()]
     names = sorted(company_names(subject), key=len, reverse=True)
     identity_seen, ambiguous = False, False
     for index, sentence in enumerate(sentences):
@@ -53,7 +85,10 @@ def verify(document, subject, article):
         identity_seen = True
         # Adjacent sentences can deny or date a claim without repeating the name.
         context = normalized(" ".join(sentences[max(0, index-1):index+2]))
-        if (UNCERTAIN.search(context) or NEGATION.search(context) or CONTEXT.search(context)
+        # Portuguese "no" means "in the"; its negation is "não", handled by UNCERTAIN.
+        english_negation = translated or document.get('language', '').lower().split('-')[0] != 'pt'
+        negated = any(match[0] != 'no' or english_negation for match in NEGATION.finditer(context))
+        if (UNCERTAIN.search(context) or negated or CONTEXT.search(context)
                 or HISTORICAL.search(context) or OTHER_ENTITY.search(folded)):
             if any(pattern.search(folded) for _, _, pattern in COMPILED):
                 ambiguous = True
@@ -76,6 +111,7 @@ def verify(document, subject, article):
                 ambiguous = True
                 continue
             linked = False
+            attribution = None
             for name in names:
                 # Company must be the grammatical subject at the start of this sentence.
                 match = re.match(r'^(?:the |a empresa |empresa |a )?' + re.escape(name) + r'(?!\w)', folded)
@@ -85,11 +121,18 @@ def verify(document, subject, article):
                 if len(bridge) <= 90 and BRIDGE.fullmatch(bridge):
                     linked = True
                     break
+            if (not linked and phrase == 'hibernar' and folded.count('hibernar') == 1
+                    and not translated and document.get('language', '').lower().split('-')[0] == 'pt'
+                    and document.get('method') == 'PDF text (no OCR)' and article.get('source_kind') == 'official'):
+                attribution = declared_hibernation(sentence, names)
+                linked = attribution is not None
             if not linked:
                 ambiguous = True
                 continue
             evidence = {'score': score, 'rule': label, 'phrase': phrase,
                         'field': 'reviewed article translation' if translated else 'source article', 'sentence': sentence[:1200]}
+            if attribution:
+                evidence['attribution'] = attribution
             if translated:
                 evidence['original_passages'] = article_translation.original_passages(document, sentence)
             result['evidence'].append(evidence)

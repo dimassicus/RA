@@ -220,7 +220,7 @@ def assess(article, document, subject, factors):
               "themes to a listed market, sector themes to its industry in a listed market. For each match give its "
               "ID, kind, a short continuous verbatim quote, and a short English explanation grounded in that quote. "
               "Return an empty array for unrelated news.")
-    seen = set()
+    seen = {}
     try:
         for first in range(0, len(factors), 12):
             batch = factors[first:first + 12]
@@ -238,14 +238,19 @@ def assess(article, document, subject, factors):
                             or not connection or (quote not in title and quote not in passage)):
                         result["status"] = "inconclusive"
                         continue
-                    if row["id"] not in seen:
-                        seen.add(row["id"])
-                        result["matches"].append({
+                    existing = seen.get(row["id"])
+                    if existing is None or (result["matches"][existing]["kind"] == "partial" and item["kind"] == "direct"):
+                        match = {
                             "factor": row["english"], "scope": row["scope"], "kind": item["kind"],
                             "quote": quote, "from": "source text" if quote in passage else "headline",
                             "connection": connection[:500],
-                        })
-                if all(key in seen for key in options):
+                        }
+                        if existing is None:
+                            seen[row["id"]] = len(result["matches"])
+                            result["matches"].append(match)
+                        else:
+                            result["matches"][existing] = match
+                if all(key in seen and result["matches"][seen[key]]["kind"] == "direct" for key in options):
                     break
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         result["status"] = "incomplete"

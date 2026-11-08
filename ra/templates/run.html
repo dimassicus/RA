@@ -23,7 +23,9 @@
   <progress id="translation-bar" max="100" value="{{ v.get('translation_percent',0) }}"></progress>
   <p id="translation-count">{{ v.get('reviewed',0) }} of {{ v.get('translation_total',0) }} required reviews completed · {{ v.get('review_failed',0) }} failed attempts · {{ v.get('missing',0) }} missing translations · {{ v.get('review_attention',0) }} reviewed translations need attention</p>
   <p class="subtext">Failed attempts and missing translations remain incomplete. Completed reviews can flag translation errors or uncertainty. RA retries when Qwen reconnects and the search worker is idle; unresolved translations receive up to three automatic retries.</p>
-  <p class="subtext">Counters update live. Save any edits before <a href="{{ request.full_path }}">refreshing lead details</a>.</p>
+  <p id="translation-retries" role="status">{% if v.get('review_exhausted',0) and not v.get('review_pending',0) %}Automatic headline retries stopped: {{ v.get('review_exhausted',0) }} unresolved reviews exhausted their retries.{% else %}{{ v.get('review_pending',0) }} unresolved reviews can still retry · {{ v.get('review_exhausted',0) }} exhausted their retries.{% endif %}</p>
+  <p id="results-refresh" role="status" hidden>New assessments are available. Save your edits, then <a href="{{ request.full_path }}">refresh lead details and filter counts</a>.</p>
+  <p class="subtext">Counters and results update live. Unsaved edits pause automatic page refresh.</p>
   <small id="check-live" class="subtext">Updates automatically while this page is open.</small>
 </section>
 {% if run.status not in ('queued', 'running') %}
@@ -57,7 +59,7 @@
     {{ filter_header('company', 'Company', 'All companies') }}<th>Headline / publisher</th>
     {{ filter_header('score', 'Article score', 'All scores') }}<th scope="col">Review cue<select id="cue-filter" class="column-filter" aria-label="Filter by keyword"><option value="">All cues</option></select></th><th>Discovery</th></tr></thead>
     <tbody>{% for item in results %}<tr data-keywords='{{ item.keyword_hits|tojson }}' data-company="{{ item.subject_name }}" data-score="{{ item.score if item.score is defined and item.score is not none else 'pending' }}">
-    <td><label class="check-label"><input class="lead-check" type="checkbox" name="selected_ids" value="{{ item.id }}" {% if item.report_selected %}checked{% endif %} aria-label="Include lead {{ item.id }} in report"></label></td><td class="nowrap">{{ item.published_at.strftime('%d %b %Y') if item.published_at else 'Date unknown' }}</td><td>{{ item.subject_name }}{% for path in item.exposure_paths %}<span class="subtext">{{ path }}</span>{% endfor %}</td><td><span class="source-kind {{ item.source_kind }}">{{ 'Official notice' if item.source_kind == 'official' else 'News lead' }}</span><a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>{% if item.title_en and (item.title_en != item.title or item.language != 'en') %}<span class="translation"><strong>English:</strong> {{ item.title_en }}</span><span class="subtext">Translation review: {{ (item.get('headline_review') or {}).get('status', 'pending')|replace('_',' ') }}</span>{% elif not item.title_en %}<span class="translation-pending">{{ 'English translation unavailable: ' ~ item.translation_provider if item.translation_provider else 'English translation in progress' }}</span>{% endif %}<span class="subtext">Publisher: {{ item.publisher or 'unknown' }}{% if item.publisher_en %} · English name: {{ item.publisher_en }}{% endif %}{% if item.discovery_service %} · Found via: {{ item.discovery_service }}{% endif %}</span>{% if item.get('group_sources') %}<details><summary>{{ item.group_sources|length }} other source occurrence(s) for this event</summary><ul>{% for source in item.group_sources %}<li><a href="{{ url_for('article_score', result_id=source.id) }}">#{{ source.id }} · {{ source.title }}</a> · {{ source.publisher }}</li>{% endfor %}</ul></details>{% endif %}<details class="translation-edit"><summary>Correct English text</summary><label>Headline in English<input name="title_en_{{ item.id }}" value="{{ item.title_en }}" maxlength="1000"></label><label>Publisher name in English<input name="publisher_en_{{ item.id }}" value="{{ item.publisher_en }}" maxlength="250"></label></details></td><td>{% if item.score is defined and item.score is not none %}<span class="score-badge score-{{ item.score }}">{{ '%+d'|format(item.score) if item.score else '0' }}</span><span class="subtext">{{ item.score_status|replace('_',' ') }} · {{ 'Included' if item.score_included else 'Excluded' }}</span><span class="subtext">{{ item.score_reason }}</span>{% else %}<span class="subtext">Scoring pending</span>{% endif %}<a href="{{ url_for('article_score', result_id=item.id) }}">Review evidence &amp; score</a><span class="subtext">Source: {{ item.verification.get('status', 'pending')|replace('_',' ') }} · {{ item.event_group }}</span></td><td>{% for match in item.get('risk_factor_review', {}).get('matches', []) %}<details><summary>{{ match.factor }}</summary><p>{{ match.kind|capitalize }} match · {{ match.connection }}</p><blockquote>{{ match.quote }}</blockquote><small>{{ match.from }}</small></details>{% endfor %}{% for label in item.governance %}<span class="tag">{{ label }} lead</span>{% endfor %}<span class="subtext">{{ item.relevance_reason }}</span>{% for hit in item.keyword_hits %}<span class="tag">{{ hit.term }} · {{ hit.direction }}</span>{% else %}{% for signal in item.signal_terms %}<span class="tag">{{ signal }}</span>{% endfor %}{% endfor %}</td><td><span class="freshness {{ 'old' if item.seen_before else 'new' }}">{{ 'Seen before' if item.seen_before else 'New to system' }}</span><span class="subtext">{{ item.language }}</span></td>
+    <td><label class="check-label"><input class="lead-check" type="checkbox" name="selected_ids" value="{{ item.id }}" {% if item.report_selected %}checked{% endif %} aria-label="Include lead {{ item.id }} in report"></label></td><td class="nowrap">{{ item.published_at.strftime('%d %b %Y') if item.published_at else 'Date unknown' }}</td><td>{{ item.subject_name }}{% for path in item.exposure_paths %}<span class="subtext">{{ path }}</span>{% endfor %}</td><td><span class="source-kind {{ item.source_kind }}">{{ 'Official notice' if item.source_kind == 'official' else 'News lead' }}</span><a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>{% if item.title_en and (item.title_en != item.title or item.language != 'en') %}<span class="translation"><strong>English:</strong> {{ item.title_en }}</span><span class="subtext">Translation review: {{ (item.get('headline_review') or {}).get('status', 'pending')|replace('_',' ') }}</span>{% elif not item.title_en %}<span class="translation-pending">{{ 'English translation unavailable: ' ~ item.translation_provider if item.translation_provider else 'English translation in progress' }}</span>{% endif %}<span class="subtext">Publisher: {{ item.publisher or 'unknown' }}{% if item.publisher_en %} · English name: {{ item.publisher_en }}{% endif %}{% if item.discovery_service %} · Found via: {{ item.discovery_service }}{% endif %}</span>{% if item.get('group_sources') %}<details><summary>{{ item.group_sources|length }} other source occurrence(s) for this event</summary><ul>{% for source in item.group_sources %}<li><a href="{{ url_for('article_score', result_id=source.id) }}">#{{ source.id }} · {{ source.title }}</a> · {{ source.publisher }}</li>{% endfor %}</ul></details>{% endif %}<details class="translation-edit"><summary>Correct English text</summary><label>Headline in English<input name="title_en_{{ item.id }}" value="{{ item.title_en }}" maxlength="1000"></label><label>Publisher name in English<input name="publisher_en_{{ item.id }}" value="{{ item.publisher_en }}" maxlength="250"></label></details></td><td>{% if item.score is defined and item.score is not none %}<span class="score-badge score-{{ item.score }}">{{ '%+d'|format(item.score) if item.score else '0' }}</span><span class="subtext">{{ item.score_status|replace('_',' ') }} · {{ 'Included' if item.score_included else 'Excluded' }}</span><span class="subtext">{{ item.score_reason }}</span>{% else %}<span class="subtext">Scoring pending</span>{% endif %}<a href="{{ url_for('article_score', result_id=item.id) }}">Review evidence &amp; score</a><span class="subtext">Source: {{ item.verification.get('status', 'pending')|replace('_',' ') }} · {{ item.event_group }}</span></td><td>{% set theme_review = item.get('risk_factor_review') or {} %}<span class="subtext">Theme assessment: {{ theme_review.get('status', 'pending')|replace('_',' ') }}{% if theme_review.get('coverage') %} · {{ theme_review.coverage }}{% endif %}</span>{% if theme_review.get('status') in ('inconclusive', 'incomplete') %}<span class="subtext">Some themes could not be assessed. No match does not mean no relevant risk.</span>{% endif %}{% for match in theme_review.get('matches', []) %}<details><summary>{{ match.factor }}</summary><p>{{ match.kind|capitalize }} match · {{ match.connection }}</p><blockquote>{{ match.quote }}</blockquote><small>{{ match.from }}</small></details>{% endfor %}{% for label in item.governance %}<span class="tag">{{ label }} lead</span>{% endfor %}<span class="subtext">{{ item.relevance_reason }}</span>{% for hit in item.keyword_hits %}<span class="tag">{{ hit.term }} · {{ hit.direction }}</span>{% else %}{% for signal in item.signal_terms %}<span class="tag">{{ signal }}</span>{% endfor %}{% endfor %}</td><td><span class="freshness {{ 'old' if item.seen_before else 'new' }}">{{ 'Seen before' if item.seen_before else 'New to system' }}</span><span class="subtext">{{ item.language }}</span></td>
   </tr>{% endfor %}</tbody></table></div>
   <script src="{{ url_for('static', filename='lead-table.js') }}" defer></script>
   <div class="review-toolbar bottom"><button type="submit" class="button primary" {% if run.status in ('queued', 'running') %}disabled{% endif %}>Save report selection</button></div></form>
@@ -66,28 +68,39 @@
 {% if errors %}<section class="panel errors-panel"><span class="step">Source access</span><h2>Errors</h2><ul>{% for error in errors %}<li><strong>{{ error.subject_name }}:</strong> {{ error.message }}</li>{% endfor %}</ul></section>{% endif %}
 <script>
   const statusUrl = {{ url_for('run_status', run_id=run.id)|tojson }};
+  const initialChecks = {{ verification_jobs|tojson }};
+  const resultState = v => JSON.stringify([v.revision, v.completed, v.failed, v.reviewed,
+    v.review_failed, v.missing, v.review_attention, v.review_exhausted]);
+  const controlValue = field => ['checkbox', 'radio'].includes(field.type) ? field.checked : field.value;
+  const initialFormValues = new Map(Array.from(document.querySelectorAll('form input, form textarea, form select'),
+    field => [field, controlValue(field)]));
+  const hasUnsavedChanges = () => Array.from(initialFormValues).some(([field, value]) => controlValue(field) !== value);
   async function updateChecks() {
     try {
       if (document.hidden) return;
       const response = await fetch(statusUrl, {cache: 'no-store'});
       if (!response.ok) throw Error();
       const data = await response.json();
-      {% if run.status in ('queued','running') %}
-      if (data.status !== {{ run.status|tojson }} || data.completed_companies > {{ run.completed_companies }}) {
-        window.location.reload(); return;
+      const v = data.verification;
+      if (data.status !== {{ run.status|tojson }} || data.completed_companies !== {{ run.completed_companies }} ||
+          resultState(v) !== resultState(initialChecks)) {
+        if (!hasUnsavedChanges()) { window.location.reload(); return; }
+        document.getElementById('results-refresh').hidden = false;
       }
+      {% if run.status in ('queued','running') %}
       const step = data.discovery;
       const bar = document.getElementById('search-bar');
-      if (step.total) {
-        bar.max = step.total;
-        bar.value = step.done;
-      } else {
-        bar.removeAttribute('value');
+      if (step && bar) {
+        if (step.total) {
+          bar.max = step.total;
+          bar.value = step.done;
+        } else {
+          bar.removeAttribute('value');
+        }
+        document.getElementById('search-step').textContent = step.message;
+        document.getElementById('search-age').textContent = step.age == null ? '' : 'Last worker update ' + step.age + 's ago.';
       }
-      document.getElementById('search-step').textContent = step.message;
-      document.getElementById('search-age').textContent = step.age == null ? '' : 'Last worker update ' + step.age + 's ago.';
       {% endif %}
-      const v = data.verification;
       for (const [id, percentage] of [['publisher',v.percent], ['translation',v.translation_percent]]) {
         document.getElementById(id + '-bar').value = percentage;
         document.getElementById(id + '-percent').textContent = percentage + '%';
@@ -99,6 +112,9 @@
       document.getElementById('translation-count').textContent = v.reviewed + ' of ' + v.translation_total +
         ' required reviews completed · ' + v.review_failed + ' failed attempts · ' + v.missing +
         ' missing translations · ' + v.review_attention + ' reviewed translations need attention';
+      document.getElementById('translation-retries').textContent = v.review_exhausted && !v.review_pending ?
+        'Automatic headline retries stopped: ' + v.review_exhausted + ' unresolved reviews exhausted their retries.' :
+        v.review_pending + ' unresolved reviews can still retry · ' + v.review_exhausted + ' exhausted their retries.';
       document.getElementById('check-live').textContent = 'Updated ' + new Date().toLocaleTimeString() +
         '. Changes to your report selection are preserved.';
     } catch (_) {

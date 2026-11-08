@@ -425,6 +425,13 @@ def test_progress_measures_entire_run_and_separates_translation_from_source(data
     v = client.get(endpoint).json['verification']
     assert (v['translation_percent'], v['translation_total'], v['reviewed']) == (33, 3, 1)
     assert (v['review_failed'], v['missing'], v['review_attention']) == (1, 1, 1)
+    assert (v['review_pending'], v['review_exhausted']) == (2, 0)
+    assert v['revision']
+    database.execute("UPDATE search_results SET headline_review=headline_review || '{\"retry_count\":3}' "
+                     "WHERE language='es' AND title_en<>''")
+    v = client.get(endpoint).json['verification']
+    # A completed material-error verdict is not an exhausted review.
+    assert (v['review_pending'], v['review_exhausted']) == (1, 1)
 
 
 def test_translation_retries_resume_after_reconnection_and_preserve_user_edits(database, monkeypatch):

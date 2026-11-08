@@ -2,6 +2,12 @@ from ra.language import detect_language
 from ra.model_store import country_languages
 
 
+def test_greek_navigation_does_not_override_english_article():
+    body = 'Απόψεις - Αναλύσεις\nFacebook\nMarket Comment\n' + (
+        'The company reported higher annual revenue and operating profit. ' * 12)
+    assert detect_language(body) == 'en'
+
+
 def test_article_language_overrides_feed_edition():
     assert detect_language("Новые склады класса А откроются в Ташкенте - Spot.uz", "uz-UZ") == "ru"
     assert detect_language("Petrovietnam accelerates smart factory drive with AI", "vi-VN") == "en"

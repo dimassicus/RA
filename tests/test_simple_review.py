@@ -120,6 +120,7 @@ def test_shadow_review_requests_one_result_and_still_rejects_invented_evidence(m
     raw.pop('correction')
     raw['reviews'][0]['issues'][0]['source'] = ['invented source text']
     def model(port, path, request, timeout):
+        assert request['max_tokens'] == 2048 and timeout == 120
         shape = request['response_format']['json_schema']['schema']['properties']['reviews']
         assert shape['minItems'] == shape['maxItems'] == 1
         assert request['reasoning_effort'] == 'none'

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import socket
+import ssl
 from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
@@ -66,8 +68,17 @@ def fetch_json(url: str) -> dict:
             raw = response.read(3_000_001)
     except HTTPError as exc:
         raise ProviderError(f"HTTP {exc.code}") from None
-    except (URLError, TimeoutError, OSError):
-        raise ProviderError("network request failed") from None
+    except (URLError, TimeoutError, OSError) as exc:
+        reason = exc.reason if isinstance(exc, URLError) else exc
+        failure = "network request failed"
+        for error_type, message in ((TimeoutError, "network request timed out"),
+                                    (socket.gaierror, "DNS lookup failed"),
+                                    (ssl.SSLError, "TLS connection failed"),
+                                    (ConnectionError, "network connection failed")):
+            if isinstance(reason, error_type):
+                failure = message
+                break
+        raise ProviderError(failure) from None
     if len(raw) > 3_000_000:
         raise ProviderError("response exceeded size limit")
     try:

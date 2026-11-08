@@ -117,6 +117,8 @@ def job_summary(run_id):
     with db.connect() as conn:
         counts = conn.execute("""
             SELECT count(*) AS total,
+              max(GREATEST(r.score_updated_at,
+                  CASE WHEN j.status IN ('completed','failed') THEN j.updated_at END))::text AS revision,
               count(*) FILTER (WHERE j.status='queued') AS queued,
               count(*) FILTER (WHERE j.status='running') AS running,
               count(*) FILTER (WHERE j.status='failed') AS failed,
@@ -134,6 +136,14 @@ def job_summary(run_id):
                                 AND r.headline_review->>'status' IN ('faithful','material_error','uncertain')) AS reviewed,
               count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en'
                                 AND r.headline_review->>'status' IN ('unavailable','inconclusive')) AS review_failed,
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en'
+                                AND (r.title_en='' OR COALESCE(r.headline_review->>'status','pending')
+                                     IN ('pending','unavailable','inconclusive'))
+                                AND COALESCE((r.headline_review->>'retry_count')::integer,0)<3) AS review_pending,
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en'
+                                AND (r.title_en='' OR COALESCE(r.headline_review->>'status','pending')
+                                     IN ('pending','unavailable','inconclusive'))
+                                AND COALESCE((r.headline_review->>'retry_count')::integer,0)>=3) AS review_exhausted,
               count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en'
                                 AND r.headline_review->>'status' IN ('material_error','uncertain')) AS review_attention
             FROM search_results r LEFT JOIN verification_jobs j ON j.result_id=r.id

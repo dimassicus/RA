@@ -106,7 +106,7 @@ def review(source,source_lang,target_lang,candidates,model,port,*,enabled,shadow
                         'source':source,'candidates':candidates},ensure_ascii=False)
     if len(source)>4000 or len((content+SYSTEM).encode())>11500:
         raise ValueError('Input exceeds conservative context budget')
-    request={'model':model,'stream':False,'temperature':0,'seed':42,'max_tokens':8192,
+    request={'model':model,'stream':False,'temperature':0,'seed':42,'max_tokens':2048 if shadow_only else 8192,
              'reasoning_effort':'medium' if enabled else 'none',
              'chat_template_kwargs':{'enable_thinking':enabled,'reasoning_effort':'medium'},
              'messages':[{'role':'system','content':SYSTEM},{'role':'user','content':content}]}
@@ -120,7 +120,7 @@ def review(source,source_lang,target_lang,candidates,model,port,*,enabled,shadow
             '\nThe previous response failed validation: ' + retry_reason[:250] +
             '. Recheck the original source and candidate. Copy evidence fragments exactly from each respective text. '
             'If you cannot substantiate an error with valid quotations, return uncertain with issues:[].')
-    envelope=(request_fn or local_request)(port,'/v1/chat/completions',request,timeout=600)
+    envelope=(request_fn or local_request)(port,'/v1/chat/completions',request,timeout=120 if shadow_only else 600)
     try:
         choices=envelope['choices']
         if len(choices)!=1 or choices[0].get('finish_reason')!='stop':

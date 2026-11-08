@@ -53,6 +53,95 @@ def test_source_attribution_and_direction(sentence, score):
 
 
 @pytest.mark.parametrize('body', [
+    'Acme Manufacturing reports net\nlosses of 40 million dollars.',
+    'Acme Manufacturing S.A. reports net losses of 40 million dollars.',
+])
+def test_pdf_soft_wraps_and_legal_suffix_do_not_split_company_from_event(body):
+    result = verify(document(body, method='PDF text (no OCR)'), SUBJECT, ARTICLE)
+    assert result['status'] == 'supported' and result['score'] == -1
+    assert result['evidence'][0]['sentence'] == body
+
+
+@pytest.mark.parametrize('body', [
+    "Acme Manufacturing's supplier reports net\nlosses of 40 million dollars.",
+    'Acme Manufacturing reports net\nlosses of 40 million dollars. The company denied the report.',
+    'Acme Manufacturing reports net\nlosses of 40 million dollars. This happened in 2020.',
+    'Acme Manufacturing publishes an update.\n\nRival Holdings reports net losses of 40 million dollars.',
+])
+def test_pdf_soft_wrap_fix_preserves_entity_and_context_exclusions(body):
+    assert verify(document(body, method='PDF text (no OCR)'), SUBJECT, ARTICLE)['status'] != 'supported'
+
+
+def test_corrupt_pdf_text_is_rejected_before_cleaning_and_for_cached_documents(monkeypatch):
+    import pypdf
+    from types import SimpleNamespace
+    body = 'Acme Manufacturing reports net losses of 40 million dollars. ' + '\x01\x02\ufffd' * 100
+    monkeypatch.setattr(pypdf, 'PdfReader', lambda _: SimpleNamespace(
+        is_encrypted=False, pages=[SimpleNamespace(extract_text=lambda: body)]))
+    with pytest.raises(ValueError, match='corrupt character encoding'):
+        extract(b'%PDF-test', 'application/pdf')
+    result = verify(document(body, method='PDF text (no OCR)'), SUBJECT, ARTICLE)
+    assert result['status'] == 'unavailable' and not result['evidence']
+
+
+ISSUER_DECISION = (
+    'A Acme Manufacturing S.A. (“Companhia”) comunica aos seus acionistas e ao mercado em geral que, '
+    'no âmbito dos trabalhos de otimização de resultados das diversas plantas e ativos da Companhia, '
+    'a Diretoria da Companhia decidiu (I) dar seguimento com a retomada da operação da unidade de Paranaguá (“Paranaguá”); '
+    'e (II) hibernar as plantas localizadas em Ourinhos, Iguatama e Rio Verde no Brasil.'
+)
+
+
+def test_official_declared_issuer_owns_enumerated_board_decision():
+    result = verify(document(ISSUER_DECISION, language='pt', method='PDF text (no OCR)'), SUBJECT,
+                    {**ARTICLE, 'source_kind': 'official'})
+    assert result['status'] == 'supported' and result['score'] == -2
+    evidence = result['evidence'][0]
+    assert evidence['phrase'] == 'hibernar'
+    assert evidence['attribution']['company_declaration'] in ISSUER_DECISION
+    assert evidence['attribution']['decision'] in ISSUER_DECISION
+    assert 'retomada' in evidence['attribution']['decision']
+    assert 'hibernar as plantas' in evidence['attribution']['decision']
+
+
+@pytest.mark.parametrize('body', [
+    ISSUER_DECISION.replace('decidiu', 'não decidiu'),
+    ISSUER_DECISION.replace('hibernar', 'não hibernar'),
+    ISSUER_DECISION.replace('decidiu', 'decidiu em 2020'),
+    ISSUER_DECISION.replace('A Acme Manufacturing S.A.', 'A Outra Empresa S.A.'),
+    ISSUER_DECISION.replace('a Diretoria da Companhia', 'o fornecedor da Companhia'),
+    ISSUER_DECISION.replace('hibernar as plantas', 'pedir que Outra Empresa hiberne as plantas'),
+    ISSUER_DECISION.replace('hibernar as plantas localizadas em', 'hibernar as plantas de Outra Empresa em'),
+    '“' + ISSUER_DECISION + '”',
+    ISSUER_DECISION.replace('a Diretoria da Companhia', 'reproduz a declaração de Outra Empresa: “a Diretoria da Companhia') + '”',
+    ISSUER_DECISION.replace('(I) dar seguimento', '(I) reproduzir a declaração de Outra Empresa: “dar seguimento') + '”',
+    ISSUER_DECISION.replace('(I) dar seguimento', '(I) reproduzir a declaração de Outra Empresa: "dar seguimento') + '"',
+])
+def test_declared_issuer_rule_rejects_denial_history_and_other_actors(body):
+    result = verify(document(body, language='pt', method='PDF text (no OCR)'), SUBJECT,
+                    {**ARTICLE, 'source_kind': 'official'})
+    assert result['status'] != 'supported'
+
+
+def test_declared_issuer_rule_requires_official_original_portuguese_pdf():
+    for language, method, kind in [('pt', 'HTML article/main text', 'official'),
+                                    ('en', 'PDF text (no OCR)', 'official'),
+                                    ('pt', 'PDF text (no OCR)', 'news')]:
+        result = verify(document(ISSUER_DECISION, language=language, method=method), SUBJECT,
+                        {**ARTICLE, 'source_kind': kind})
+        assert result['status'] != 'supported'
+
+
+def test_portuguese_no_is_a_preposition_but_english_no_still_negates(monkeypatch):
+    body = 'Acme Manufacturing anunciou fechamento no Brasil.'
+    assert verify(document(body, language='pt'), SUBJECT, ARTICLE)['status'] == 'supported'
+    assert verify(document(body.replace('anunciou', 'não anunciou'), language='pt'), SUBJECT, ARTICLE)['status'] != 'supported'
+    assert verify(document('Acme Manufacturing has not filed for bankruptcy.', language='pt'), SUBJECT, ARTICLE)['status'] != 'supported'
+    monkeypatch.setattr('ra.article_translation.checked_text', lambda _: 'Acme Manufacturing reports no net losses.')
+    assert verify(document('Texto original.', language='es'), SUBJECT, ARTICLE)['status'] != 'supported'
+
+
+@pytest.mark.parametrize('body', [
     "Acme Manufacturing's supplier has filed for bankruptcy.",
     'A supplier of Acme Manufacturing has filed for bankruptcy.',
     'Acme Manufacturing says Rival Holdings files for bankruptcy.',

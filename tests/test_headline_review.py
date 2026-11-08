@@ -5,6 +5,26 @@ from ra.company_exports import title
 from ra.scoring import input_hash
 
 
+@pytest.mark.parametrize('output', ['Company repays debt - ZXQPUBLERZXQ', 'Company repays debt'])
+def test_corrupted_or_dropped_protection_markers_trigger_fallback(monkeypatch, output):
+    from types import SimpleNamespace
+    tokenizer = SimpleNamespace(encode=lambda text, **kw: [text], decode_pieces=lambda pieces: pieces[0])
+    translator = SimpleNamespace(translate_batch=lambda *a, **kw: [SimpleNamespace(hypotheses=[[output]])])
+    monkeypatch.setattr(translation, '_model', lambda *a: (tokenizer, translator, ''))
+    monkeypatch.setattr(qa, 'fallback', lambda *a: ('Company repays debt - Brand', 'fallback'))
+    assert translation.translate_text('Empresa paga dívida - Brand', 'pt', publisher='Brand') == (
+        'Company repays debt - Brand', 'fallback')
+
+
+def test_intact_markers_restore_original_names(monkeypatch):
+    from types import SimpleNamespace
+    tokenizer = SimpleNamespace(encode=lambda text, **kw: [text], decode_pieces=lambda pieces: pieces[0])
+    translator = SimpleNamespace(translate_batch=lambda tokens, **kw: [SimpleNamespace(hypotheses=[tokens[0]])])
+    monkeypatch.setattr(translation, '_model', lambda *a: (tokenizer, translator, ''))
+    assert translation.argos_translate('Acme informa - Brand', 'pt', 'Acme', 'Brand') == (
+        'Acme informa - Brand', 'Argos offline model')
+
+
 @pytest.fixture(autouse=True)
 def offline_tests(monkeypatch):
     def unavailable(*args):

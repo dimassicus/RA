@@ -283,6 +283,9 @@ def test_topics_dropped_at_intake_before_signals_and_result_limit(monkeypatch):
     for title in ("Agriculture exports fall", "Bank reviews risk culture", "Polymer film factory closes"):
         assert not excluded_story(title, "https://x.test/a"), title
     assert excluded_story("Brazil names replacements", "https://x.test/b", publisher="ESPN Brasil")
+    assert excluded_story("مايفوتكش.. تحديد أسماء قائمة منتخب مصر وغيابات الأهلي وتهديد الزمالك", "https://x.test/a")
+    assert excluded_story("غيابات الأهلي", "https://x.test/a", publisher="الوطن سبورت")
+    assert not excluded_story("البنك الأهلي يرفع أسعار الفائدة", "https://x.test/a")
 
 
 def test_exposure_excludes_sport_and_culture_even_when_risk_factor_matches():
