@@ -84,6 +84,7 @@ def test_unusable_review_never_promotes_candidate_or_changes_score_hash(monkeypa
 def test_legacy_argos_archive_installs_without_downloading_again(monkeypatch, tmp_path):
     from ra import model_store
     from zipfile import ZipFile
+    monkeypatch.setenv("RA_ALLOW_MODEL_DOWNLOADS", "1")
     monkeypatch.setattr(model_store, "MODEL_ROOT", tmp_path)
     monkeypatch.setattr(model_store, "package_index", lambda: [{"from_code":"ar","to_code":"en",
                          "links":["https://argos-net.com/model"]}])
@@ -94,6 +95,20 @@ def test_legacy_argos_archive_installs_without_downloading_again(monkeypatch, tm
     monkeypatch.setattr(model_store, "_download", lambda *a: (_ for _ in ()).throw(AssertionError()))
     assert model_store.ensure_model("ar")[0]
     assert model_store.installed("ar")
+
+
+def test_missing_model_requires_approval_before_any_network(monkeypatch, tmp_path):
+    from ra import model_store
+    monkeypatch.delenv("RA_ALLOW_MODEL_DOWNLOADS", raising=False)
+    monkeypatch.setattr(model_store, "MODEL_ROOT", tmp_path)
+    monkeypatch.setattr(model_store, "package_index", lambda: pytest.fail("Unexpected network access"))
+    ready, reason = model_store.ensure_model("ar")
+    assert not ready and "requires approval" in reason
+    path = tmp_path / "ar_en"
+    (path / "model").mkdir(parents=True)
+    (path / "model/model.bin").touch()
+    (path / "sentencepiece.model").touch()
+    assert model_store.ensure_model("ar")[0]
 
 
 def test_missing_argos_uses_online_for_any_language_before_local(monkeypatch):

@@ -29,6 +29,8 @@ that candidate. Multiple separated fragments belong in separate array entries;
 NEVER join them with invented ellipses. HTML entities, typographic quote marks,
 Unicode accent composition and whitespace may be normalized. Words, numbers,
 case and other punctuation must match. Use one to six fragments per side.
+Quote complete words, including attached prefixes. In Arabic, copy attached
+conjunctions such as و and ف with the word; do not remove them from quotations.
 For an omitted fact use category completeness and translation:[]; source must
 still contain evidence. A material_error verdict requires at least one issue.
 faithful and uncertain reviews must have issues:[]. Do not label a merely

@@ -161,6 +161,7 @@ def load_local_env(environment: dict[str, str]) -> None:
                "Firecrawler API": "RA_FIRECRAWL_API_KEY"}
     allowed.update(aliases.values())
     allowed.add("RA_BRAVE_DAILY_LIMIT")
+    allowed.add("RA_ALLOW_MODEL_DOWNLOADS")
     for line in ENV_FILE.read_text().splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#") or "=" not in stripped:

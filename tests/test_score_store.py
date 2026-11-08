@@ -828,3 +828,32 @@ def test_firecrawl_monthly_credit_boundary(database):
     db.release_firecrawl_credit(today)
     assert db.reserve_firecrawl_credit() == today
     assert db.reserve_firecrawl_credit() is None
+
+
+def test_worker_enforces_fixed_week_before_translation_and_verification(database, monkeypatch, caplog):
+    _, run_id, _ = seed(database, status="queued")
+    end = db.get_run(run_id)["created_at"]
+    start = end - timedelta(days=7)
+    translated = []
+    monkeypatch.setattr(worker, "plan_subjects", lambda subjects, run_id: subjects)
+    monkeypatch.setattr(worker, "translate_text", lambda title, *args: (translated.append(title) or title, "English"))
+    monkeypatch.setattr(worker, "detect_language", lambda *args: "en")
+    monkeypatch.setattr(worker.time, "sleep", lambda seconds: None)
+    dates = [start, end, start - timedelta(microseconds=1), end + timedelta(microseconds=1), None,
+             start.astimezone(timezone.utc).replace(tzinfo=None),
+             (start - timedelta(seconds=1)).isoformat(), "invalid"]
+    articles = [dict(title=f"Company update {i}", url=f"https://example.test/window/{kind}/{i}",
+                     published_at=date, language="en", publisher="Test", query="test", signal_terms=[],
+                     source_kind=kind)
+                for kind in ("news", "official", "context") for i, date in enumerate(dates)]
+    # Exposure results join after company discovery and must obey the same window.
+    monkeypatch.setattr(worker, "add_exposure_leads", lambda subject, leads, *args: leads + articles[16:])
+    with caplog.at_level("INFO", logger="ra.worker"):
+        worker.process_run(run_id, searcher=lambda subject: (articles[:16], []),
+                           topic_searcher=lambda *args, **kwargs: [], roster_check=lambda *args: None)
+    results = db.get_results(run_id)
+    assert len(results) == len(translated) == 9
+    assert all(start <= row["published_at"] <= end for row in results)
+    assert db.get_run(run_id)["result_count"] == 9
+    assert database.execute("SELECT count(*) AS n FROM verification_jobs").fetchone()["n"] == 9
+    assert '"excluded": 15' in caplog.text

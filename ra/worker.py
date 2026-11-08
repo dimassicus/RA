@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from functools import partial
+from datetime import datetime, timedelta, timezone
+import json
 import queue
 import threading
 import time
@@ -28,6 +30,8 @@ _activity = None
 def _report(run_id, message, done=None, total=None):
     global _activity
     _activity = (run_id, message, done, total, time.monotonic())
+    logging.getLogger(__name__).info("run_progress %s", json.dumps(
+        dict(run_id=run_id, message=message, done=done, total=total)))
 
 
 def search_progress(run):
@@ -107,6 +111,8 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
         conn.execute("DELETE FROM search_errors WHERE run_id = %s", (run_id,))
     report = partial(_report, run_id)
     report("Preparing company searches")
+    window_end = run["created_at"]
+    window_start = window_end - timedelta(days=7)
     topic_cache = {}
     editions = topic_editions(run["subjects"])
     include_factors = topic_searcher is None
@@ -150,6 +156,23 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
         except (ValueError, OSError) as exc:
             errors.append(f"Registry roster: {exc}")
         articles = add_exposure_leads(subject, articles, errors, topic_cache, check)
+        # Feeds can ignore their date query; enforce one fixed window across all branches.
+        retained = []
+        for article in articles:
+            published = article.get("published_at")
+            if isinstance(published, str):
+                try:
+                    published = datetime.fromisoformat(published.replace("Z", "+00:00"))
+                except ValueError:
+                    published = None
+            if published and published.tzinfo is None:
+                published = published.replace(tzinfo=timezone.utc)
+            if published and window_start <= published <= window_end:
+                retained.append({**article, "published_at": published})
+        logging.getLogger(__name__).info("run_window %s", json.dumps(dict(
+            run_id=run_id, subject=name, start=window_start.isoformat(), end=window_end.isoformat(),
+            collected=len(articles), retained=len(retained), excluded=len(articles) - len(retained))))
+        articles = retained
         with db.connect() as conn:
             for index, article in enumerate(articles):
                 company_progress(f"Processing lead {index + 1} of {len(articles)}", index, len(articles))

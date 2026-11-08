@@ -94,6 +94,8 @@ def ensure_model(code: str) -> tuple[bool, str]:
         return False, "unsupported language code"
     if installed(code):
         return True, "offline model installed"
+    if os.environ.get("RA_ALLOW_MODEL_DOWNLOADS") != "1":
+        return False, "offline model installation requires approval (RA_ALLOW_MODEL_DOWNLOADS=1)"
     with _lock:
         if installed(code):
             return True, "offline model installed"

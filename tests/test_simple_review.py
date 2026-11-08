@@ -45,6 +45,25 @@ def test_separate_fragments_and_exact_ellipsis():
     assert canonical('&notit;')[0]=='&notit;'
 
 
+@pytest.mark.parametrize('text,fragment,complete', [
+    ('شهادات البنك الأهلي وبنك مصر', 'بنك مصر', 'وبنك مصر'),
+    ('نشكر مصر وفخامة الرئيس السيسي', 'فخامة الرئيس السيسي', 'وفخامة الرئيس السيسي'),
+    ('والطن يتجاوز 4100 دولار', 'الطن يتجاوز 4100 دولار', 'والطن يتجاوز 4100 دولار'),
+    ('unpaid', 'paid', 'unpaid'),
+])
+def test_partial_word_evidence_gets_actionable_retry_without_relaxing_gate(text, fragment, complete):
+    with pytest.raises(ValueError, match='complete words, including attached prefixes'):
+        resolve_spans(text, [fragment])
+    span, = resolve_spans(text, [complete])
+    assert span['text'] == complete == text[span['start']:span['end']]
+    assert 'Quote complete words, including attached prefixes.' in SYSTEM
+
+
+def test_later_whole_word_match_still_wins_over_partial_match():
+    span, = resolve_spans('unpaid then paid', ['paid'])
+    assert span['start'] == 12 and span['text'] == 'paid'
+
+
 def test_material_evidence_adapter_and_omission():
     data,audit=validate(response(),'They did not pay.',{'A':'They paid.'})
     assert data['assessments'][0]['verdict']=='material_error'
