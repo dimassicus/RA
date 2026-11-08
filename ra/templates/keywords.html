@@ -13,7 +13,7 @@
   <h2>Add a {{ label }}</h2>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="enabled" value="yes">
-    <div class="form-grid"><label>{{ 'Short English description' if factors else 'English word or phrase' }}<input name="english" required maxlength="{{ limit }}" placeholder="{{ 'e.g. A lender suspends the company’s credit line' if factors else 'e.g. covenant breach' }}"></label>
+    <div class="form-grid"><label>{{ 'Short English description (3–180 characters)' if factors else 'English word or phrase' }}<input name="english" required {% if factors %}pattern=".{3,180}" title="Use 3–180 characters. Shorten the description before saving; pasted text is kept in full."{% else %}maxlength="{{ limit }}"{% endif %} placeholder="{{ 'e.g. A lender suspends the company’s credit line' if factors else 'e.g. covenant breach' }}"></label>
     <label>{{ field_label }}<select name="{{ field }}">{% for direction in options %}<option>{{ direction }}</option>{% endfor %}</select></label></div>
     <div class="form-actions"><button class="button primary">Add and translate</button></div>
   </form>
@@ -30,7 +30,7 @@
   <div class="table-scroll"><table><thead><tr><th>English {{ label }}</th><th>{{ field_label }}</th><th>Active</th><th>Translations</th><th></th></tr></thead><tbody>
   {% for row in rows %}
     {% set fid = 'keyword-' ~ row.id %}
-    <tr><td><input form="{{ fid }}" aria-label="English {{ label }} {{ row.english }}" name="english" value="{{ row.english }}" required maxlength="{{ limit }}"></td>
+    <tr><td><input form="{{ fid }}" aria-label="English {{ label }} {{ row.english }}" name="english" value="{{ row.english }}" required {% if factors %}pattern=".{3,180}" title="Use 3–180 characters. Shorten the description before saving; pasted text is kept in full."{% else %}maxlength="{{ limit }}"{% endif %}></td>
       <td><select form="{{ fid }}" name="{{ field }}" aria-label="{{ field_label }} for {{ row.english }}">{% for direction in options %}<option {% if direction == row[field] %}selected{% endif %}>{{ direction }}</option>{% endfor %}</select></td>
       <td><input form="{{ fid }}" name="enabled" type="checkbox" value="yes" aria-label="Enable {{ row.english }}" {% if row.enabled %}checked{% endif %}></td>
       <td><details id="translations-{{ row.id }}" {% if editing == row.id %}open{% endif %}><summary>{{ languages|select('in', row.translations)|list|length }}/{{ languages|length }} languages</summary>

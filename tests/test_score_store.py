@@ -714,6 +714,32 @@ def test_risk_factor_editing_translation_and_retry(database, monkeypatch):
     assert len(risk_factors.records()) == len(risk_factors.SEEDS) + 1
 
 
+def test_risk_descriptions_reject_overlength_without_clipping(database, monkeypatch):
+    from html.parser import HTMLParser
+    from ra import keywords, risk_factors
+    inputs = []
+    class Fields(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            field = dict(attrs)
+            if tag == "input" and field.get("name") == "english":
+                inputs.append(field)
+    monkeypatch.setattr(risk_factors, "languages", lambda: [])
+    monkeypatch.setattr(keywords, "schedule", lambda: pytest.fail("Invalid text must not queue translation"))
+    row = database.execute("INSERT INTO risk_factors(english,scope) VALUES ('Sector downturn','sector') RETURNING *").fetchone()
+    client = create_app().test_client()
+    with client.session_transaction() as session:
+        session["csrf_token"] = "token"
+    Fields().feed(client.get("/risk-factors").text)
+    assert len(inputs) == 2
+    assert all(field.get("pattern") == ".{3,180}" and "maxlength" not in field for field in inputs)
+    text = "Negative trends in related sectors " * 6
+    form = dict(csrf_token="token", english=text, scope="sector", enabled="yes")
+    for edit in ({}, dict(id=row["id"], previous=row["english"])):
+        response = client.post("/risk-factors", data=form | edit, follow_redirects=True)
+        assert "up to 180 characters" in response.text
+        assert risk_factors.records() == [row]
+
+
 def test_edit_one_risk_translation_from_list(database, monkeypatch):
     from ra import keywords, risk_factors, translation
     english = "Market drops more than 5%"
