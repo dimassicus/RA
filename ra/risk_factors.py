@@ -1,4 +1,7 @@
 """Editable descriptions used for discovery. A matching search is only a lead."""
+import copy
+import hashlib
+import json
 import re
 import threading
 import unicodedata
@@ -10,6 +13,8 @@ from . import db, keywords
 SCOPES = ("company", "sector", "country")
 MANAGEMENT = "Changes in top management"
 OWNERSHIP = "Significant changes in major shareholdings or control"
+# Bump when the thematic prompt, schema or evidence validation changes.
+ASSESSMENT_VERSION = "thematic-assessment-v2"
 SEEDS = {
     MANAGEMENT: "company",
     OWNERSHIP: "company",
@@ -193,6 +198,38 @@ def expand_queries(code):
                                  "AND translations->>%s IS NOT DISTINCT FROM %s",
                                  (Jsonb({code: cues}), row["id"], row["english"], code, row["translations"].get(code)))
         reload()
+
+
+def cached_assess(article, document, subject, factors):
+    """Reuse only complete assessments with the same source, target and protocol."""
+    if not factors:
+        return {}
+    from .headline_review import QWEN
+    from .relevance import headline
+    available = document.get("status") == "available"
+    body = document.get("body", "") if available else ""
+    inputs = {
+        "version": ASSESSMENT_VERSION, "model": QWEN, "reasoning": "off",
+        "headline": headline(article, "title"),
+        "source_available": available, "source_hash": hashlib.sha256(body.encode()).hexdigest(),
+        "language": document.get("language", ""), "review_only": bool(document.get("review_only")),
+        "target": {key: subject.get(key) for key in
+                   ("name", "aliases", "country_registration", "primary_countries", "primary_industries")},
+        "factors": [{key: row[key] for key in ("id", "english", "scope")} for row in factors],
+    }
+    fingerprint = hashlib.sha256(json.dumps(inputs, ensure_ascii=False, sort_keys=True,
+                                            separators=(",", ":")).encode()).hexdigest()
+    with db.connect() as conn:
+        cached = conn.execute(
+            "SELECT risk_factor_review FROM search_results "
+            "WHERE risk_factor_review->>'input_hash'=%s AND risk_factor_review->>'status'='checked' "
+            "ORDER BY id DESC LIMIT 1", (fingerprint,)).fetchone()
+    if cached:
+        return copy.deepcopy(cached["risk_factor_review"])
+    result = assess(article, document, subject, factors)
+    if result.get("status") == "checked":
+        result = {**result, "input_hash": fingerprint, "version": ASSESSMENT_VERSION, "model": QWEN}
+    return result
 
 
 def assess(article, document, subject, factors):

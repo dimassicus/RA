@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import logging
 import os
 import secrets
 from datetime import date, datetime, timedelta, timezone
@@ -565,6 +566,7 @@ def create_app() -> Flask:
 
 
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     db.init_schema()
     keywords.reload_rules()
     risk_factors.reload()

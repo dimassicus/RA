@@ -234,6 +234,31 @@ def test_source_cache_weekly_dedup_review_and_grouping_corrections(database):
     assert score_store.week_detail(company['id'], start)[0]['score'] == 2
 
 
+def test_theme_cache_survives_new_run_and_invalidates_changed_factors(database, monkeypatch):
+    from ra import risk_factors, verification_store
+    _, _, first = seed(database, url='https://first.example/same-news')
+    _, _, second = seed(database, url='https://second.example/same-news')
+    factor = database.execute("INSERT INTO risk_factors(english,scope) VALUES ('Debt stress','company') RETURNING *").fetchone()
+    calls = []
+    def assess(*args):
+        calls.append(args)
+        return {'status': 'checked', 'coverage': 'headline and source text', 'matches': []}
+    monkeypatch.setattr(risk_factors, 'assess', assess)
+    def fetcher(url):
+        return {'status': 'available', 'language': 'en', 'body': 'Acme Manufacturing files for bankruptcy.',
+                'sha256': 'same-body', 'final_url': url, 'method': 'test document'}
+    for row in (first, second):
+        verification_store.verify_article(row['id'], fetcher=fetcher)
+    assert len(calls) == 1
+    a = score_store.get_article(first['id'])['risk_factor_review']
+    b = score_store.get_article(second['id'])['risk_factor_review']
+    assert a == b and a['input_hash']
+    database.execute("UPDATE risk_factors SET english='Liquidity stress' WHERE id=%s", (factor['id'],))
+    verification_store.verify_article(second['id'], fetcher=fetcher)
+    assert len(calls) == 2
+    assert score_store.get_article(second['id'])['risk_factor_review']['input_hash'] != a['input_hash']
+
+
 def test_multilingual_source_cache_retries_and_analyst_decisions(database, monkeypatch):
     from ra import headline_review, translation, verification_store
     company, run_id, article = seed(database)

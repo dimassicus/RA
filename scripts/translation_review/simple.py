@@ -99,13 +99,18 @@ def shadow_schema(labels):
     return obj({"reviews":dict(array(row), minItems=len(labels), maxItems=len(labels))})
 
 
-def review(source,source_lang,target_lang,candidates,model,port,*,enabled,shadow_only=False,retry_reason='',request_fn=None):
-    if not source.strip() or not candidates or any(not t.strip() for t in candidates.values()):
-        raise ValueError('Empty input')
+def review_content(source, source_lang, target_lang, candidates):
     content=json.dumps({'source_language':source_lang,'target_language':target_lang,
                         'source':source,'candidates':candidates},ensure_ascii=False)
     if len(source)>4000 or len((content+SYSTEM).encode())>11500:
         raise ValueError('Input exceeds conservative context budget')
+    return content
+
+
+def review(source,source_lang,target_lang,candidates,model,port,*,enabled,shadow_only=False,retry_reason='',request_fn=None):
+    if not source.strip() or not candidates or any(not t.strip() for t in candidates.values()):
+        raise ValueError('Empty input')
+    content = review_content(source, source_lang, target_lang, candidates)
     request={'model':model,'stream':False,'temperature':0,'seed':42,'max_tokens':2048 if shadow_only else 8192,
              'reasoning_effort':'medium' if enabled else 'none',
              'chat_template_kwargs':{'enable_thinking':enabled,'reasoning_effort':'medium'},

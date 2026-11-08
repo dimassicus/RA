@@ -2,6 +2,8 @@
 import hashlib
 import re
 
+from scripts.translation_review.simple import review_content
+
 from . import headline_review, translation
 
 VERSION = "article-translation-v1"
@@ -36,6 +38,42 @@ def faithful(part):
             and not review.get('issues'))
 
 
+def group_replacements(parts, replacements, language):
+    """Review complete contiguous replacements together, retaining that scope on retries."""
+    pending = {id(part) for part in replacements}
+    grouped, review = [], []
+    index = 0
+    while index < len(parts):
+        part = parts[index]
+        index += 1
+        if id(part) not in pending:
+            grouped.append(part)
+            continue
+        members = [part]
+        source, english = part['source'], part['english'].strip()
+        while index < len(parts) and id(parts[index]) in pending:
+            next_part = parts[index]
+            candidate_source = source + next_part['source']
+            candidate_english = english + ' ' + next_part['english'].strip()
+            if next_part['provider'] != part['provider'] or len(candidate_source) > 3000:
+                break
+            try:
+                review_content(candidate_source, language, 'en', {'A': candidate_english})
+            except ValueError:
+                break
+            members.append(next_part)
+            source, english = candidate_source, candidate_english
+            index += 1
+        if len(members) > 1:
+            part = {'source': source, 'english': english, 'provider': part['provider'], 'review': {},
+                    'rejected_translations': [entry for member in members for entry in [
+                        *member.get('rejected_translations', []),
+                        {'source': member['source'], **member['rejected_translation']}]]}
+        grouped.append(part)
+        review.append(part)
+    return grouped, review
+
+
 def prepare(document):
     """Reuse reviewed passages on retry; translate first, then review to limit model switching."""
     language = document.get('language', '').lower().split('-')[0]
@@ -49,15 +87,17 @@ def prepare(document):
     if not language or not body.strip():
         result['reason'] = 'Full-article language or text is missing; analyst review required'
         return document
+    old_parts = old.get('parts', [])
+    reusable = (old.get('version') == VERSION and old.get('source_hash') == result['source_hash']
+                and old.get('language') == language and isinstance(old_parts, list)
+                and all(isinstance(p, dict) and isinstance(p.get('source'), str) and p['source'] for p in old_parts)
+                and ''.join(p['source'] for p in old_parts) == body)
     try:
-        sources = passages(body)
+        parts = result['parts'] = ([dict(p) for p in old_parts] if reusable
+                                    else [{'source': source} for source in passages(body)])
     except ValueError as exc:
         result['reason'] = str(exc)
         return document
-    reusable = (old.get('version') == VERSION and old.get('source_hash') == result['source_hash']
-                and old.get('language') == language)
-    prior = {p['source']: p for p in old.get('parts', [])} if reusable else {}
-    parts = result['parts'] = [dict(prior.get(source, {'source': source})) for source in sources]
     if not all(faithful(p) for p in parts):
         readiness = headline_review.readiness()
         if not readiness['ready']:
@@ -89,6 +129,8 @@ def prepare(document):
                 part['rejected_translation'] = {k: part[k] for k in ('english', 'provider', 'review')}
                 part.update(english=english, provider=provider, review={})
                 replacements.append(part)
+    parts, replacements = group_replacements(parts, replacements, language)
+    result['parts'] = parts
     for part in replacements:
         part['review'] = headline_review.audit(part['source'], language, part['english'])
     checked = sum(faithful(p) for p in parts)

@@ -139,6 +139,87 @@ def test_argos_complete_mode_never_silently_truncates(monkeypatch):
     assert len(calls) == 1
 
 
+def rejected_argos_then_fallback(monkeypatch, verdict='faithful'):
+    calls = []
+    monkeypatch.setattr(translation, 'argos_translate', lambda source, *a, **kw: ('Bad translation.', 'Argos offline model'))
+    monkeypatch.setattr(headline_review, 'fallback', lambda *a, **kw: (
+        'Acme Manufacturing reports net losses of 40 million dollars.', 'Gemma fallback'))
+    def audit(source, language, candidate, **kwargs):
+        calls.append((source, candidate))
+        return {**approved(), 'status': 'material_error' if candidate == 'Bad translation.' else verdict}
+    monkeypatch.setattr(headline_review, 'audit', audit)
+    return calls
+
+
+def test_fallback_review_groups_complete_text_and_preserves_original_evidence(local, monkeypatch):
+    calls = rejected_argos_then_fallback(monkeypatch)
+    body = 'Sentence with original source facts. ' * 65
+    initial_count = len(at.passages(body))
+    prepared = at.prepare(document(body, language='es'))
+    group, = prepared['translation']['parts']
+    assert len(calls) == initial_count + 1
+    assert group['source'] == body and at.faithful(group)
+    assert ''.join(p['source'] for p in group['rejected_translations']) == body
+    assert all(p['english'] == 'Bad translation.' for p in group['rejected_translations'])
+    assert at.original_passages(prepared, 'Acme Manufacturing reports net losses of 40 million dollars.') == [body]
+    monkeypatch.setattr(headline_review, 'audit', lambda *a, **kw: pytest.fail('Grouped faithful cache must be reused'))
+    monkeypatch.setattr(translation, 'argos_translate', lambda *a, **kw: pytest.fail('Grouped faithful cache must be reused'))
+    assert at.prepare(prepared) == prepared
+
+
+@pytest.mark.parametrize('verdict', ['material_error', 'inconclusive', 'unavailable'])
+def test_failed_group_stays_whole_and_blocks_until_reviewed_whole(local, monkeypatch, verdict):
+    calls = rejected_argos_then_fallback(monkeypatch, verdict)
+    body = 'Sentence with original source facts. ' * 65
+    prepared = at.prepare(document(body, language='es'))
+    assert len(calls) == len(at.passages(body)) + 1
+    assert len(prepared['translation']['parts']) == 1
+    with pytest.raises(ValueError):
+        at.checked_text(prepared)
+    retry_calls = []
+    monkeypatch.setattr(translation, 'argos_translate', lambda source, *a, **kw: ('', 'Passage too long'))
+    monkeypatch.setattr(headline_review, 'audit', lambda source, *a, **kw: (retry_calls.append(source) or approved()))
+    retried = at.prepare(prepared)
+    assert retry_calls == [body]
+    assert retried['translation']['status'] == 'faithful'
+    assert len(retried['translation']['parts']) == 1
+
+
+@pytest.mark.parametrize('mutation', ['body', 'hash', 'language'])
+def test_group_cache_is_invalidated_by_source_or_language_changes(local, monkeypatch, mutation):
+    calls = rejected_argos_then_fallback(monkeypatch)
+    prepared = at.prepare(document('Sentence with original source facts. ' * 65, language='es'))
+    calls.clear()
+    if mutation == 'body': prepared['body'] += ' Additional denial.'
+    elif mutation == 'hash': prepared['translation']['source_hash'] = 'stale'
+    else: prepared['language'] = 'tr'
+    with pytest.raises(ValueError):
+        at.checked_text(prepared)
+    retried = at.prepare(prepared)
+    assert calls
+    assert ''.join(p['source'] for p in retried['translation']['parts']) == retried['body']
+
+
+def test_fallback_grouping_respects_faithful_gaps_provider_and_actual_byte_budget():
+    def part(source, provider='Gemma', english='Translation.'):
+        return {'source': source, 'english': english, 'provider': provider, 'review': {},
+                'rejected_translation': {'english': 'Bad.', 'provider': 'Argos', 'review': {'status': 'material_error'}}}
+    first, gap, second, third = part('A ' * 400), part('Gap.'), part('B ' * 400), part('C ' * 400)
+    gap['review'] = approved()
+    grouped, reviews = at.group_replacements([first, gap, second, third], [first, second, third], 'es')
+    assert grouped[0] is first and grouped[1] is gap
+    assert grouped[2]['source'] == second['source'] + third['source']
+    assert len(reviews) == 2
+    other_provider = part('D ' * 400, provider='Other translator')
+    assert len(at.group_replacements([first, other_provider], [first, other_provider], 'es')[0]) == 2
+    large = [part('E ' * 400, english='é' * 3000), part('F ' * 400, english='é' * 3000)]
+    assert len(at.group_replacements(large, large, 'es')[0]) == 2
+    many = [part(str(i) + 'G ' * 449) for i in range(5)]
+    grouped, _ = at.group_replacements(many, many, 'es')
+    assert ''.join(p['source'] for p in grouped) == ''.join(p['source'] for p in many)
+    assert all(len(p['source']) <= 3000 for p in grouped)
+
+
 def test_rejected_argos_uses_separate_fallback_and_fresh_review(local, monkeypatch):
     monkeypatch.setattr(translation, 'argos_translate', lambda *a, **kw: ('The company reported net damages.', 'Argos offline model'))
     english = 'Acme Manufacturing declared a net loss of 40 million dollars.'

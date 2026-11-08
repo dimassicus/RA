@@ -14,6 +14,7 @@ import re
 import socket
 import subprocess
 import sys
+from functools import lru_cache
 from html.parser import HTMLParser
 from io import BytesIO
 from urllib.parse import urljoin, urlsplit, urlunsplit, parse_qsl, urlencode
@@ -23,6 +24,7 @@ MAX_BYTES = 2_000_000
 MAX_TEXT = 100_000
 
 
+@lru_cache(maxsize=8192)
 def canonical_url(url):
     """Only remove known tracking parameters; preserve article-identifying queries."""
     parts = urlsplit(url)

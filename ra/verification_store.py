@@ -1,15 +1,21 @@
 """Cached source evidence, a durable user-initiated queue and grouping corrections."""
 from __future__ import annotations
 
+import json
+import logging
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 from psycopg.types.json import Jsonb
 
 from . import article_translation, db, risk_factors, score_store
-from .article_content import READER_VERSION, canonical_url, retrieve
+from .article_content import READER_VERSION, canonical_url, retrieve, validate_pdf_text
+from .language import detect_language
 from .verification import verify
+
+logger = logging.getLogger(__name__)
 
 _thread = None
 _wake = threading.Event()
@@ -22,47 +28,97 @@ def subject_for(article, run):
 
 
 def verify_article(result_id, fetcher=retrieve, source_url=None):
-    article = score_store.get_article(result_id)
-    if not article or article['run_status'] in ('running', 'queued'):
-        raise ValueError('Wait for the search to finish')
-    run = db.get_run(article['run_id'])
-    url = canonical_url(source_url or article['url'])
-    with db.connect() as conn:
-        cached = conn.execute('SELECT * FROM article_documents WHERE url=%s', (url,)).fetchone()
-    lifetime = timedelta(days=7) if cached and cached['document']['status'] == 'available' else timedelta(hours=24)
-    hint = {"title": article["title"], "publisher": article["publisher"],
-            "published_at": article["published_at"].isoformat() if article["published_at"] else ""}
-    if (cached and cached['document'].get('source_hint') == hint
-            and cached['document'].get('reader_version') == READER_VERSION
-            and datetime.now(timezone.utc) - cached['fetched_at'] < lifetime):
-        document = cached['document']
-    else:
-        fetched = retrieve(url, hint) if fetcher is retrieve else fetcher(url)
-        document = {**fetched, "reader_version": READER_VERSION, "source_hint": hint}
+    started = stage_started = time.perf_counter()
+    stage, seconds = "retrieval_cache", {}
+    cache_hit, completed = False, False
+
+    def next_stage(name):
+        nonlocal stage, stage_started
+        now = time.perf_counter()
+        seconds[stage] = round(now - stage_started, 6)
+        stage, stage_started = name, now
+
+    try:
+        article = score_store.get_article(result_id)
+        if not article or article['run_status'] in ('running', 'queued'):
+            raise ValueError('Wait for the search to finish')
+        run = db.get_run(article['run_id'])
+        url = canonical_url(source_url or article['url'])
         with db.connect() as conn:
-            conn.execute('INSERT INTO article_documents (url,document) VALUES (%s,%s) ON CONFLICT (url) '
-                         'DO UPDATE SET document=EXCLUDED.document,fetched_at=now()', (url, Jsonb(document)))
-    prepared = article_translation.prepare(document)
-    if prepared != document:
+            cached = conn.execute('SELECT * FROM article_documents WHERE url=%s', (url,)).fetchone()
+        lifetime = timedelta(days=7) if cached and cached['document']['status'] == 'available' else timedelta(hours=24)
+        hint = {"title": article["title"], "publisher": article["publisher"],
+                "published_at": article["published_at"].isoformat() if article["published_at"] else ""}
+        upgrade = (READER_VERSION == 'public-source-v5' and cached
+                   and cached['document'].get('reader_version') == 'public-source-v4'
+                   and cached['document']['status'] == 'available')
+        if (cached and cached['document'].get('source_hint') == hint
+                and (cached['document'].get('reader_version') == READER_VERSION or upgrade)
+                and datetime.now(timezone.utc) - cached['fetched_at'] < lifetime):
+            cache_hit = True
+            document = cached['document']
+            if upgrade:
+                # v5 changes text validation/language only; retain fetched text and its review cache.
+                document = {**document, 'reader_version': READER_VERSION}
+                try:
+                    if document.get('method', '').startswith('PDF text'):
+                        validate_pdf_text(document['body'])
+                except ValueError as exc:
+                    document.update(status='unavailable', reason=str(exc))
+                    document.pop('translation', None)
+                else:
+                    document['language'] = detect_language(document['body'][:4000])
+                    if document.get('translation', {}).get('language') != document['language']:
+                        document.pop('translation', None)
+                with db.connect() as conn:
+                    conn.execute('UPDATE article_documents SET document=%s '
+                                 'WHERE url=%s AND document=%s AND fetched_at=%s',
+                                 (Jsonb(document), url, Jsonb(cached['document']), cached['fetched_at']))
+        else:
+            fetched = retrieve(url, hint) if fetcher is retrieve else fetcher(url)
+            document = {**fetched, "reader_version": READER_VERSION, "source_hint": hint}
+            if (cached and document.get('status') == 'available' and document.get('body')
+                    and cached['document'].get('translation')
+                    and all(document.get(key) == cached['document'].get(key)
+                            for key in ('body', 'sha256', 'language'))):
+                document['translation'] = cached['document']['translation']
+            with db.connect() as conn:
+                conn.execute('INSERT INTO article_documents (url,document) VALUES (%s,%s) ON CONFLICT (url) '
+                             'DO UPDATE SET document=EXCLUDED.document,fetched_at=now()', (url, Jsonb(document)))
+        next_stage("translation_review")
+        prepared = article_translation.prepare(document)
+        if prepared != document:
+            with db.connect() as conn:
+                conn.execute('UPDATE article_documents SET document=%s WHERE url=%s AND document=%s',
+                             (Jsonb(prepared), url, Jsonb(document)))
+        document = prepared
+        next_stage("attribution")
+        subject = subject_for(article, run)
+        assessment = verify(document, subject, article)
+        next_stage("themes")
+        themes = risk_factors.cached_assess(article, document, subject, [r for r in risk_factors.records() if r["enabled"]])
+        next_stage("persistence")
+        assessment['requested_url'] = url
         with db.connect() as conn:
-            conn.execute('UPDATE article_documents SET document=%s WHERE url=%s AND document=%s',
-                         (Jsonb(prepared), url, Jsonb(document)))
-    document = prepared
-    subject = subject_for(article, run)
-    assessment = verify(document, subject, article)
-    themes = risk_factors.assess(article, document, subject, [r for r in risk_factors.records() if r["enabled"]])
-    assessment['requested_url'] = url
-    with db.connect() as conn:
-        score_store._lock(conn)
-        current = conn.execute('SELECT verification FROM search_results WHERE id=%s FOR UPDATE', (result_id,)).fetchone()
-        conn.execute('UPDATE search_results SET risk_factor_review=%s WHERE id=%s', (Jsonb(themes), result_id))
-        if current['verification'] != assessment:
-            conn.execute('INSERT INTO article_verification_history (result_id,previous,assessment) VALUES (%s,%s,%s)',
-                         (result_id, Jsonb(current['verification']), Jsonb(assessment)))
-            conn.execute('UPDATE search_results SET verification=%s WHERE id=%s', (Jsonb(assessment), result_id))
-        score_store._assess(conn, article['run_id'])
-        score_store._weekly(conn)
-    return assessment
+            score_store._lock(conn)
+            current = conn.execute('SELECT verification FROM search_results WHERE id=%s FOR UPDATE', (result_id,)).fetchone()
+            conn.execute('UPDATE search_results SET risk_factor_review=%s WHERE id=%s', (Jsonb(themes), result_id))
+            if current['verification'] != assessment:
+                conn.execute('INSERT INTO article_verification_history (result_id,previous,assessment) VALUES (%s,%s,%s)',
+                             (result_id, Jsonb(current['verification']), Jsonb(assessment)))
+                conn.execute('UPDATE search_results SET verification=%s WHERE id=%s', (Jsonb(assessment), result_id))
+            score_store._assess(conn, article['run_id'])
+            score_store._weekly(conn)
+        completed = True
+        return assessment
+    finally:
+        ended = time.perf_counter()
+        seconds[stage] = round(ended - stage_started, 6)
+        logger.info("source_timing %s", json.dumps({
+            "result_id": result_id, "cache_hit": cache_hit, "completed": completed,
+            "failed_stage": None if completed else stage,
+            "seconds": seconds, "total_seconds": round(ended - started, 6),
+        }, sort_keys=True))
 
 
 def enqueue(result_id, source_url=''):
