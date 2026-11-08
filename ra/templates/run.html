@@ -4,6 +4,7 @@
 <p class="back"><a href="{{ url_for('dashboard') }}">← Back to watchlist</a></p>
 <section class="hero run-hero"><p class="eyebrow">Search run #{{ run.id }}</p><h1>{{ run.scope|replace('_', ' ')|title }} search</h1><p>{{ run.total_companies }} compan{{ 'y' if run.total_companies == 1 else 'ies' }} · {{ run.created_at.strftime('%d %b %Y %H:%M %Z') }}</p>
   <div class="hero-stats"><span><strong>{{ run.completed_companies }}/{{ run.total_companies }}</strong> searched</span><span><strong>{{ run.result_count }}</strong> collected leads</span><span><strong>{{ run.error_count }}</strong> source errors</span><span class="status status-{{ run.status }}">{{ run.status }}</span></div>
+  {% if run.window_start %}<p>Publication window: {{ run.window_start.strftime('%d %b %Y %H:%M %Z') }} – {{ run.window_end.strftime('%d %b %Y %H:%M %Z') }}. Historical retrieval performed now; source availability may differ from that week.</p>{% endif %}
 </section>
 
 {% set v = verification_jobs %}

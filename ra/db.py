@@ -8,6 +8,7 @@ import json
 import re
 import unicodedata
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 
 import psycopg
 from psycopg.rows import dict_row
@@ -361,14 +362,20 @@ def set_active(company_id: int, active: bool):
         ).fetchone()
 
 
-def create_run(scope: str, subjects: list[dict]):
+def create_run(scope: str, subjects: list[dict], *, window_start=None, window_end=None):
     from psycopg.types.json import Jsonb
 
+    if window_start is not None or window_end is not None:
+        if (not isinstance(window_start, datetime) or not isinstance(window_end, datetime)
+                or window_start.tzinfo is None or window_end.tzinfo is None
+                or not timedelta(0) < window_end - window_start <= timedelta(days=7)
+                or window_end > datetime.now(timezone.utc)):
+            raise ValueError("Choose a past publication window of up to seven days, with timezone offsets.")
     with connect() as conn:
         return conn.execute(
-            "INSERT INTO search_runs (scope, subjects, total_companies, retry_translations) "
-            "VALUES (%s, %s, %s, TRUE) RETURNING id",
-            (scope, Jsonb(subjects), len(subjects)),
+            "INSERT INTO search_runs (scope, subjects, total_companies, retry_translations, window_start, window_end) "
+            "VALUES (%s, %s, %s, TRUE, %s, %s) RETURNING id",
+            (scope, Jsonb(subjects), len(subjects), window_start, window_end),
         ).fetchone()["id"]
 
 

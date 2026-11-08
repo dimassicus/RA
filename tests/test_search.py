@@ -67,6 +67,24 @@ def test_google_news_queries_are_limited_to_seven_days():
     assert language == "pt-BR"
 
 
+def test_historical_queries_reach_company_and_exposure_feeds(monkeypatch):
+    from datetime import datetime, timezone
+    from urllib.parse import parse_qs, urlparse
+    from ra import search, exposure
+    window = (datetime(2026,10,12,tzinfo=timezone.utc), datetime(2026,10,18,23,59,59,tzinfo=timezone.utc))
+    urls = []
+    def fetch(url):
+        urls.append(url)
+        return b'<rss><channel></channel></rss>'
+    monkeypatch.setattr(search.news_apis,"configured_providers",lambda: [])
+    search.search_company({"name":"Acme Manufacturing","country_registration":"Brazil"},fetcher=fetch,window=window)
+    exposure.search_topic("sector","fertilizer",fetcher=fetch,window=window)
+    assert len(urls) >= 2
+    for url in urls:
+        query = parse_qs(urlparse(url).query)["q"][0]
+        assert "after:2026-10-11 before:2026-10-19" in query and "when:7d" not in query
+
+
 def test_rss_parsing_keeps_publisher_date_and_rejects_insecure_links():
     feed = b'''<rss><channel>
       <item><title>Company announces creditor mediation</title><link>https://example.com/a</link><source>Publisher</source><pubDate>Tue, 13 Oct 2026 07:00:00 GMT</pubDate></item>

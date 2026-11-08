@@ -133,7 +133,7 @@ def parse_articles(provider: str, payload: dict, query: str) -> list[dict]:
 
 
 def search(provider: str, subject: dict, fetcher=fetch_json,
-           reserve=db.reserve_news_api_request, now: datetime | None = None) -> list[dict]:
+           reserve=db.reserve_news_api_request, now: datetime | None = None, *, window=None) -> list[dict]:
     """One preferred-name request per provider; leave entity verification to the analyst."""
     key_env, _, _ = PROVIDERS[provider]
     key = os.environ.get(key_env, "").strip()
@@ -145,6 +145,8 @@ def search(provider: str, subject: dict, fetcher=fetch_json,
         return []
     now = now or datetime.now(timezone.utc)
     since = (now.astimezone(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if window:
+        since = window[0].astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     phrase = f'"{name}"'
     if provider == "gnews":
         if len(phrase) > 200:
@@ -163,6 +165,9 @@ def search(provider: str, subject: dict, fetcher=fetch_json,
         params = {"search": phrase, "published_after": since.removesuffix("Z"), "sort": "published_on",
                   "limit": 3, "api_token": key, "exclude_categories": "sports,entertainment"}
         endpoint = "https://api.thenewsapi.com/v1/news/all"
+    if window:
+        until = window[1].astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        params["to" if provider == "gnews" else "published_before"] = until if provider == "gnews" else until.removesuffix("Z")
     if not reserve(provider, daily_limit(provider)):
         raise ProviderError("daily request budget exhausted; this company was not checked")
     return parse_articles(provider, fetcher(endpoint + "?" + urlencode(params)), phrase)

@@ -334,12 +334,14 @@ def notice_rows(subject, publisher, page):
         yield lines[0] + ' · ' + ' '.join(lines[2:-1])[:450], 'https://vergiler.az' + link[1], published, 'az'
 
 
-def recent_notices(subject, publisher, url, fetch, now=None, errors=None):
+def recent_notices(subject, publisher, url, fetch, now=None, errors=None, *, window=None):
     from .relevance import risk_signals
     gazette = publisher == 'Vergilər official notices'
     zone = ZoneInfo('Asia/Baku' if gazette else 'Asia/Ho_Chi_Minh')
     today = (now or datetime.now(timezone.utc)).astimezone(zone).date()
     start = today - timedelta(days=6)
+    if window:
+        start, today = (instant.astimezone(zone).date() for instant in window)
     results = []
     try:
         for number in range(1, 11):
@@ -351,7 +353,8 @@ def recent_notices(subject, publisher, url, fetch, now=None, errors=None):
             for title, dest, date, lang in notice_rows(subject, publisher, html):
                 if date.date() < start:
                     reached_older = True
-                elif date.date() <= today and not excluded_story(title, dest):
+                elif (date.date() <= today and not excluded_story(title, dest)
+                      and (not window or window[0] <= date.replace(tzinfo=zone) <= window[1])):
                     results.append(dict(title=title, url=dest, publisher=publisher, published_at=date.replace(tzinfo=zone),
                                         query=url, language=lang, source_kind='official', discovery_service=publisher,
                                         signal_terms=risk_signals(title, lang)))

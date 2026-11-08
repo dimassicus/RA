@@ -61,7 +61,7 @@ def test_watchlist_country_and_sector_filters(monkeypatch):
     ]
     recorded = []
     monkeypatch.setattr(db, "list_companies", lambda active: companies if active else [])
-    monkeypatch.setattr(db, "create_run", lambda scope, subjects: recorded.append((scope, [s["id"] for s in subjects])) or 4)
+    monkeypatch.setattr(db, "create_run", lambda scope, subjects, **window: recorded.append((scope, [s["id"] for s in subjects])) or 4)
     monkeypatch.setattr(worker, "enqueue", lambda run_id: None)
     client = create_app().test_client()
     with client.session_transaction() as session:

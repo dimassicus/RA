@@ -149,7 +149,8 @@ def create_app() -> Flask:
         elif stage == "search":
             if run["status"] not in ("failed", "partial"):
                 abort(409, "This search has no recorded failure.")
-            new_id = db.create_run(run["scope"], run["subjects"])
+            new_id = db.create_run(run["scope"], run["subjects"], window_start=run.get("window_start"),
+                                   window_end=run.get("window_end"))
             worker.enqueue(new_id)
             flash(f"Search restarted as run #{new_id} using run #{run_id}'s company list.", "success")
             return redirect(url_for("run_detail", run_id=new_id))
@@ -336,7 +337,12 @@ def create_app() -> Flask:
         reviewer = headline_review.readiness()
         if not reviewer["ready"]:
             flash(reviewer["message"], "warning")
-        run_id = db.create_run(scope, subjects)
+        try:
+            window = {key: datetime.fromisoformat(request.form[key]) if request.form.get(key) else None
+                      for key in ("window_start", "window_end")}
+            run_id = db.create_run(scope, subjects, **window)
+        except ValueError as exc:
+            abort(400, str(exc))
         worker.enqueue(run_id)
         return redirect(url_for("run_detail", run_id=run_id))
 

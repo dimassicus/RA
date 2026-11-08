@@ -110,7 +110,7 @@ def _native_text(value):
     return value.translate(str.maketrans({"’": "'", "‘": "'", "ʻ": "'", "ʼ": "'"}))
 
 
-def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None, factor=None):
+def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None, factor=None, window=None):
     names = [topic] + [alias for alias, canonical in TOPIC_NAMES[branch].items() if canonical == topic]
     channels = CHANNELS[branch]
     if edition:
@@ -138,7 +138,7 @@ def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None,
         geo = [name for name in geo if name]
         if geo:
             query += " (" + " OR ".join(f'"{name}"' for name in dict.fromkeys(geo)) + ")"
-    url, language = feed_url(query, edition)
+    url, language = feed_url(query, edition, window=window)
     hits = []
     fold = _native_text if edition else normalized
     for item in parse_feed(fetcher(url), query, language):

@@ -856,10 +856,15 @@ def test_firecrawl_monthly_credit_boundary(database):
     assert db.reserve_firecrawl_credit() is None
 
 
-def test_worker_enforces_fixed_week_before_translation_and_verification(database, monkeypatch, caplog):
+@pytest.mark.parametrize("historical", [False, True])
+def test_worker_enforces_fixed_week_before_translation_and_verification(database, monkeypatch, caplog, historical):
     _, run_id, _ = seed(database, status="queued")
     end = db.get_run(run_id)["created_at"]
     start = end - timedelta(days=7)
+    if historical:
+        end -= timedelta(weeks=4)
+        start = end - timedelta(days=7)
+        database.execute("UPDATE search_runs SET window_start=%s,window_end=%s WHERE id=%s", (start,end,run_id))
     translated = []
     monkeypatch.setattr(worker, "plan_subjects", lambda subjects, run_id: subjects)
     monkeypatch.setattr(worker, "translate_text", lambda title, *args: (translated.append(title) or title, "English"))
@@ -883,3 +888,33 @@ def test_worker_enforces_fixed_week_before_translation_and_verification(database
     assert db.get_run(run_id)["result_count"] == 9
     assert database.execute("SELECT count(*) AS n FROM verification_jobs").fetchone()["n"] == 9
     assert '"excluded": 15' in caplog.text
+    if historical:
+        note = database.execute("SELECT coverage_note FROM governance_rosters WHERE run_id=%s", (run_id,)).fetchone()
+        assert "not treated as historical records" in note["coverage_note"]
+        assert score_store.week_detail(db.get_run(run_id)["subjects"][0]["id"], week_start(end))[0]["metrics"]["search_count"] == 1
+
+
+def test_historical_run_route_validates_and_preserves_window_on_retry(database, monkeypatch):
+    company, _, _ = seed(database)
+    monkeypatch.setattr(worker, "enqueue", lambda run_id: None)
+    client = create_app().test_client()
+    with client.session_transaction() as session:
+        session["csrf_token"] = "token"
+    end = datetime.now(timezone.utc) - timedelta(weeks=2)
+    start = end - timedelta(days=7) + timedelta(microseconds=1)
+    form = dict(csrf_token="token",window_start=start.isoformat(),window_end=end.isoformat())
+    for invalid in ({"window_end":""}, {"window_start":end.isoformat()},
+                    {"window_start":start.replace(tzinfo=None).isoformat()},
+                    {"window_start":(start-timedelta(days=1)).isoformat()}):
+        assert client.post("/search/all",data=form|invalid).status_code == 400
+    response = client.post("/search/all",data=form)
+    assert response.status_code == 302
+    run_id = int(response.location.rsplit('/',1)[1])
+    run = db.get_run(run_id)
+    assert (run["window_start"],run["window_end"]) == (start,end)
+    assert "Publication window:" in client.get(response.location).text
+    database.execute("UPDATE search_runs SET status='partial' WHERE id=%s",(run_id,))
+    retry = client.post(f"/setup/runs/{run_id}/retry",data={"csrf_token":"token","stage":"search"})
+    assert retry.status_code == 302
+    repeated = db.get_run(int(retry.location.rsplit('/',1)[1]))
+    assert (repeated["window_start"],repeated["window_end"]) == (start,end)

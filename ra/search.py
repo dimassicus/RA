@@ -6,7 +6,7 @@ import re
 import unicodedata
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
@@ -148,11 +148,17 @@ def company_search_plan(subject):
     return [(q, subject.get("country_registration", "")) for q in search_queries(subject)] + governance_searches(subject)
 
 
-def feed_url(query: str, country: str) -> tuple[str, str]:
+def feed_url(query: str, country: str, *, window=None) -> tuple[str, str]:
     language, region, edition = LOCALES.get(normalized(country), ("en-US", "US", "US:en"))
     exclusions = " ".join(f'-"{term}"' for term in excluded_query_terms(language))
+    dates = "when:7d"
+    if window:
+        # Pad date-only provider bounds; the worker enforces the exact publication instants.
+        start = window[0].astimezone(timezone.utc).date() - timedelta(days=1)
+        end = window[1].astimezone(timezone.utc).date() + timedelta(days=1)
+        dates = f"after:{start.isoformat()} before:{end.isoformat()}"
     return "https://news.google.com/rss/search?" + urlencode(
-        {"q": f"{query} {exclusions} when:7d", "hl": language, "gl": region, "ceid": edition}
+        {"q": f"{query} {exclusions} {dates}", "hl": language, "gl": region, "ceid": edition}
     ), language
 
 
@@ -284,19 +290,19 @@ def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None) 
     return articles
 
 
-def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_json_post, *, progress=None) -> tuple[list[dict], list[str]]:
+def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_json_post, *, progress=None, window=None) -> tuple[list[dict], list[str]]:
     articles, errors = [], []
     seen_urls = set()
     from .governance_sources import notice_source, recent_notices
     source = notice_source(subject)
     if source:
-        for article in recent_notices(subject, *source, fetcher, errors=errors):
+        for article in recent_notices(subject, *source, fetcher, errors=errors, window=window):
             if article["url"] not in seen_urls:
                 seen_urls.add(article["url"])
                 articles.append(article)
     if is_heringer(subject):
         try:
-            for article in heringer_official_notices(fetcher=official_fetcher):
+            for article in heringer_official_notices(fetcher=official_fetcher, year=window[1].year if window else None):
                 seen_urls.add(article["url"])
                 articles.append(article)
         except Exception as exc:
@@ -316,7 +322,7 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
         if provider not in configured:
             continue
         try:
-            for article in news_apis.search(provider, subject):
+            for article in news_apis.search(provider, subject, window=window):
                 if article["url"] not in seen_urls:
                     seen_urls.add(article["url"])
                     articles.append(article)
@@ -328,7 +334,7 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
     for index, (query, edition) in enumerate(queries):
         if progress:
             progress(f"Searching company news · query {index + 1} of {len(queries)}", index, len(queries))
-        url, language = feed_url(query, edition)
+        url, language = feed_url(query, edition, window=window)
         try:
             for article in parse_feed(fetcher(url), query, language):
                 if article["url"] not in seen_urls:

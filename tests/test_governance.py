@@ -106,6 +106,10 @@ def test_exact_tax_id_gazette_and_fresh_official_notices():
     item, = sources.recent_notices(subject,publisher,url,lambda _:page,now)
     assert item['url'].endswith('announcement_id=123') and item['language'] == 'az'
     assert not sources.recent_notices(subject,publisher,url,lambda _:page,now.replace(month=12))
+    assert sources.recent_notices(subject,publisher,url,lambda _:page,now.replace(month=12),
+                                  window=(now.replace(day=2),now.replace(day=8)))
+    assert not sources.recent_notices(subject,publisher,url,lambda _:page,now,
+                                      window=(now.replace(day=2),now.replace(day=4)))
     with pytest.raises(ValueError, match='tax ID'):
         sources.recent_notices(subject,publisher,url,lambda _:page.replace(b'1500091001',b'1500091002'),now)
     with pytest.raises(ValueError):

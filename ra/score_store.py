@@ -75,7 +75,7 @@ def _weekly(conn):
                 conn.execute("SELECT * FROM company_weekly_scores").fetchall()}
     keys = set(groups) | set(existing)
     coverage = {}
-    runs = conn.execute("SELECT id, subjects, created_at, status FROM search_runs").fetchall()
+    runs = conn.execute("SELECT id, subjects, created_at, window_end, status FROM search_runs").fetchall()
     errors = conn.execute("SELECT run_id,subject_name,count(*) AS count FROM search_errors GROUP BY run_id,subject_name").fetchall()
     error_counts = {(r["run_id"], r["subject_name"]): r["count"] for r in errors}
     current = week_start(datetime.now(timezone.utc))
@@ -83,7 +83,7 @@ def _weekly(conn):
         for subject in run["subjects"]:
             if not subject.get("id"):
                 continue
-            key = (subject["id"], week_start(run["created_at"]))
+            key = (subject["id"], week_start(run["window_end"] or run["created_at"]))
             keys.add(key)
             entry = coverage.setdefault(key, {"search_count": 0, "source_errors": 0, "unfinished_runs": 0})
             entry["search_count"] += 1

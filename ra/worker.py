@@ -111,8 +111,9 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
         conn.execute("DELETE FROM search_errors WHERE run_id = %s", (run_id,))
     report = partial(_report, run_id)
     report("Preparing company searches")
-    window_end = run["created_at"]
-    window_start = window_end - timedelta(days=7)
+    window_end = run.get("window_end") or run["created_at"]
+    window_start = run.get("window_start") or window_end - timedelta(days=7)
+    historical_window = (window_start, window_end) if run.get("window_start") else None
     topic_cache = {}
     editions = topic_editions(run["subjects"])
     include_factors = topic_searcher is None
@@ -122,7 +123,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
         def topic_searcher(branch, topic, *, edition="", factor=None):
             detail = f" · {factor[0]}" if factor else ""
             report(f"Searching {branch} news: {topic} ({edition or 'English edition'}){detail}")
-            return search_topic(branch, topic, edition=edition, markets=markets, factor=factor)
+            return search_topic(branch, topic, edition=edition, markets=markets, factor=factor, window=historical_window)
     check = partial(db.run_topic_check, run_id, topic_searcher, editions, include_factors=include_factors)
     for subject in plan_subjects(run["subjects"], run_id):
         subject_key = str(subject.get("id") or f"one-off:{run_id}")
@@ -134,7 +135,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
         company_progress("Checking company news and official sources")
         search_failure = ""
         try:
-            articles, errors = (search_company(subject, progress=company_progress) if searcher is search_company
+            articles, errors = (search_company(subject, progress=company_progress, window=historical_window) if searcher is search_company
                                 else searcher(subject))
         except Exception as exc:
             search_failure = f"{type(exc).__name__}: {exc}"
@@ -152,7 +153,11 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
             governance_roster.save_note(run_id, subject_key, subject, index_url, publisher, summary)
         company_progress("Checking leadership and ownership records")
         try:
-            roster_check(run_id, subject_key, subject)
+            if historical_window:
+                governance_roster.save_note(run_id, subject_key, subject, "", "Historical search",
+                                           "Current ownership and leadership snapshots were not treated as historical records. Dated disclosures are searched separately.")
+            else:
+                roster_check(run_id, subject_key, subject)
         except (ValueError, OSError) as exc:
             errors.append(f"Registry roster: {exc}")
         articles = add_exposure_leads(subject, articles, errors, topic_cache, check)

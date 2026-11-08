@@ -22,7 +22,7 @@ def periods(anchor):
 
 
 def load_report(run, subject):
-    end = run.get("finished_at") or run["created_at"]
+    end = run.get("window_end") or run.get("finished_at") or run["created_at"]
     points = list(periods(end))
     history, previous_runs = {}, {}
     with db.connect() as conn:
@@ -91,8 +91,8 @@ def relevant_sources(subject, articles, end):
 
 
 def build_report(run, subject, articles, history, errors, previous_runs=None):
-    end = (run.get("finished_at") or run["created_at"]).astimezone(WEEK_TIMEZONE)
-    start = end - timedelta(days=7)
+    end = (run.get("window_end") or run.get("finished_at") or run["created_at"]).astimezone(WEEK_TIMEZONE)
+    start = run.get("window_start") or end - timedelta(days=7)
     sources = relevant_sources(subject, articles, end)
     top, seen = [], set()
     for i, source in enumerate(sources, 1):

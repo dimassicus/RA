@@ -100,4 +100,4 @@ def classify_results(run: dict, results: list[dict]) -> list[dict]:
     by_name = {subject["name"]: subject for subject in subjects}
     return [classify(article, by_id.get(str(article.get("company_id"))) or
                      by_name.get(article["subject_name"], {"name": article["subject_name"]}),
-                     run.get("created_at")) for article in results]
+                     run.get("window_end") or run.get("created_at")) for article in results]

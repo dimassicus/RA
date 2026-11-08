@@ -60,6 +60,14 @@ def test_both_providers_keep_direct_links_language_and_provenance(monkeypatch):
     assert captured[0][1]["max"] == ["10"]
     assert captured[1][1]["limit"] == ["3"]
     assert "private-gnews-key" not in str(gnews)
+    from datetime import timedelta
+    window = (now-timedelta(weeks=4),now-timedelta(weeks=3))
+    for provider in ("gnews","thenewsapi"):
+        news_apis.search(provider,subject,fetcher=fetcher,reserve=reserve,now=now,window=window)
+    assert captured[2][1]["from"] == ["2026-10-06T12:00:00Z"]
+    assert captured[2][1]["to"] == ["2026-10-13T12:00:00Z"]
+    assert captured[3][1]["published_after"] == ["2026-10-06T12:00:00"]
+    assert captured[3][1]["published_before"] == ["2026-10-13T12:00:00"]
 
 
 def test_large_watchlist_is_rotated_and_free_budget_is_respected(monkeypatch):
