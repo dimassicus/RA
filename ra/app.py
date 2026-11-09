@@ -205,7 +205,7 @@ def create_app() -> Flask:
         if not record:
             abort(404)
         return render_template("score_week.html", company=company, record=record, articles=articles,
-                               history=history, labels=LABELS)
+                               history=history, labels=LABELS, review_note=headline_review.review_note)
 
     @app.route("/articles/<int:result_id>/score", methods=["GET", "POST"])
     def article_score(result_id: int):
