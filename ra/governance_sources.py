@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from html import unescape
 from html.parser import HTMLParser
-from urllib.parse import quote
+from urllib.parse import quote, urlencode, urlparse
 from zoneinfo import ZoneInfo
 
 from .aliases import contains, normalized
@@ -285,6 +285,10 @@ def read_page(url, identity, reader):
 
 
 def notice_source(subject):
+    if issuer_matches(subject, 'TR', 'Tiryaki Agro', 'TR8450302285'):
+        return 'KAP issuer disclosures', 'https://www.kap.org.tr/tr/api/company-detail/sgbf-data/1DE05DAA8408073AE0530A4A622A2EBD/ALL'
+    if issuer_matches(subject, 'TR', 'CMS Jant ve Makina', '2060074145'):
+        return 'Atatürk University notices', 'https://atauni.edu.tr/muhendislik-fakultesi/wp-json/wp/v2/posts'
     if issuer_matches(subject, 'VN', 'PetroVietnam Fertilizer and Chemicals', '0303165480'):
         return 'PVFCCo investor disclosures', 'https://dpm.vn/quan-he-nha-dau-tu'
     if country_code(subject.get('country_registration', '')) == 'AZ':
@@ -292,6 +296,67 @@ def notice_source(subject):
         if re.fullmatch(r'[0-9]{10}', tin):
             return 'Vergilər official notices', f'https://vergiler.az/announcements/?search_text={tin}&search_type=voen'
     return None
+
+
+def turkish_notice_rows(publisher, url, fetch, start, end):
+    """Read dated primary indexes that Google News does not reliably include."""
+    zone = ZoneInfo('Europe/Istanbul')
+    if publisher == 'KAP issuer disclosures':
+        # KAP exposes complete issuer-year lists, including related MKK notices.
+        urls = [f'{url}/{year}' for year in range(start.astimezone(zone).year, end.astimezone(zone).year + 1)]
+    else:
+        params = dict(search='CMS', per_page=100, _fields='link,date_gmt,title,excerpt',
+                      after=(start.astimezone(zone) - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S'),
+                      before=(end.astimezone(zone) + timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S'))
+        urls = [url + '?' + urlencode(dict(params, page=page)) for page in range(1, 11)]
+    for index_url in urls:
+        raw = fetch(index_url)
+        if len(raw) > 2_000_000:
+            raise ValueError('Disclosure index exceeds retrieval limit')
+        rows = json.loads(raw)
+        if not isinstance(rows, list):
+            raise ValueError('Unrecognised disclosure index response')
+        for row in rows:
+            try:
+                if publisher == 'KAP issuer disclosures':
+                    item = row['disclosureBasic']
+                    related = {code.strip() for code in (item.get('relatedStocks') or '').split(',')}
+                    if item['mkkMemberOid'] == '1DE05DAA8408073AE0530A4A622A2EBD':
+                        if not contains(normalized(item['companyTitle']), 'tiryaki agro gida'):
+                            raise ValueError('KAP issuer identity changed')
+                    elif 'TRYKI' not in related:
+                        continue
+                    number = item['disclosureIndex']
+                    if type(number) is not int or number <= 0:
+                        raise ValueError('Invalid KAP disclosure number')
+                    title = item['companyTitle'] + ' — ' + item['title']
+                    if item.get('summary') and item['summary'].strip() != item['title'].strip():
+                        title += ' — ' + item['summary'].strip()
+                    dest = f'https://www.kap.org.tr/tr/Bildirim/{number}'
+                    date = datetime.strptime(item['publishDate'], '%d.%m.%Y %H:%M:%S').replace(tzinfo=zone)
+                else:
+                    parser = VisibleText()
+                    parser.feed(row['title']['rendered'])
+                    title = ' '.join(parser.lines)
+                    parser.feed(row['excerpt']['rendered'])
+                    if not contains(normalized(' '.join(parser.lines)), 'cms jant'):
+                        continue
+                    dest = row['link']
+                    parsed = urlparse(dest)
+                    if (parsed.scheme != 'https' or parsed.netloc != 'atauni.edu.tr'
+                            or not parsed.path.startswith('/muhendislik-fakultesi/')):
+                        raise ValueError('University notice link left its source')
+                    date = datetime.fromisoformat(row['date_gmt']).replace(tzinfo=timezone.utc)
+                if not title.strip():
+                    raise ValueError('Disclosure title missing')
+            except (KeyError, TypeError, AttributeError) as exc:
+                raise ValueError('Incomplete disclosure row') from exc
+            if start <= date <= end:
+                yield title, dest, date, 'tr'
+        if publisher != 'KAP issuer disclosures' and len(rows) < 100:
+            return
+    if publisher != 'KAP issuer disclosures':
+        raise ValueError('More than ten university result pages; check remaining notices at source')
 
 
 def notice_rows(subject, publisher, page):
@@ -344,6 +409,15 @@ def recent_notices(subject, publisher, url, fetch, now=None, errors=None, *, win
         start, today = (instant.astimezone(zone).date() for instant in window)
     results = []
     try:
+        if publisher in ('KAP issuer disclosures', 'Atatürk University notices'):
+            end = now or datetime.now(timezone.utc)
+            bounds = window or (end - timedelta(days=7), end)
+            for title, dest, date, lang in turkish_notice_rows(publisher, url, fetch, *bounds):
+                if not excluded_story(title, dest):
+                    results.append(dict(title=title, url=dest, publisher=publisher, published_at=date,
+                                        query=url, language=lang, source_kind='official', discovery_service=publisher,
+                                        signal_terms=risk_signals(title, lang)))
+            return results
         for number in range(1, 11):
             page = fetch(url if number == 1 else f'{url}&page={number}')
             if len(page) > 2_000_000:

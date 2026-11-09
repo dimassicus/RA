@@ -1,8 +1,23 @@
 import pytest
+import os
 
 from ra import headline_review as qa, translation
 from ra.company_exports import title
 from ra.scoring import input_hash
+
+
+@pytest.mark.skipif(os.environ.get('RA_TEST_LOCAL_REVIEWER') != '1', reason='Opt-in installed local model check')
+@pytest.mark.parametrize('source,candidate,expected', [
+    ('Fato Relevante - Renúncia do Sr. Daniil Bazdyrev',
+     'Material Fact — Resignation of Mr. Daniil Bazdyrev', 'faithful'),
+    ('Fato Relevante - Renúncia do Diretor Presidente',
+     'Material Fact - Dismissal of the CEO', 'material_error'),
+    ('Renúncia de direitos de subscrição', 'Resignation of subscription rights', 'material_error'),
+])
+def test_portuguese_resignation_and_waiver_with_local_reviewer(source, candidate, expected):
+    result = qa.audit(source, 'pt', candidate)
+    assert result['status'] == expected, result
+    assert result['model'] == qa.QWEN and result['reasoning'] == 'off'
 
 
 @pytest.mark.parametrize('output', ['Company repays debt - ZXQPUBLERZXQ', 'Company repays debt'])

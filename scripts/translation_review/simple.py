@@ -15,6 +15,10 @@ forecasts versus actual results, borrower versus lender/guarantor, and legal
 effect. Do not invent currencies, facts, company names or outcomes. Do not
 silently repair errors in the original. Different punctuation, transliteration
 or merely awkward wording is not a material error.
+Interpret legal terms in their source-language context, not from one dictionary
+sense. Portuguese renúncia by a named officer can mean resignation; renúncia
+de direitos means waiver of rights. Do not invent rights or claims absent from
+the source. If context cannot resolve a material ambiguity, use uncertain.
 Return one JSON object, without Markdown or surrounding prose, in this shape:
 {"reviews":[{"candidate":"A","verdict":"faithful","issues":[]}],"correction":""}
 Include exactly one review for EVERY supplied candidate, using its exact ID.
