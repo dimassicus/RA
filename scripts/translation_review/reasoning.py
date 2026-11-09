@@ -16,7 +16,20 @@ def parse_final(content):
     wrapper=re.fullmatch(r'```(?:json)?\s*\n(.*?)\n```',text,re.S)
     if wrapper:
         text=wrapper.group(1).strip()
-    return json.loads(text), bool(wrapper)
+    data = json.loads(text)
+    pending = [data]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, dict):
+            pending.extend(value.keys())
+            pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+        elif isinstance(value, str):
+            # PostgreSQL JSONB rejects nulls and unpaired surrogates; never cache such model output.
+            if '\x00' in value or any('\ud800' <= character <= '\udfff' for character in value):
+                raise ValueError('Model JSON contains a null character or unpaired Unicode surrogate')
+    return data, bool(wrapper)
 
 
 def review(source, source_lang, target_lang, candidates, model, port, *, enabled):

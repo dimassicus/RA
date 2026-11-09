@@ -201,6 +201,20 @@ def test_reasoning_final_does_not_extract_json_from_extra_prose():
     with pytest.raises(ValueError):parse_final('{"ok":true} extra trailing text')
 
 
+@pytest.mark.parametrize('content', [r'{"issues":[{"explanation":"3\u0000"}]}',
+                                     r'{"\u0000":"key"}', r'{"text":"\ud800"}'])
+def test_model_json_rejects_postgres_incompatible_unicode(content):
+    from scripts.translation_review.reasoning import parse_final
+    with pytest.raises(ValueError, match='null character or unpaired Unicode surrogate'):
+        parse_final(content)
+
+
+def test_model_json_keeps_valid_unicode_and_literal_escape_text():
+    from scripts.translation_review.reasoning import parse_final
+    assert parse_final(r'{"text":"\ud83d\ude00","literal":"\\u0000"}')[0] == {
+        'text': '😀', 'literal': r'\u0000'}
+
+
 def test_fresh_candidates_are_not_mislabelled_as_translator_outputs(monkeypatch):
     from scripts.translation_review.fresh_cases import CASES
     assert len(CASES)==12 and sum(v=='material' for c in CASES for v in c['reference'].values())==9
