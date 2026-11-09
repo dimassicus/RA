@@ -15,11 +15,12 @@ import socket
 import subprocess
 import sys
 from functools import lru_cache
+from html import escape
 from html.parser import HTMLParser
 from io import BytesIO
 from urllib.parse import urljoin, urlsplit, urlunsplit, parse_qsl, urlencode
 
-READER_VERSION = "public-source-v6"
+READER_VERSION = "public-source-v7"
 MAX_BYTES = 2_000_000
 MAX_TEXT = 100_000
 
@@ -181,6 +182,38 @@ def validate_pdf_text(body):
         raise ValueError('PDF text has corrupt character encoding; analyst reading required')
 
 
+def kap_disclosure_html(page, index):
+    """Read the public filing payload, never execute the page's JavaScript."""
+    stream = ''.join(json.loads(m[1]) for m in re.finditer(
+        r'self\.__next_f\.push\(\[\s*1\s*,\s*("(?:[^"\\]|\\.)*")\s*\]\)', page))
+    payloads = [json.JSONDecoder().raw_decode(stream[m.end():].lstrip())[0]
+                for m in re.finditer(r'"sendData":', stream)]
+    if len(payloads) != 1:
+        raise ValueError('Missing or ambiguous KAP disclosure payload')
+    data = payloads[0]
+    basic = data.get('disclosure', {}).get('disclosureBasic', {})
+    refs = data.get('disclosureBody', [])
+    if (basic.get('disclosureIndex') != int(index) or basic.get('isBlocked') is not False
+            or not isinstance(refs, list) or len(refs) != 1
+            or not isinstance(refs[0], str) or not re.fullmatch(r'\$[0-9a-f]+', refs[0])):
+        raise ValueError('KAP disclosure identity, access or body could not be confirmed')
+    records = list(re.finditer(r'(?:^|\n)' + re.escape(refs[0][1:]) + r':T([0-9a-f]+),', stream))
+    if len(records) != 1:
+        raise ValueError('Missing or ambiguous KAP disclosure body')
+    record = records[0]
+    size = int(record[1], 16)
+    raw = stream[record.end():].encode()[:size]
+    if not 0 < size <= MAX_BYTES or len(raw) != size:
+        raise ValueError('Incomplete KAP disclosure body')
+    body = raw.decode()
+    if not body.lstrip().startswith('<table') or not body.rstrip().endswith('</table>'):
+        raise ValueError('Incomplete KAP disclosure table')
+    fields = [basic.get(key) for key in ('companyTitle', 'publishDate', 'title')]
+    if not all(isinstance(value, str) and value.strip() for value in fields):
+        raise ValueError('Missing KAP disclosure metadata')
+    return '<article><p>' + escape(' | '.join(fields)) + '</p>' + body + '</article>'
+
+
 def extract(raw, content_type, parsed=None):
     if raw.startswith(b'%PDF-') or 'application/pdf' in content_type:
         from pypdf import PdfReader
@@ -276,6 +309,11 @@ def _retrieve(url, hint=None):
         destination = final_url
         parsed = parse_html(raw, content_type) if 'html' in content_type else None
         page = parsed[0] if parsed else ArticleHTML()
+        kap_path = re.fullmatch(r'/(?:tr|en)/Bildirim/(\d+)', urlsplit(final_url).path)
+        if parsed and urlsplit(final_url).hostname in ('kap.org.tr', 'www.kap.org.tr') and kap_path:
+            raw = kap_disclosure_html(parsed[1], kap_path[1]).encode()
+            parsed = parse_html(raw, content_type)
+            route = 'KAP embedded disclosure table'
         if raw and route.endswith('headline search'):
             if not any(providers.matches_title(title, hint) for title in page.page_titles):
                 destination = ''

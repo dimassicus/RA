@@ -73,7 +73,7 @@ def cache_v4(database, article, **changes):
     return document, fetched_at
 
 
-@pytest.mark.parametrize('reader_version', ['public-source-v4', 'public-source-v5'])
+@pytest.mark.parametrize('reader_version', ['public-source-v4', 'public-source-v5', 'public-source-v6'])
 def test_cache_upgrade_keeps_complete_translation_and_original_age(database, monkeypatch, reader_version):
     from psycopg.types.json import Jsonb
     from ra import article_translation, headline_review, translation
@@ -95,7 +95,7 @@ def test_cache_upgrade_keeps_complete_translation_and_original_age(database, mon
     saved = database.execute("SELECT document,fetched_at FROM article_documents WHERE url=%s", (article['url'],)).fetchone()
     assert result['status'] == 'supported'
     assert saved['fetched_at'] == fetched_at
-    assert saved['document']['reader_version'] == 'public-source-v6'
+    assert saved['document']['reader_version'] == 'public-source-v7'
     assert saved['document']['body'] == document['body'] and saved['document']['sha256'] == document['sha256']
     assert saved['document']['translation']['parts'] == [part]
     assert detected == [document['body']]
@@ -183,3 +183,13 @@ def test_refetch_carries_review_only_for_identical_source(database, monkeypatch,
     assert readiness == ([] if changed is None else [True])
     if changed is None:
         assert saved['document']['translation']['parts'] == [part]
+
+
+def test_kap_v6_navigation_cache_is_refetched(database, monkeypatch):
+    _, _, article = seed(database, url='https://www.kap.org.tr/tr/Bildirim/1693892')
+    cache_v4(database, article, reader_version='public-source-v6')
+    monkeypatch.setattr(verification_store.risk_factors, 'records', lambda: [])
+    calls = []
+    verification_store.verify_article(article['id'], fetcher=lambda url: calls.append(url) or {
+        'status': 'unavailable', 'reason': 'Test filing unavailable'})
+    assert calls == [article['url']]

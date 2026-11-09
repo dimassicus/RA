@@ -361,3 +361,45 @@ def test_html_article_listing_is_not_a_full_article():
     body = 'Acme Manufacturing files for bankruptcy. ' * 20
     with pytest.raises(ValueError, match='Multiple articles'):
         extract(f'<main><article>{body}</article><article>{body}</article></main>'.encode(), 'text/html')
+
+
+def kap_page(index=1693892, blocked=False, *, duplicate=False, truncated=False):
+    body = ('<table><tr><td><div>Acme Manufacturing confirms payment of its scheduled coupon. '
+            'The principal remains outstanding until the contractual maturity. '
+            'The previously approved issue ceiling is unchanged. </div></td></tr></table>')
+    # Exercise UTF-8 byte lengths and payloads split across streamed chunks.
+    body = body.replace('Acme', 'İstanbul Acme')
+    payload = {'disclosure': {'disclosureBasic': {
+        'disclosureIndex': index, 'isBlocked': blocked, 'companyTitle': 'Acme Manufacturing',
+        'publishDate': '2026.11.06 17:06:27', 'title': 'Coupon payment'}},
+        'disclosureBody': ['$40']}
+    stream = '39:' + json.dumps({'sendData': payload}) + '\n40:T' + format(len(body.encode()), 'x') + ',' + body
+    if truncated:
+        stream = stream[:-15]
+    if duplicate:
+        stream += '\n41:' + json.dumps({'sendData': payload})
+    chunks = [stream[:len(stream)//2], stream[len(stream)//2:]]
+    return ('<main><p>Unrelated navigation bankruptcy rumour. </p></main>' + ''.join(
+        '<script>self.__next_f.push(' + json.dumps([1, chunk]) + ')</script>' for chunk in chunks)).encode()
+
+
+def test_kap_reader_extracts_only_matching_public_disclosure(monkeypatch):
+    from ra import article_content
+    url = 'https://www.kap.org.tr/tr/Bildirim/1693892'
+    monkeypatch.setattr(article_content, 'fetch_bytes', lambda target: (kap_page(), 'text/html', url))
+    result = article_content._retrieve(url)
+    assert result['status'] == 'available'
+    assert 'İstanbul Acme Manufacturing confirms payment' in result['body']
+    assert 'bankruptcy rumour' not in result['body']
+    assert result['recovery'] == 'KAP embedded disclosure table'
+    assert result['final_url'] == url and not result['review_only']
+
+
+@pytest.mark.parametrize('options', [{'index': 1693891}, {'blocked': True}, {'duplicate': True}, {'truncated': True}])
+def test_kap_reader_rejects_wrong_blocked_ambiguous_or_incomplete_filing(monkeypatch, options):
+    from ra import article_content
+    url = 'https://www.kap.org.tr/en/Bildirim/1693892'
+    monkeypatch.setattr(article_content, 'fetch_bytes', lambda target: (kap_page(**options), 'text/html', url))
+    result = article_content._retrieve(url)
+    assert result['status'] == 'unavailable'
+    assert 'body' not in result

@@ -49,18 +49,20 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
         lifetime = timedelta(days=7) if cached and cached['document']['status'] == 'available' else timedelta(hours=24)
         hint = {"title": article["title"], "publisher": article["publisher"],
                 "published_at": article["published_at"].isoformat() if article["published_at"] else ""}
-        upgrade = (READER_VERSION == 'public-source-v6' and cached
-                   and cached['document'].get('reader_version') in ('public-source-v4', 'public-source-v5')
+        upgrade = (READER_VERSION == 'public-source-v7' and cached
+                   and cached['document'].get('reader_version') in ('public-source-v4', 'public-source-v5', 'public-source-v6')
                    and cached['document']['status'] == 'available'
-                   and not url.startswith(('https://dpm.vn/cong-bo-thong-tin/',
-                                           'https://dpm.vn/bao-cao-tai-chinh/')))
+                   and urlsplit(url).hostname not in ('kap.org.tr', 'www.kap.org.tr')
+                   and (cached['document'].get('reader_version') == 'public-source-v6'
+                        or not url.startswith(('https://dpm.vn/cong-bo-thong-tin/',
+                                               'https://dpm.vn/bao-cao-tai-chinh/'))))
         if (cached and cached['document'].get('source_hint') == hint
                 and (cached['document'].get('reader_version') == READER_VERSION or upgrade)
                 and datetime.now(timezone.utc) - cached['fetched_at'] < lifetime):
             cache_hit = True
             document = cached['document']
             if upgrade:
-                # Retain checked text; v6 changes only issuer attachments, v5 validation/language.
+                # Retain checked text; v7 changes KAP, v6 issuer attachments, v5 validation/language.
                 document = {**document, 'reader_version': READER_VERSION}
                 try:
                     if document.get('method', '').startswith('PDF text'):

@@ -436,31 +436,48 @@ def get_results(run_id: int):
 
 
 def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, tuple[str, str]] | None = None) -> int:
-    """Replace the selected lead set for one completed run atomically."""
+    """Review translations without DB locks, then save the selection atomically."""
+    from . import headline_review, score_store
     with connect() as conn:
-        run = conn.execute("SELECT status FROM search_runs WHERE id = %s FOR UPDATE", (run_id,)).fetchone()
+        run = conn.execute("SELECT status FROM search_runs WHERE id = %s", (run_id,)).fetchone()
         if run is None or run["status"] in ("queued", "running"):
             raise ValueError("The search must finish before selecting report leads")
         current = {row["id"]: row for row in conn.execute(
             "SELECT id, title, language, title_en, publisher_en FROM search_results WHERE run_id = %s", (run_id,)
         )}
-        valid = set(current)
-        if not set(selected_ids) <= valid:
-            raise ValueError("A selected lead does not belong to this run")
-        for result_id, (title_en, publisher_en) in (edits or {}).items():
-            if result_id not in valid:
-                raise ValueError("A translation edit does not belong to this run")
-            if len(title_en) > 1000 or len(publisher_en) > 250:
-                raise ValueError("English text is too long")
-            if (title_en, publisher_en) != (current[result_id]["title_en"], current[result_id]["publisher_en"]):
-                from .headline_review import audit
-                changed = title_en != current[result_id]["title_en"]
-                qa = audit(current[result_id]["title"], current[result_id]["language"], title_en) if changed else {}
-                conn.execute(
-                    "UPDATE search_results SET headline_review = CASE WHEN %s THEN %s ELSE headline_review END, title_en = %s, publisher_en = %s, "
-                    "translation_provider = 'analyst edited' WHERE id = %s",
-                    (changed, Jsonb(qa), title_en, publisher_en, result_id),
-                )
+    if not set(selected_ids) <= current.keys():
+        raise ValueError("A selected lead does not belong to this run")
+    for result_id, (title_en, publisher_en) in (edits or {}).items():
+        if result_id not in current:
+            raise ValueError("A translation edit does not belong to this run")
+        if len(title_en) > 1000 or len(publisher_en) > 250:
+            raise ValueError("English text is too long")
+    prepared = {}
+    for result_id, (title_en, publisher_en) in (edits or {}).items():
+        original = current[result_id]
+        if (title_en, publisher_en) != (original["title_en"], original["publisher_en"]):
+            changed = title_en != original["title_en"]
+            qa = headline_review.audit(original["title"], original["language"], title_en) if changed else {}
+            prepared[result_id] = (changed, qa, title_en, publisher_en)
+    with connect() as conn:
+        # Source verification takes this lock before touching article rows too.
+        score_store._lock(conn)
+        run = conn.execute("SELECT status FROM search_runs WHERE id = %s FOR UPDATE", (run_id,)).fetchone()
+        if run is None or run["status"] in ("queued", "running"):
+            raise ValueError("The search must finish before selecting report leads")
+        for result_id in prepared:
+            latest = conn.execute(
+                "SELECT id, title, language, title_en, publisher_en FROM search_results WHERE id=%s FOR UPDATE",
+                (result_id,),
+            ).fetchone()
+            if latest != current[result_id]:
+                raise ValueError("The translation changed during review; reload before saving")
+        for result_id, (changed, qa, title_en, publisher_en) in prepared.items():
+            conn.execute(
+                "UPDATE search_results SET headline_review = CASE WHEN %s THEN %s ELSE headline_review END, title_en = %s, publisher_en = %s, "
+                "translation_provider = 'analyst edited' WHERE id = %s",
+                (changed, Jsonb(qa), title_en, publisher_en, result_id),
+            )
         return conn.execute(
             "UPDATE search_results SET report_selected = (id = ANY(%s)) WHERE run_id = %s",
             (selected_ids, run_id),

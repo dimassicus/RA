@@ -938,3 +938,44 @@ def test_historical_run_route_validates_and_preserves_window_on_retry(database, 
     assert retry.status_code == 302
     repeated = db.get_run(int(retry.location.rsplit('/',1)[1]))
     assert (repeated["window_start"],repeated["window_end"]) == (start,end)
+
+
+def test_report_translation_audit_releases_connection_before_inference(database, monkeypatch):
+    from ra import headline_review
+    _, run_id, article = seed(database)
+    opened = []
+    @contextmanager
+    def connection():
+        opened.append(True)
+        try:
+            yield database
+        finally:
+            opened.pop()
+    monkeypatch.setattr(db, 'connect', connection)
+    def audit(*args):
+        assert not opened, 'Model inference must not hold a database transaction'
+        return {'status': 'faithful'}
+    monkeypatch.setattr(headline_review, 'audit', audit)
+    locks = []
+    original_lock = score_store._lock
+    def lock(conn):
+        locks.append(True)
+        original_lock(conn)
+    monkeypatch.setattr(score_store, '_lock', lock)
+    db.set_report_selection(run_id, [article['id']], {article['id']: ('Correct English title', 'Publisher')})
+    saved = score_store.get_article(article['id'])
+    assert locks == [True] and saved['report_selected']
+    assert saved['title_en'] == 'Correct English title' and saved['headline_review']['status'] == 'faithful'
+
+
+def test_report_edit_does_not_overwrite_translation_changed_during_audit(database, monkeypatch):
+    from ra import headline_review
+    _, run_id, article = seed(database)
+    def audit(*args):
+        database.execute("UPDATE search_results SET title_en='Concurrent correction' WHERE id=%s", (article['id'],))
+        return {'status': 'faithful'}
+    monkeypatch.setattr(headline_review, 'audit', audit)
+    with pytest.raises(ValueError, match='translation changed during review'):
+        db.set_report_selection(run_id, [article['id']], {article['id']: ('Stale correction', '')})
+    saved = score_store.get_article(article['id'])
+    assert saved['title_en'] == 'Concurrent correction' and not saved['report_selected']
