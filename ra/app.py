@@ -23,7 +23,7 @@ from .search import company_search_plan
 from .reports import make_pdf, make_xlsx
 from .relevance import classify_results
 from . import score_store, verification_store, headline_review
-from .scoring import LABELS, RUBRIC, VERSION, week_start
+from .scoring import LABELS, RUBRIC, MATERIALITY, VERSION, week_start
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -168,7 +168,7 @@ def create_app() -> Flask:
         records = score_store.weekly_history()
         lookup = {(row["company_id"], row["week_start"]): row for row in records}
         return render_template("scores.html", companies=db.list_companies(True), dates=dates,
-                               lookup=lookup, labels=LABELS, rubric=RUBRIC, weeks=weeks,
+                               lookup=lookup, labels=LABELS, rubric=RUBRIC, materiality=MATERIALITY, weeks=weeks,
                                version=VERSION, current=current)
 
     @app.post("/scores/refresh")
@@ -222,7 +222,7 @@ def create_app() -> Flask:
             flash("Article score saved. Weekly history updated and the decision recorded.", "success")
             return redirect(url_for("article_score", result_id=result_id))
         return render_template("article_score.html", article=article, history=score_store.article_history(result_id),
-                               labels=LABELS, rubric=RUBRIC, lookup_title=original_title(article), **verification_store.details(result_id))
+                               labels=LABELS, rubric=RUBRIC, materiality=MATERIALITY, lookup_title=original_title(article), **verification_store.details(result_id))
 
     @app.post("/articles/<int:result_id>/verify")
     def verify_article(result_id):

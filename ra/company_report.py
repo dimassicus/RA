@@ -7,7 +7,7 @@ from .exposure import scope_sector_paths
 from .aliases import headline_identity, normalized
 from .relevance import governance_cues, headline
 from .keywords import matches
-from .scoring import WEEK_TIMEZONE, week_start
+from .scoring import VERSION, WEEK_TIMEZONE, week_start
 
 
 def periods(anchor):
@@ -122,7 +122,9 @@ def build_report(run, subject, articles, history, errors, previous_runs=None):
             current_driver = strongest_contribution(current)
             if previous_driver and current_driver and previous_driver["reason"] != current_driver["reason"]:
                 summary += f" Earlier driver: {previous_driver['reason']}. Current driver: {current_driver['reason']}."
-            if past["score"] is not None and current["score"] is not None:
+            if (past.get("version") == VERSION) != (current.get("version") == VERSION):
+                summary += " Score change omitted: snapshots use different grading scales."
+            elif past["score"] is not None and current["score"] is not None:
                 change = current["score"] - past["score"]
                 summary += f" Sentiment moved {change:+d}." if change else " Sentiment held steady."
             else:
@@ -153,6 +155,8 @@ def rating_rows(report):
             continue
         score = metrics["score"]
         coverage = f"{metrics['search_count']} searches · {metrics['source_errors']} errors"
+        if metrics.get("version") != VERSION:
+            coverage += " · original scale −3 to +3"
         yield label, week, score if score is not None else "—", coverage, metrics["event_count"]
 
 
@@ -170,4 +174,5 @@ def driver(report):
     event = strongest_contribution(report["ratings"][0][2] or {})
     if not event:
         return "No eligible company event contributed to a recorded score for this week.", ""
-    return f"Strongest contribution ({event['score']:+d}): {event['reason']}", event["url"]
+    scale = " · original scale −3 to +3" if report["ratings"][0][2].get("version") != VERSION else ""
+    return f"Strongest contribution ({event['score']:+d}{scale}): {event['reason']}", event["url"]

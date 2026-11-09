@@ -83,7 +83,7 @@ def make_xlsx(run: dict, results: list[dict], errors: list[dict], selected: bool
         "Published", "Company", "Source type", "Publisher (original)", "Publisher (English)",
         "Headline (original)", "Headline (English, machine translation)", "Review cues",
         "Discovery status", "Language", "Article / notice URL", "Search query", "Discovery service",
-        "Article score (-3 to +3)", "Score status", "Included in weekly score", "Score reason", "Scoring version", "Source check", "Source check reason", "Event group", "Potential company exposure", "Headline translation review", "Possible risk themes and evidence",
+        "Article score (-2 to +2)", "Score status", "Included in weekly score", "Score reason", "Scoring version", "Source check", "Source check reason", "Event group", "Potential company exposure", "Headline translation review", "Possible risk themes and evidence",
     ]
     leads.append(columns)
     for cell in leads[1]:

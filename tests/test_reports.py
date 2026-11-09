@@ -21,6 +21,7 @@ def test_selected_export_preserves_bilingual_text_and_uses_real_utc():
     }
     book = load_workbook(make_xlsx(run, [lead], [], selected=True), read_only=True)
     assert book["Summary"]["B4"].value == "2026-10-31 14:29 UTC"
+    assert "Article score (-2 to +2)" in [cell.value for cell in book["Selected leads"][1]]
     row = [cell.value for cell in book["Selected leads"][2]]
     assert row[0] == "2026-10-30"
     assert row[5:7] == ["Fato Relevante", "Material Fact"]
@@ -79,3 +80,22 @@ def test_filing_dates_respect_issuer_cutoff_revisions_and_export_links():
     assert "12 Nov 2026" in reader.pages[0].extract_text()
     assert event["source_url"] in [ann.get_object().get("/A", {}).get("/URI")
                                   for page in reader.pages for ann in page.get("/Annots", [])]
+
+
+def test_legacy_report_scale_is_labelled_and_never_compared_to_five_grades():
+    from ra.company_report import build_report, rating_rows, driver
+    from ra.scoring import VERSION
+    now = datetime(2026, 11, 9, tzinfo=timezone.utc)
+    metrics = dict(search_count=1, source_errors=0, negative_count=0, positive_count=1,
+                   neutral_count=0, event_count=1, score=3, version="source-credit-v5",
+                   contributions=[dict(score=3, reason="Completed recovery", url="https://example.test")])
+    run = dict(id=1, created_at=now, status="completed")
+    report = build_report(run, {"name": "Acme"}, [],
+                          {"Current": dict(metrics, score=2, version=VERSION), "1 week ago": metrics}, [])
+    assert "different grading scales" in report["comparisons"][0][1]
+    assert "Sentiment moved" not in report["comparisons"][0][1]
+    assert list(rating_rows(report))[1][2] == 3
+    assert "original scale" in list(rating_rows(report))[1][3]
+    old = build_report(run, {"name": "Acme"}, [], {"Current": metrics}, [])
+    assert "original scale" in driver(old)[0]
+    assert metrics["score"] == 3

@@ -36,7 +36,7 @@ def test_departure_alone_cannot_move_score_but_independent_credit_impact_can():
     doc = {'status':'available','body':'Acme Manufacturing CEO resigns.', 'language':'en'}
     assert verify(doc, COMPANY, article)['status'] == 'needs_review'
     doc['body'] += ' Acme Manufacturing missed debt payments.'
-    assert verify(doc, COMPANY, article)['score'] == -3
+    assert verify(doc, COMPANY, article)['score'] == -2
 
 
 def test_incomplete_registry_observations_cannot_remove_owners():

@@ -16,28 +16,41 @@ from zoneinfo import ZoneInfo
 from .relevance import headline
 from .aliases import headline_identity, normalized
 
-VERSION = "source-credit-v5"
+VERSION = "source-credit-v6"
 WEEK_TIMEZONE = ZoneInfo("Europe/Moscow")
-LABELS = {-3: "Severe negativity", -2: "Strong negativity", -1: "Limited negativity",
-          0: "Neutral / no directional evidence", 1: "Limited positivity",
-          2: "Strong positivity", 3: "Severe positivity"}
+LABELS = {-2: "Strong negative", -1: "Limited negative", 0: "Neutral",
+          1: "Limited positive", 2: "Strong positive"}
 RUBRIC = {
-    -3: "Payment default, bankruptcy, insolvency or liquidation",
-    -2: "Restructuring, serious liquidity stress, shutdown, material legal action or downgrade",
-    -1: "Limited deterioration, losses, layoffs or management resignation",
-    0: "No supported direction, balanced/uncertain context, or insufficient evidence",
-    1: "Limited improvement, reduced losses, ordinary earnings or contract growth",
-    2: "Material improvement: upgrade, restored operations, return to profit or secured refinancing",
-    3: "Transformational recovery: completed bankruptcy exit or cure of a payment default",
+    -2: "Material deterioration in debt repayment capacity, funding access or operating continuity. "
+        "Examples: payment default, insolvency, restructuring, serious liquidity stress, a credit downgrade, "
+        "major shutdown or legal action with material financial consequences.",
+    -1: "An evidenced adverse change with limited impact on the company's credit position, without an "
+        "established material threat to repayment or operations. Examples: weaker earnings, losses, "
+        "limited layoffs or a management departure with contained disruption.",
+    0: "Reviewed evidence establishes no net directional credit impact. Examples: routine payments on "
+       "existing terms, administrative updates or balanced effects. Missing or uncertain evidence is not neutral; "
+       "exclude it from the weekly score pending review.",
+    1: "An evidenced favourable change with limited impact on the company's credit position, without an "
+       "established material improvement in repayment capacity or funding. Examples: ordinary earnings or "
+       "contract growth, reduced losses or an evidenced expansion step whose benefits remain unproven.",
+    2: "Material improvement in debt repayment capacity, funding access or operating continuity. "
+       "Examples: a credit upgrade, secured refinancing that resolves funding pressure, a return to profit, "
+       "restored material operations, completed bankruptcy exit or cure of a payment default.",
 }
+MATERIALITY = ("Positive means improved credit capacity; negative means deterioration. Strong versus limited "
+               "depends on the evidenced size, duration and financial consequences relative to this company. "
+               "There is no universal percentage threshold. Explain the source, event timing and credit impact "
+               "in the review reason. Plans, targets and rumours alone do not establish a strong improvement. "
+               "Automatic event rules propose a grade; analyst review can correct its materiality. "
+               "Unsupported attribution, timing or direction stays excluded, not neutral.")
 
 # Longest overlapping phrase wins: 'emerges from bankruptcy' must not also
 # become a bankruptcy event. Independent events retain separate evidence.
 RULES = [
-    (3, "completed recovery", r"(?:emerges?|exits?|emerged|exited) from bankruptcy|(?:completes?|completed) (?:its )?bankruptcy exit|(?:cures?|cured) (?:its )?(?:payment )?default|(?:fully repays?|fully repaid) defaulted debt|encerra recuperacao judicial|sai da recuperacao judicial"),
+    (2, "completed recovery", r"(?:emerges?|exits?|emerged|exited) from bankruptcy|(?:completes?|completed) (?:its )?bankruptcy exit|(?:cures?|cured) (?:its )?(?:payment )?default|(?:fully repays?|fully repaid) defaulted debt|encerra recuperacao judicial|sai da recuperacao judicial"),
     (2, "credit or funding improvement", r"(?:credit |rating )upgrad\w*|upgrad\w* (?:its |the )?(?:credit |issuer |debt )?rating|(?:secures?|secured|completes?|completed) refinancing|(?:returns?|returned) to profit(?:ability)?|(?:resumes?|resumed|restores?|restored) (?:production|operations)|volta ao lucro|retoma (?:a )?(?:producao|operacoes)"),
     (1, "limited improvement", r"(?:reduces?|reduced|narrows?|narrowed|cuts?|cut) (?:its )?losses|(?:losses|net loss) (?:narrow\w*|fall\w*|fell|shrink\w*|declin\w*|decreas\w*|reduc\w*)|(?:profit|earnings|revenue|sales) (?:grow\w*|ris\w*|rose|increas\w*|improv\w*)|(?:wins?|won|secures?|secured) (?:a |new |major )?contract|lucro (?:cresce|aumenta)|reduz (?:o )?prejuizo|queda (?:do|no) prejuizo"),
-    (-3, "default or insolvency", r"bankrupt\w*|insolven\w*|liquidation|(?:payment |debt |bond )?default(?:s|ed)?|missed (?:debt |bond |interest )?payments?|fails? to (?:repay|pay creditors)|falencia|inadimplencia|vo no|pha san|iflas"),
+    (-2, "default or insolvency", r"bankrupt\w*|insolven\w*|liquidation|(?:payment |debt |bond )?default(?:s|ed)?|missed (?:debt |bond |interest )?payments?|fails? to (?:repay|pay creditors)|falencia|inadimplencia|vo no|pha san|iflas"),
     (-2, "material financial deterioration", r"restructur\w*|recuperacao (?:extra)?judicial|liquidity crisis|cash (?:crisis|shortfall)|profit warning|(?:credit |rating )downgrad\w*|downgrad\w* (?:its |the )?(?:credit |issuer |debt )?rating|negative outlook|debt crisis|konkordato\w*|temerrut\w*|(?:profit|earnings) (?:plung\w*|collaps\w*)"),
     (-2, "operating disruption", r"shutdown\w*|plant closure|plant fire|explosion|(?:halts?|suspends?) (?:production|operations)|hibernacao|hibernar|paralisacao|fechamento|suspensao (?:das? )?(?:operacoes|producao)"),
     (-2, "legal or creditor pressure", r"(?:faces?|facing|hit by) (?:a |an )?(?:lawsuit|investigation|sanctions)|(?:fined|convicted)|(?:creditor |debt )?mediation|procedimento de mediacao|tutela de urgencia|arbitration|arbitragem|multas?|condena\w*"),
@@ -48,6 +61,22 @@ COMPILED = [(score, label, re.compile(r"(?<!\w)(?:" + pattern + r")(?!\w)"))
             for score, label, pattern in RULES]
 UNCERTAIN = re.compile(r"\b(?:denies?|denied|alleged|rumou?r\w*|may|might|could|potential|risk of|no evidence of|no signs of|nao|nega|sem)\b")
 NEGATION = re.compile(r"\b(?:not|no|avoids?|averts?|avoided|averted)\b")
+
+
+def five_grade_score(value):
+    """Map only the two retired grades; leave missing values unchanged."""
+    return {-3: -2, 3: 2}.get(value, value)
+
+
+def five_grade_assessment(assessment):
+    """Return current-scale source evidence without altering an archived assessment."""
+    result = dict(assessment)
+    if "score" in result:
+        result["score"] = five_grade_score(result["score"])
+    if "evidence" in result:
+        result["evidence"] = [dict(item, score=five_grade_score(item["score"]))
+                              for item in result["evidence"]]
+    return result
 
 
 def week_start(value: datetime) -> object:
@@ -110,7 +139,7 @@ def score_article(article: dict, subject: dict, now: datetime | None = None) -> 
             result["score_reason"] += "; mixed directions, strongest magnitude used (negative wins ties)"
     if problem:
         result.update(score_included=False, score_status="needs_review", score_reason=problem)
-    verification = article.get("verification") or {}
+    verification = five_grade_assessment(article.get("verification") or {})
     if verification.get("status") == "supported":
         result.update(score=verification["score"], score_auto=verification["score"],
                       score_evidence=verification["evidence"], score_status="provisional",

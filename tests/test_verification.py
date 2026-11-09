@@ -23,7 +23,7 @@ def document(body, **extra):
 
 
 @pytest.mark.parametrize('sentence,score', [
-    ('Acme Manufacturing has filed for bankruptcy protection after missing bond payments.', -3),
+    ('Acme Manufacturing has filed for bankruptcy protection after missing bond payments.', -2),
     ('Acme Manufacturing announces plant closure affecting 300 workers at its Brazilian facility.', -2),
     ('Acme Manufacturing reports net losses of 40 million dollars during the third quarter.', -1),
     ('Acme Manufacturing declared a net loss of 40 million dollars.', -1),
@@ -32,7 +32,7 @@ def document(body, **extra):
     ('Acme Manufacturing reduces losses following a recovery in its core market.', 1),
     ('Acme Manufacturing returns to profit following a recovery in its core market.', 2),
     ('Acme Manufacturing emerges from bankruptcy after completing its court-approved debt restructuring.', -2),
-    ('Acme Manufacturing emerges from bankruptcy after completing the court-approved repayment agreement.', 3),
+    ('Acme Manufacturing emerges from bankruptcy after completing the court-approved repayment agreement.', 2),
     ('Acme Manufacturing pede recuperação judicial.', -2),
     ('Acme Manufacturing teve um prejuízo líquido de R$ 13 milhões.', -1),
     ('A Acme Manufacturing teve um prejuízo líquido de R$ 13 milhões.', -1),

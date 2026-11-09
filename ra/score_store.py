@@ -6,7 +6,8 @@ from datetime import datetime, timedelta, timezone
 from psycopg.types.json import Jsonb
 
 from . import db
-from .scoring import VERSION, aggregate_week, input_hash, score_article, week_start, weekly_groups
+from .scoring import (VERSION, aggregate_week, five_grade_assessment, five_grade_score,
+                      input_hash, score_article, week_start, weekly_groups)
 
 FIELDS = ("score", "score_auto", "score_reason", "score_evidence", "score_status",
           "score_included", "score_version", "score_input_hash")
@@ -30,6 +31,39 @@ def _write(conn, result_id, assessment):
                  ", score_updated_at=now() WHERE id=%s",
                  tuple(Jsonb(assessment[field]) if field == "score_evidence" else assessment[field]
                        for field in FIELDS) + (result_id,))
+
+
+def _migrate_five_grades(conn):
+    """Preserve decisions and audit originals before replacing retired grades."""
+    rows = conn.execute("SELECT * FROM search_results ORDER BY id FOR UPDATE").fetchall()
+    for article in rows:
+        verification = five_grade_assessment(article["verification"])
+        if verification != article["verification"]:
+            conn.execute("INSERT INTO article_verification_history (result_id,previous,assessment) VALUES (%s,%s,%s)",
+                         (article["id"], Jsonb(article["verification"]), Jsonb(verification)))
+            conn.execute("UPDATE search_results SET verification=%s WHERE id=%s", (Jsonb(verification), article["id"]))
+        previous = {field: article[field] for field in FIELDS}
+        assessment = dict(previous, score=five_grade_score(article["score"]),
+                          score_auto=five_grade_score(article["score_auto"]),
+                          score_evidence=five_grade_assessment({"evidence": article["score_evidence"]})["evidence"])
+        if article["score_status"] == "reviewed":
+            assessment["score_version"] = VERSION
+        if assessment != previous:
+            _audit(conn, article, assessment,
+                   "Five-grade migration: retired -3/+3 map to -2/+2; analyst reason and inclusion preserved")
+            _write(conn, article["id"], assessment)
+            # Migration must not change which duplicate contains the latest analyst decision.
+            conn.execute("UPDATE search_results SET score_updated_at=%s WHERE id=%s",
+                         (article["score_updated_at"], article["id"]))
+
+
+def _constrain_five_grades(conn):
+    for table, column in (("search_results", "score"), ("search_results", "score_auto"),
+                          ("company_weekly_scores", "score"), ("company_weekly_scores", "mean_score")):
+        name = f"{table}_{column}_five_grades"
+        if not conn.execute("SELECT 1 FROM pg_constraint WHERE conrelid=%s::regclass AND conname=%s",
+                            (table, name)).fetchone():
+            conn.execute(f"ALTER TABLE {table} ADD CONSTRAINT {name} CHECK ({column} BETWEEN -2 AND 2)")
 
 
 def _assess(conn, run_id=None):
@@ -117,7 +151,10 @@ def refresh_scores(run_id=None):
     """One transaction prevents charts observing half-rebuilt scores."""
     with db.connect() as conn:
         _lock(conn)
-        return {"articles_updated": _assess(conn, run_id), "weeks_updated": _weekly(conn)}
+        _migrate_five_grades(conn)
+        result = {"articles_updated": _assess(conn, run_id), "weeks_updated": _weekly(conn)}
+        _constrain_five_grades(conn)
+        return result
 
 
 def get_article(result_id):
@@ -132,8 +169,8 @@ def article_history(result_id):
 
 
 def review_score(result_id, score: int, included: bool, reason: str):
-    if type(score) is not int or not -3 <= score <= 3:
-        raise ValueError("Score must be a whole number from -3 to +3")
+    if type(score) is not int or not -2 <= score <= 2:
+        raise ValueError("Score must be a whole number from -2 to +2")
     reason = reason.strip()
     if not 5 <= len(reason) <= 2000:
         raise ValueError("Explain the score in 5–2,000 characters")
@@ -148,7 +185,8 @@ def review_score(result_id, score: int, included: bool, reason: str):
         if included and (not article["published_at"] or article["published_at"] > datetime.now(timezone.utc)):
             raise ValueError("A valid publication date is required for weekly inclusion")
         assessment = {field: article[field] for field in FIELDS}
-        assessment.update(score=score, score_included=included, score_status="reviewed", score_reason=reason)
+        assessment.update(score=score, score_included=included, score_status="reviewed", score_reason=reason,
+                          score_version=VERSION)
         _audit(conn, article, assessment, reason)
         _write(conn, result_id, assessment)
         _weekly(conn)

@@ -35,7 +35,7 @@ def test_risk_view_hides_noise_and_preserves_other_view_selections(monkeypatch):
            "created_at": now, "subjects": [{"name": "Acme Manufacturing"}]}
     common = {"subject_name": "Acme Manufacturing", "source_kind": "news", "published_at": now,
               "url": "https://example.test/news", "publisher": "News", "publisher_en": "News",
-              "language": "en", "title_en": "", "translation_provider": "", "seen_before": False, "verification": {"status": "supported"}, "score": -3,
+              "language": "en", "title_en": "", "translation_provider": "", "seen_before": False, "verification": {"status": "supported"}, "score": -2,
               "score_included": True, "score_status": "provisional", "score_reason": "Source-supported bankruptcy", "event_group": "event:1"}
     results = [{**common, "id": 1, "title": "Acme Manufacturing faces bankruptcy", "report_selected": False},
                {**common, "id": 2, "title": "National team wins cup", "report_selected": True, "verification": {"status":"unmatched", "reason":"Company not in source"}, "score_included":False}]

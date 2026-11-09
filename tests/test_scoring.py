@@ -14,24 +14,24 @@ def article(title, **extra):
 
 
 @pytest.mark.parametrize("title,expected", [
-    ("Acme Manufacturing files for bankruptcy", -3),
+    ("Acme Manufacturing files for bankruptcy", -2),
     ("Acme Manufacturing announces plant closure", -2),
     ("Acme Manufacturing CEO resigns", -1),
     ("Acme Manufacturing updates its logo", 0),
     ("Acme Manufacturing reduces losses", 1),
     ("Acme Manufacturing returns to profit", 2),
-    ("Acme Manufacturing emerges from bankruptcy", 3),
+    ("Acme Manufacturing emerges from bankruptcy", 2),
     ("Acme Manufacturing losses narrowed", 1),
-    ("Acme Manufacturing fully repays defaulted debt", 3),
+    ("Acme Manufacturing fully repays defaulted debt", 2),
     ("Acme Manufacturing: lucro cresce", 1),
     ("Acme Manufacturing: reduz prejuízo", 1),
     ("Acme Manufacturing: recuperação judicial", -2),
-    ("Acme Manufacturing encerra recuperação judicial", 3),
+    ("Acme Manufacturing encerra recuperação judicial", 2),
     ("Acme Manufacturing sues supplier", 0),
     ("Acme Manufacturing announces a software upgrade", 0),
     ("Acme Manufacturing rating downgraded", -2),
 ])
-def test_seven_steps_and_directional_context(title, expected):
+def test_five_grades_and_directional_context(title, expected):
     result = score_article(article(title), SUBJECT, NOW)
     assert result["score"] == expected
     assert result["score_included"] is False  # Headlines alone no longer enter weekly history.
@@ -93,18 +93,18 @@ def test_no_data_differs_from_neutral_and_uncertainty():
 
 
 def test_weekly_rounding_extrema_and_offsetting_coverage():
-    data = [assessed(-3), assessed(3, id=2, url="https://example.test/2")]
+    data = [assessed(-2), assessed(2, id=2, url="https://example.test/2")]
     result = aggregate_week(data)
     assert result["score"] == 0
     assert result["mean_score"] == 0
-    assert (result["worst_score"], result["best_score"]) == (-3, 3)
+    assert (result["worst_score"], result["best_score"]) == (-2, 2)
     assert result["negative_count"] == result["positive_count"] == 1
     assert aggregate_week([assessed(-1), assessed(0, id=2, url="b")])["score"] == -1
     assert aggregate_week([assessed(1), assessed(0, id=2, url="b")])["score"] == 1
 
 
 def test_repeated_url_counts_once_and_review_takes_precedence():
-    data = [assessed(-3), assessed(-2, id=2),
+    data = [assessed(-2), assessed(-1, id=2),
             article("Test", score=1, score_included=True, score_status="reviewed", id=3)]
     result = aggregate_week(data)
     assert result["article_count"] == 1
@@ -114,7 +114,7 @@ def test_repeated_url_counts_once_and_review_takes_precedence():
 
 
 def test_latest_analyst_exclusion_overrides_older_inclusion():
-    older = {**assessed(-3), "score_status": "reviewed", "score_updated_at": NOW}
+    older = {**assessed(-2), "score_status": "reviewed", "score_updated_at": NOW}
     newer = {**older, "id": 2, "score_included": False, "score_updated_at": NOW + timedelta(minutes=1)}
     result = aggregate_week([newer, older])
     assert result["score"] is None
@@ -130,3 +130,18 @@ def test_score_hash_changes_when_future_publication_becomes_eligible():
     assert not before["score_included"] and after["score_included"]
     assert before["score_input_hash"] != after["score_input_hash"]
     assert after["score_input_hash"] == later["score_input_hash"]
+
+
+@pytest.mark.parametrize("old,new", [(-3, -2), (3, 2)])
+def test_cached_legacy_source_grades_map_without_mutating_evidence(old, new):
+    from copy import deepcopy
+    from ra.scoring import LABELS, RUBRIC, VERSION
+    check = {"status": "supported", "score": old, "reason": "Confirmed source event",
+             "evidence": [{"score": old, "sentence": "Original source text", "rule": "event"}]}
+    original = deepcopy(check)
+    result = score_article(article("Acme Manufacturing update", verification=check), SUBJECT, NOW)
+    assert set(LABELS) == set(RUBRIC) == set(range(-2, 3))
+    assert result["score"] == result["score_auto"] == new
+    assert result["score_evidence"] == [dict(check["evidence"][0], score=new)]
+    assert result["score_included"] and result["score_version"] == VERSION
+    assert check == original

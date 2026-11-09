@@ -132,8 +132,8 @@ CREATE TABLE IF NOT EXISTS news_api_usage (
     PRIMARY KEY (provider, usage_date)
 );
 
-ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score SMALLINT CHECK (score BETWEEN -3 AND 3);
-ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_auto SMALLINT CHECK (score_auto BETWEEN -3 AND 3);
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score SMALLINT CONSTRAINT search_results_score_five_grades CHECK (score BETWEEN -2 AND 2);
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_auto SMALLINT CONSTRAINT search_results_score_auto_five_grades CHECK (score_auto BETWEEN -2 AND 2);
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_reason TEXT NOT NULL DEFAULT '';
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_evidence JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_status TEXT NOT NULL DEFAULT 'pending'
@@ -157,8 +157,8 @@ CREATE TABLE IF NOT EXISTS article_score_history (
 CREATE TABLE IF NOT EXISTS company_weekly_scores (
     company_id BIGINT NOT NULL REFERENCES companies(id),
     week_start DATE NOT NULL,
-    score SMALLINT CHECK (score BETWEEN -3 AND 3),
-    mean_score NUMERIC(4,2) CHECK (mean_score BETWEEN -3 AND 3),
+    score SMALLINT CONSTRAINT company_weekly_scores_score_five_grades CHECK (score BETWEEN -2 AND 2),
+    mean_score NUMERIC(4,2) CONSTRAINT company_weekly_scores_mean_score_five_grades CHECK (mean_score BETWEEN -2 AND 2),
     metrics JSONB NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (company_id, week_start)
