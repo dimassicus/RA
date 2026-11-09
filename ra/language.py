@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import re
+import threading
+
+
+_detector_lock = threading.Lock()
 
 
 def _detected(text: str) -> tuple[str, float]:
     from langdetect import DetectorFactory, detect_langs
     from langdetect.lang_detect_exception import LangDetectException
 
-    DetectorFactory.seed = 0
     try:
-        guesses = detect_langs(text)
+        # langdetect publishes its global factory before loading all profiles.
+        with _detector_lock:
+            DetectorFactory.seed = 0
+            guesses = detect_langs(text)
     except LangDetectException:
         return "", 0.0
     return (guesses[0].lang, guesses[0].prob) if guesses else ("", 0.0)
