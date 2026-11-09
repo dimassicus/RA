@@ -19,7 +19,7 @@ from html.parser import HTMLParser
 from io import BytesIO
 from urllib.parse import urljoin, urlsplit, urlunsplit, parse_qsl, urlencode
 
-READER_VERSION = "public-source-v5"
+READER_VERSION = "public-source-v6"
 MAX_BYTES = 2_000_000
 MAX_TEXT = 100_000
 
@@ -283,6 +283,17 @@ def _retrieve(url, hint=None):
             if route.startswith('Brave') and (not page.page_dates or not all(
                     providers.matches_date(date, hint) for date in page.page_dates)):
                 raise ValueError('Publisher page does not confirm the publication date')
+        # This issuer publishes the disclosure in one attachment, not the HTML wrapper.
+        if parsed and final_url.startswith(('https://dpm.vn/cong-bo-thong-tin/',
+                                            'https://dpm.vn/bao-cao-tai-chinh/')):
+            files = set(re.findall(r'(?:src|href)="(/public_folder/files_upload/[^"?#]+\.pdf)"', parsed[1], re.I))
+            if len(files) != 1:
+                raise ValueError('Missing or ambiguous issuer disclosure attachment')
+            raw, content_type, final_url = fetch_bytes(urljoin(final_url, files.pop()))
+            if not raw.startswith(b'%PDF-'):
+                raise ValueError('Issuer disclosure attachment is not a PDF')
+            destination, parsed = final_url, None
+            route = (route + '; ' if route else '') + 'issuer disclosure PDF'
         try:
             if not raw and not content_type:
                 raise TimeoutError('Publisher timed out')

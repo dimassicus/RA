@@ -73,11 +73,12 @@ def cache_v4(database, article, **changes):
     return document, fetched_at
 
 
-def test_v4_cache_upgrade_keeps_complete_translation_and_original_age(database, monkeypatch):
+@pytest.mark.parametrize('reader_version', ['public-source-v4', 'public-source-v5'])
+def test_cache_upgrade_keeps_complete_translation_and_original_age(database, monkeypatch, reader_version):
     from psycopg.types.json import Jsonb
     from ra import article_translation, headline_review, translation
     _, _, article = seed(database)
-    document, fetched_at = cache_v4(database, article)
+    document, fetched_at = cache_v4(database, article, reader_version=reader_version)
     part = {"source": document['body'], "english": "Acme Manufacturing reports net losses of 40 million dollars.",
             "provider": "Argos test", "review": {"status": "faithful", "issues": [], "model": headline_review.QWEN,
                                                   "reasoning": "off"}}
@@ -94,7 +95,7 @@ def test_v4_cache_upgrade_keeps_complete_translation_and_original_age(database, 
     saved = database.execute("SELECT document,fetched_at FROM article_documents WHERE url=%s", (article['url'],)).fetchone()
     assert result['status'] == 'supported'
     assert saved['fetched_at'] == fetched_at
-    assert saved['document']['reader_version'] == 'public-source-v5'
+    assert saved['document']['reader_version'] == 'public-source-v6'
     assert saved['document']['body'] == document['body'] and saved['document']['sha256'] == document['sha256']
     assert saved['document']['translation']['parts'] == [part]
     assert detected == [document['body']]

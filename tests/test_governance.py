@@ -117,6 +117,18 @@ def test_exact_tax_id_gazette_and_fresh_official_notices():
     assert not sources.recent_notices(subject,publisher,url,lambda _:'axtarışa uyğun elanlar tapılmadı'.encode(),now)
 
 
+def test_pvfcco_discovery_includes_dated_financial_reports():
+    from datetime import datetime, timezone
+    from ra.governance_sources import recent_notices
+    url = 'https://dpm.vn/bao-cao-tai-chinh/quarterly-report'
+    page = (f'<p>pvfcco.com.vn</p><a href="{url}"><span class="file-date">29/10/2026</span>'
+            '<span class="file-item-name">Consolidated Q3 results</span></a>').encode()
+    start, end = datetime(2026,10,26,tzinfo=timezone.utc), datetime(2026,11,1,tzinfo=timezone.utc)
+    item, = recent_notices({}, 'PVFCCo investor disclosures', 'https://dpm.vn/quan-he-nha-dau-tu',
+                           lambda _: page, window=(start,end))
+    assert item['url'] == url and item['source_kind'] == 'official'
+
+
 def test_issuer_personnel_disclosure_is_a_governance_lead_only():
     article = dict(title='Thông báo thay đổi nhân sự',language='vi',source_kind='official',
                    discovery_service='PVFCCo investor disclosures')

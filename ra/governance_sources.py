@@ -299,7 +299,7 @@ def notice_rows(subject, publisher, page):
         if 'pvfcco.com.vn' not in page or 'file-item-name' not in page:
             raise ValueError('Missing PVFCCo disclosure index')
         found = False
-        for url, body in re.findall(r'<a\s+href="(https://dpm\.vn/cong-bo-thong-tin/[^"#]+)"[^>]*>(.*?)</a>', page, re.S):
+        for url, body in re.findall(r'<a\s+href="(https://dpm\.vn/(?:cong-bo-thong-tin|bao-cao-tai-chinh)/[^"#]+)"[^>]*>(.*?)</a>', page, re.S):
             if 'file-item-name' not in body:
                 continue
             title = re.search(r'class="file-item-name">([^<]+)</span>', body)

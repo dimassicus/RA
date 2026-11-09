@@ -325,6 +325,32 @@ def test_subprocess_reader_returns_structured_failure_without_network():
     assert result['reason'] == 'Source resolves to a non-public address'
 
 
+@pytest.mark.parametrize('extra,expected', [('', 'available'),
+    ('<a href="/public_folder/files_upload/other.pdf">Other filing</a>', 'unavailable')])
+def test_issuer_wrapper_follows_only_one_pdf(monkeypatch, extra, expected):
+    from ra import article_content
+    url = 'https://dpm.vn/cong-bo-thong-tin/disclosure-1940'
+    pdf = 'https://dpm.vn/public_folder/files_upload/202611/filing.pdf'
+    html = ('<main><a href="/public_folder/files_upload/202611/filing.pdf">Filing</a>'
+            '<iframe src="/public_folder/files_upload/202611/filing.pdf"></iframe>' + extra + '</main>')
+    calls = []
+    def fetch(target):
+        calls.append(target)
+        return (html.encode(), 'text/html', url) if target == url else (b'%PDF-test', 'application/pdf', pdf)
+    monkeypatch.setattr(article_content, 'fetch_bytes', fetch)
+    def extract_pdf(raw, mime, parsed):
+        assert raw == b'%PDF-test' and mime == 'application/pdf' and parsed is None
+        return 'PVFCCo publishes its revised business plan for 2026.', 'PDF text (no OCR)'
+    monkeypatch.setattr(article_content, 'extract', extract_pdf)
+    result = article_content._retrieve(url)
+    assert result['status'] == expected
+    if expected == 'available':
+        assert calls == [url, pdf] and result['final_url'] == pdf
+        assert result['recovery'] == 'issuer disclosure PDF' and not result['review_only']
+    else:
+        assert calls == [url] and 'ambiguous' in result['reason']
+
+
 def test_near_copy_grouping_does_not_merge_different_locations():
     sentence = ('Acme Manufacturing announces plant closure at its Recife facility following a significant '
                 'decline in demand from customers in the local market during the current financial quarter.')
