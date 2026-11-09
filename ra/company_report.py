@@ -37,7 +37,8 @@ def load_report(run, subject):
             next_week = datetime.combine(week_start(end) + timedelta(weeks=1), time.min, WEEK_TIMEZONE)
             cutoff = min(datetime.now(WEEK_TIMEZONE), next_run or next_week, next_week)
             for label, point in points:
-                as_of = cutoff if label == "Current" else point
+                as_of = (datetime.now(WEEK_TIMEZONE) if run.get("window_end")
+                         else cutoff if label == "Current" else point)
                 row = conn.execute(
                     "SELECT snapshot FROM weekly_score_history WHERE company_id=%s AND week_start=%s "
                     "AND created_at <= %s ORDER BY created_at DESC,id DESC LIMIT 1",
@@ -45,16 +46,17 @@ def load_report(run, subject):
                 history[label] = row["snapshot"] if row else None
                 if label not in ("1 week ago", "1 month ago", "12 months ago"):
                     continue
+                end_column = "COALESCE(window_end,finished_at)" if run.get("window_end") else "finished_at"
                 prior = conn.execute(
-                    "SELECT id,finished_at,subjects FROM search_runs WHERE subjects @> %s::jsonb "
-                    "AND status IN ('completed','partial') AND finished_at BETWEEN %s AND %s "
-                    "ORDER BY finished_at DESC,id DESC LIMIT 1",
+                    f"SELECT id,{end_column} AS report_end,subjects FROM search_runs WHERE subjects @> %s::jsonb "
+                    f"AND status IN ('completed','partial') AND {end_column} BETWEEN %s AND %s "
+                    f"ORDER BY {end_column} DESC,id DESC LIMIT 1",
                     (db.Jsonb([{"id": subject["id"]}]), point - timedelta(days=7), point)).fetchone()
                 if prior:
                     rows = conn.execute("SELECT * FROM search_results WHERE run_id=%s AND subject_key=%s",
                                         (prior["id"], key)).fetchall()
                     prior_subject = next(s for s in prior["subjects"] if s.get("id") == subject["id"])
-                    previous_runs[label] = (prior["finished_at"], relevant_sources(prior_subject, rows, prior["finished_at"]))
+                    previous_runs[label] = (prior["report_end"], relevant_sources(prior_subject, rows, prior["report_end"]))
     errors = [e["message"] for e in db.get_errors(run["id"]) if e["subject_name"] in (subject["name"], "Run")]
     report = build_report(run, subject, articles, history, errors, previous_runs)
     report["rosters"] = governance_roster.observations(run["id"], key)

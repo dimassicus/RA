@@ -26,6 +26,13 @@ BASIS = ("Scores range from −3 (most adverse) to +3 (most favourable). Weeks s
 FLOW_NOTE = "Counts reflect coverage accumulated in each publication week. The current week may still be in progress."
 
 
+def rating_basis(report):
+    if report['run'].get('window_end'):
+        return ("Retrospective assessment using evidence and reviews available at export time, not knowledge available then. "
+                "Scores range from −3 to +3. Weeks start Monday in Moscow. A dash means no rating.")
+    return BASIS
+
+
 def stamp(report):
     return f"{report['start']:%d %b %Y} – {report['end']:%d %b %Y, %H:%M} MSK   |   Run {report['run']['id']} · {report['run']['status']}"
 
@@ -133,7 +140,7 @@ def company_xlsx(report):
             note(line, link)
     band("Risk and sentiment history")
     grid(RATINGS, rating_rows(report))
-    note(BASIS)
+    note(rating_basis(report))
     note(*driver(report))
     band("Next dates to watch")
     for event, filing, url in calendar_lines(report):
@@ -215,7 +222,7 @@ def company_pdf(report):
             story.append(para("No matching headlines in the seven-day window.", 9, MUTED))
     stories(report["top"])
     story.extend([heading("Risk and sentiment history"), grid(RATINGS, rating_rows(report), [98, 96, 55, 160, 88]),
-                  para(BASIS, 8, MUTED)])
+                  para(rating_basis(report), 8, MUTED)])
     reason, url = driver(report)
     story.append(para(reason, 10, INK, 4, url))
     story.append(heading("Next dates to watch"))

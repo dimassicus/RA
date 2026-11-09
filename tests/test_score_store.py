@@ -400,6 +400,26 @@ def test_shared_news_only_changes_the_company_with_source_evidence(database):
     assert client.get(f"/runs/{run_id}/download.xlsx").status_code == 200
 
 
+def test_backfilled_company_report_uses_later_reviewed_scores(database):
+    from ra.company_report import load_report
+    from ra.company_exports import company_pdf, company_xlsx
+    from pypdf import PdfReader
+    from openpyxl import load_workbook
+    company, run_id, article = seed(database)
+    end = datetime.now(timezone.utc) - timedelta(weeks=2)
+    database.execute('UPDATE search_runs SET window_start=%s,window_end=%s WHERE id=%s',
+                     (end-timedelta(days=6),end,run_id))
+    database.execute('UPDATE search_results SET published_at=%s WHERE id=%s', (end,article['id']))
+    score_store.refresh_scores(run_id)
+    score_store.review_score(article['id'], -1, True, 'Test reviewed source evidence')
+    run = db.get_run(run_id)
+    report = load_report(run, run['subjects'][0])
+    assert report['ratings'][0][2]['score'] == -1
+    assert report['ratings'][0][2]['event_count'] == 1
+    assert 'Retrospective assessment' in ' '.join(p.extract_text() for p in PdfReader(company_pdf(report)).pages)
+    assert any('Retrospective assessment' in str(cell.value) for cell in load_workbook(company_xlsx(report)).active['A'])
+
+
 def test_finished_run_company_exports_are_scoped_and_historical(database):
     from ra.company_report import load_report
     company, run_id, a = seed(database)
