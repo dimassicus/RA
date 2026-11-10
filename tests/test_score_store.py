@@ -648,7 +648,7 @@ def test_keyword_edit_translate_and_disable_in_review(database, monkeypatch):
     row, = keywords.records()
     keywords.translate_batch([row], "pt")
     keywords.reload_rules()
-    assert keywords.matches("violação de cláusula", "pt") == [(term, term, "adverse")]
+    assert keywords.matches("violação de cláusula", "pt") == [(term, keywords.SEEDS[term][0], "adverse")]
     edit = dict(form, id=row["id"], previous=term, english="debt relief", direction="favorable")
     client.post("/keywords", data=edit)
     row, = keywords.records()

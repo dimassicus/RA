@@ -8,7 +8,8 @@
 <p class="back"><a href="{{ url_for('setup') }}">← Back to Setup</a></p>
 <h1>{{ heading }}</h1>
 {% if factors %}<p>Describe a theme to watch in company, sector or country news. RA looks for paraphrases, indirect evidence and partial matches. Each match shows the source wording for review.</p>
-{% else %}<p>English keywords flag headlines for review. Choose the expected sentiment. Company scores require evidence of impact.</p>{% endif %}
+{% else %}<p>English keywords flag headlines for review. Choose the expected sentiment. Company scores require evidence of impact.</p>
+<p>Company searches include adverse phrases, named managers and owners, and company-linked titles such as CEO or main shareholder. Related English phrases share the keyword’s switch and sentiment. Approved local-language translations are used when available. Allegations, case outcomes and person-only matches require review.</p>{% endif %}
 <section class="panel form-panel">
   <h2>Add a {{ label }}</h2>
   <form method="post">
@@ -33,7 +34,8 @@
   <div class="table-scroll"><table><thead><tr><th>English {{ label }}</th><th>{{ field_label }}</th><th>Active</th><th>Translations</th><th></th></tr></thead><tbody>
   {% for row in rows %}
     {% set fid = 'keyword-' ~ row.id %}
-    <tr><td><input form="{{ fid }}" aria-label="English {{ label }} {{ row.english }}" name="english" value="{{ row.english }}" required {% if factors %}pattern=".{3,{{ limit }}}" data-character-limit="{{ limit }}" title="Use 3–{{ limit }} characters. Shorten the description before saving; pasted text is kept in full."{% else %}maxlength="{{ limit }}"{% endif %}></td>
+    <tr><td><input form="{{ fid }}" aria-label="English {{ label }} {{ row.english }}" name="english" value="{{ row.english }}" required {% if factors %}pattern=".{3,{{ limit }}}" data-character-limit="{{ limit }}" title="Use 3–{{ limit }} characters. Shorten the description before saving; pasted text is kept in full."{% else %}maxlength="{{ limit }}"{% endif %}>
+      {% if not factors and related_phrases.get(row.english) %}<details><summary>Related English phrases</summary>{{ related_phrases[row.english]|join('; ') }}</details>{% endif %}</td>
       <td><select form="{{ fid }}" name="{{ field }}" aria-label="{{ field_label }} for {{ row.english }}">{% for direction in options %}<option {% if direction == row[field] %}selected{% endif %}>{{ direction }}</option>{% endfor %}</select></td>
       <td><input form="{{ fid }}" name="enabled" type="checkbox" value="yes" aria-label="Enable {{ row.english }}" {% if row.enabled %}checked{% endif %}></td>
       <td><details id="translations-{{ row.id }}" {% if editing == row.id %}open{% endif %}><summary>{{ languages|select('in', row.translations)|list|length }}/{{ languages|length }} languages</summary>

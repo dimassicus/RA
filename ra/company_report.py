@@ -4,7 +4,7 @@ from datetime import datetime, time, timedelta
 
 from . import db, governance_roster, watch_dates
 from .exposure import scope_sector_paths
-from .aliases import headline_identity, normalized
+from .aliases import headline_identity, related_identity, normalized
 from .relevance import governance_cues, headline
 from .keywords import matches
 from .scoring import VERSION, WEEK_TIMEZONE, week_start
@@ -77,7 +77,7 @@ def relevant_sources(subject, articles, end):
         branches = [label for prefix, label in (("Sector ·", "Sector"), ("Country ·", "Country / region"))
                     if any(path.startswith(prefix) for path in paths)]
         text = " ".join(headline(a, field) for field in ("title", "title_en"))
-        identity = headline_identity(normalized(text), subject)
+        identity = headline_identity(normalized(text), subject) or related_identity(normalized(text), subject)
         direct = (a.get("source_kind") == "official" or identity or state == "supported"
                   or a.get("score_included") or (a.get("report_selected") and a.get("source_kind") != "context"))
         if direct and (state != "unmatched" or a.get("score_included")):

@@ -4,6 +4,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from .adverse_terms import PERSON_TITLES
+
 
 def normalized(value: str) -> str:
     value = unicodedata.normalize("NFKD", value.casefold())
@@ -65,6 +67,29 @@ def headline_identity(text: str, subject: dict) -> bool:
     contexts = [subject.get("country_registration", "")]
     contexts += re.split(r"[,;\n]", subject.get("primary_industries", ""))
     return any(contains(text, normalized(context)) for context in contexts)
+
+
+def related_names(subject: dict) -> list[str]:
+    """Explicit management/owner names; these never become company aliases."""
+    titles = sorted({normalized(term) for title, variants in PERSON_TITLES.items()
+                     for term in (title, *variants)}, key=len, reverse=True)
+    names = {}
+    for field in ("top_management", "key_owners"):
+        for part in re.split(r"[,;\n](?![^()]*\))", subject.get(field) or ""):
+            name = re.sub(r"\([^)]*\)", "", part).strip().replace('"', "")
+            # Intake stores both 'Name (role)' and registry-style 'Name · role'.
+            name = name.split(" · ", 1)[0].strip()
+            for title in titles:
+                name = re.sub(r"^" + re.escape(title) + r"\s*[:–—-]\s*", "", name, flags=re.I)
+            name = re.sub(r"^(?:CEO|CFO|COO|UBO)\s+", "", name, flags=re.I)
+            key = normalized(name)
+            if len(key) >= 3 and key not in titles and key not in {"unknown", "not available", "none", "n a"}:
+                names.setdefault(key, name)
+    return list(names.values())
+
+
+def related_identity(text: str, subject: dict) -> bool:
+    return any(contains(text, normalized(name)) for name in related_names(subject))
 
 
 def discovery_names(subject: dict) -> list[str]:

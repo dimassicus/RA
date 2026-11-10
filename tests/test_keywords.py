@@ -276,8 +276,11 @@ def test_foreign_or_unverified_english_rejected_before_insert(monkeypatch):
 
 def test_starter_library_has_a_literal_translation_for_every_initial_market():
     codes = {"ar", "az", "el", "pt", "ru", "tr", "uz", "vi"}
-    assert set(keywords.starter_translations()) == set(keywords.SEEDS)
+    assert set(keywords.starter_translations()) <= set(keywords.SEEDS)
     for row in keywords.defaults():
+        if row["english"] not in keywords.starter_translations():
+            assert row["translations"] == {}  # New terms enter the existing independent review queue.
+            continue
         for code in codes:
             phrase = row["translations"][code]
             assert any(term == row["english"] for term, _, _ in keywords.matches(phrase, code))

@@ -6,10 +6,28 @@ import re
 from datetime import timedelta, timezone
 
 
-from .aliases import company_names, contains, headline_identity, normalized
+from .aliases import company_names, contains, headline_identity, related_identity, normalized
 
 
 from .keywords import matches
+
+
+CASE_CUES = {
+    "allegation": r"alleged|allegations?|suspected|accused|accusations?|acusad[oa]s?|suspeit[oa]s?|alegacoes",
+    "investigation": r"criminal investigation|criminal probe|under investigation|police raid|raided|investigacao criminal|investigad[oa]s?",
+    "arrest": r"arrested|arrest warrant|detained by police|pres[oa]s?|mandado de prisao",
+    "charges": r"criminal charges|charged with|indicted|indictment|criminal prosecution|indiciad[oa]s?",
+    "conviction": r"convicted|criminal conviction|found guilty|pleaded guilty|sentenced to prison|condenad[oa]s?",
+    "denial": r"denies?|denied|no evidence|no signs|not guilty|no wrongdoing|nega|negou|sem provas",
+    "cleared or resolved": r"acquitted|exonerated|cleared of|charges (?:dismissed|dropped)|case (?:dismissed|dropped)|investigation closed|(?:freeze|sanctions) lifted|absolvid[oa]s?|processo arquivado",
+    "victim or witness": r"victim|defrauded|witness|testifies|testified|testimony|adviser to|advisor to|vitima|testemunha",
+}
+
+
+def case_context(text):
+    """Reported wording only; multiple stages may coexist and require review."""
+    folded = normalized(text)
+    return [label for label, pattern in CASE_CUES.items() if re.search(r"\b(?:" + pattern + r")\b", folded)]
 
 
 def risk_signals(text: str, language: str = "") -> list[str]:
@@ -57,12 +75,15 @@ def classify(article: dict, subject: dict, as_of=None) -> dict:
     if article.get("discovery_service") == "FCA Warning RSS":
         signals = sorted(set(signals + ["regulatory warning / possible clone"]))
     identity = official or headline_identity(text, subject)
+    person = related_identity(text, subject)
+    context = case_context(text)
     if not signals:
         category, reason = "background", "No adverse-event cue in the available headline or translation"
         if identity and article.get("language", "").split("-")[0] not in ("", "en") and not english:
             category, reason = "review", "Company match, but English translation is unavailable; check original"
     elif not identity:
-        category, reason = "review", "Risk cue found, but the company identity needs checking"
+        category, reason = "review", ("Named owner or manager matched; confirm identity, relationship and company impact"
+                                      if person else "Risk cue found, but the company identity needs checking")
     else:
         category, reason = "risk", ("Company-specific official source" if official else "Company name in headline") + "; " + ", ".join(signals)
     # Negated or resolved events need human context, not an automatic adverse flag.
@@ -71,6 +92,8 @@ def classify(article: dict, subject: dict, as_of=None) -> dict:
         r"(?:fraud|default|bankruptcy|loss|prejuizo|inadimplencia)", text
     ):
         category, reason = "review", "Possible negated or resolved event; check source context"
+    if signals and context:
+        category, reason = "review", "Reported context: " + ", ".join(context) + "; verify subject role, source and company impact"
     verification = article.get("verification") or {}
     # When loaded from the database, source verification gates the risk queue.
     if "verification" in article:
@@ -91,6 +114,7 @@ def classify(article: dict, subject: dict, as_of=None) -> dict:
         elif published < as_of - timedelta(days=30):
             category, reason = "older", "Older than 30 days at search time; " + reason
     return {**article, "governance": governance_cues(article, subject), "relevance": category, "relevance_reason": reason, "signal_terms": signals,
+            "case_context": context,
             "keyword_hits": [{"term": term, "direction": direction} for term, _, direction in hits]}
 
 

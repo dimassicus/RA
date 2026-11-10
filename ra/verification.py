@@ -5,12 +5,14 @@ fact checking. No pronoun resolution, group-to-subsidiary inference or LLM calls
 """
 import re
 
-from .aliases import LEGAL_SUFFIX, company_names, headline_identity, normalized
+from .aliases import LEGAL_SUFFIX, company_names, headline_identity, related_identity, normalized
+from .adverse_terms import PERSON_TITLES
+from .relevance import case_context
 from .article_content import validate_pdf_text
 from .scoring import COMPILED, UNCERTAIN, NEGATION
 from . import article_translation
 
-VERSION = 'source-attribution-v4'
+VERSION = 'source-attribution-v5'
 # Deliberately closed vocabulary between the company name and event phrase.
 # 'Acme's supplier filed for bankruptcy' must never become Acme's bankruptcy.
 BRIDGE = re.compile(r'(?:(?:s|has|have|had|is|was|were|has been|will|its|the|a|an|that it|that the company|'
@@ -77,14 +79,27 @@ def verify(document, subject, article):
     sentences = [s.strip() for s in re.split(r'(?<!\bS\.A\.)(?<=[.!?])\s+|' + line_break,
                                             body, flags=re.I) if s.strip()]
     names = sorted(company_names(subject), key=len, reverse=True)
-    identity_seen, ambiguous = False, False
+    identity_seen, related_seen, ambiguous = False, False, False
+    reported_context = set()
+    roles = [normalized(term) for role, variants in PERSON_TITLES.items() for term in (role, *variants)]
     for index, sentence in enumerate(sentences):
         folded = normalized(sentence)
+        related = related_identity(folded, subject)
+        related_seen |= related
         if not headline_identity(folded, subject):
+            if related:
+                reported_context.update(case_context(sentence))
             continue
         identity_seen = True
         # Adjacent sentences can deny or date a claim without repeating the name.
         context = normalized(" ".join(sentences[max(0, index-1):index+2]))
+        stages = case_context(context)
+        reported_context.update(stages)
+        # A person's criminal case, or a company's role as victim/witness, is not
+        # evidence of corporate wrongdoing or a measured credit consequence.
+        if stages:
+            ambiguous = True
+            continue
         # Portuguese "no" means "in the"; its negation is "não", handled by UNCERTAIN.
         english_negation = translated or document.get('language', '').lower().split('-')[0] != 'pt'
         negated = any(match[0] != 'no' or english_negation for match in NEGATION.finditer(context))
@@ -118,6 +133,8 @@ def verify(document, subject, article):
                 if not match or match.end() > start:
                     continue
                 bridge = folded[match.end():start].strip()
+                if related or any(re.search(r"(?<!\w)" + re.escape(role) + r"(?!\w)", bridge) for role in roles):
+                    continue
                 if len(bridge) <= 90 and BRIDGE.fullmatch(bridge):
                     linked = True
                     break
@@ -136,10 +153,16 @@ def verify(document, subject, article):
             if translated:
                 evidence['original_passages'] = article_translation.original_passages(document, sentence)
             result['evidence'].append(evidence)
+    if reported_context:
+        result['case_context'] = sorted(reported_context)
+    if not identity_seen and related_seen:
+        return {**result, 'reason': 'Named owner or manager mentioned; confirm identity, company relationship and impact'}
     if not identity_seen:
         return {**result, 'status': 'unmatched', 'reason': 'Extracted source text does not establish this company identity'}
     if ambiguous:
-        return {**result, 'reason': 'Event attribution, denial, timing or conditional context needs analyst review'}
+        return {**result, 'reason': ('Reported context: ' + ', '.join(sorted(reported_context)) +
+                                    '; confirm subject role, source credibility and company impact') if reported_context else
+                'Event attribution, denial, timing or conditional context needs analyst review'}
     if not result['evidence']:
         return {**result, 'reason': 'Company mentioned, but no explicit company-subject credit event was established'}
     dominant = min(result['evidence'], key=lambda e: (-abs(e['score']), e['score']))

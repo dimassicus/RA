@@ -39,9 +39,14 @@ def adverse_lead(article, subject):
     if article.get("discovery_service") == "FCA Warning RSS":
         return True
     evidence = score_article(article, subject)["score_evidence"]
+    if any(item["score"] < 0 for item in evidence):
+        return True
+    recovered = set()
     if evidence:
         # Reuse overlap handling: exiting bankruptcy or reducing losses is favourable.
-        return any(item["score"] < 0 for item in evidence)
+        for item in evidence:
+            recovered.update(matches(item["phrase"], article.get("language")))
+            recovered.update(matches(item["phrase"], "en"))
     hits = matches(headline(article, "title"), article.get("language"))
     hits += matches(headline(article, "title_en"), "en")
-    return any(direction == "adverse" for _, _, direction in hits)
+    return any(hit[2] == "adverse" and hit not in recovered for hit in hits)

@@ -112,7 +112,8 @@ def create_app() -> Flask:
         return render_template("keywords.html", rows=catalog.records(), languages=catalog.languages(),
                                language_name=keywords.language_name, factors=factors, label=label,
                                options=risk_factors.SCOPES if factors else keywords.DIRECTIONS, editing=editing, draft=draft,
-                               error=keywords.last_error, risk_factor_limit=risk_factors.MAX_DESCRIPTION)
+                               error=keywords.last_error, risk_factor_limit=risk_factors.MAX_DESCRIPTION,
+                               related_phrases={**keywords.RELATED_PHRASES, **keywords.PERSON_TITLES})
 
     @app.get("/api/translations/status")
     def translation_status():

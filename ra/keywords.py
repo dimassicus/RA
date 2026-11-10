@@ -14,6 +14,7 @@ from psycopg.types.json import Jsonb
 from . import db, online_translation
 from .news_apis import ProviderError
 from .aliases import normalized
+from .adverse_terms import FAMILIES, RELATED_PHRASES, PERSON_TITLES
 from .model_store import country_languages, EXCLUDED_LANGUAGES
 
 # Keep established native inflections with the English concept that owns them.
@@ -58,7 +59,15 @@ GROUPS = {
         "stake acquisition": r"(?:buys?|bought|acquires?|acquired|raises?|increases?) (?:its |a |an |the )?(?:[0-9]+(?: [0-9]+)? )?(?:equity )?stake"},
     "financial improvement": {"credit upgrade": "", "return to profit": "", "obtained refinancing": ""},
 }
+for group, families in FAMILIES.items():
+    for term in families:
+        if not any(term in concepts for concepts in GROUPS.values()):
+            GROUPS.setdefault(group, {})[term] = ""
+for term in PERSON_TITLES:
+    if not any(term in concepts for concepts in GROUPS.values()):
+        GROUPS["ownership" if term in ("beneficial owner", "founder") else "executive role"][term] = ""
 SEEDS = {term: (group, pattern) for group, concepts in GROUPS.items() for term, pattern in concepts.items()}
+SEED_NAMES = {normalized(term): term for term in SEEDS}
 MEANINGS = {
     "change of control": "A change in who controls a company through ownership or voting rights, not equipment controls.",
     "conviction": "A criminal court's finding of guilt, not a belief or confidence in an investment.",
@@ -75,7 +84,14 @@ MEANINGS = {
     "obtained refinancing": "The company successfully obtained new financing to refinance its debt.",
     "cash crisis": "A severe shortage of available cash.",
     "loss": "A financial loss.",
+    "arrest": "Police detention of a person, not cardiac arrest or stopping a decline.",
+    "going-concern uncertainty": "Doubt about a company's ability to continue operating and meet obligations.",
+    "beneficial owner": "The natural person who ultimately owns or controls the company.",
+    "founder": "A person who established the company, not the verb meaning to sink or fail.",
 }
+for families in FAMILIES.values():
+    for term, phrases in families.items():
+        MEANINGS.setdefault(term, "Company or related-person adverse news. Related wording: " + "; ".join(phrases))
 DIRECTIONS = ("adverse", "favorable", "neutral")
 
 
@@ -88,7 +104,7 @@ def starter_translations():
 def defaults():
     return [dict(english=term, direction=("neutral" if group in ("executive role", "leadership action", "ownership") else
                                       "favorable" if group == "financial improvement" else "adverse"),
-                 translations=starter_translations()[term], enabled=True) for term, (group, _) in SEEDS.items()]
+                 translations=starter_translations().get(term, {}), enabled=True) for term, (group, _) in SEEDS.items()]
 
 
 def compile_terms(rows):
@@ -97,8 +113,11 @@ def compile_terms(rows):
         if not row["enabled"]:
             continue
         term = row["english"]
-        group, variants = SEEDS.get(term, (term, ""))
+        key = SEED_NAMES.get(normalized(term), term)
+        group, variants = SEEDS.get(key, (term, ""))
         alternatives = [re.escape(normalized(term))]
+        alternatives.extend(re.escape(normalized(phrase)) for phrase in
+                            RELATED_PHRASES.get(key, ()) + PERSON_TITLES.get(key, ()))
         if variants:
             alternatives.append(variants)
         pattern = re.compile(r"(?<!\w)(?:" + "|".join(alternatives) + r")(?!\w)")
@@ -141,10 +160,11 @@ def reload_rules():
 
 
 def seed(conn):
+    existing = {normalized(row["english"]) for row in conn.execute("SELECT english FROM monitor_keywords").fetchall()}
     with conn.cursor() as cursor:
         cursor.executemany("INSERT INTO monitor_keywords(english,direction,seed_key,translations) VALUES (%s,%s,%s,%s) "
                            "ON CONFLICT DO NOTHING", [(row["english"], row["direction"], row["english"], Jsonb(row["translations"]))
-                                                      for row in defaults()])
+                                                      for row in defaults() if normalized(row["english"]) not in existing])
 
 
 def languages():
@@ -475,6 +495,32 @@ def _run_passes():
 def discovery_terms(groups, language):
     terms = []
     for row in _rows:
-        if row["enabled"] and SEEDS.get(row["english"], ("", ""))[0] in groups:
+        if row["enabled"] and SEEDS.get(SEED_NAMES.get(normalized(row["english"]), row["english"]), ("", ""))[0] in groups:
             terms.append(row["english"] if language == "en" else row["translations"].get(language, ""))
     return list(dict.fromkeys(t for t in terms if t))
+
+
+def adverse_search_terms(language):
+    """Only company search plans consume this expanded vocabulary."""
+    terms = []
+    for row in _rows:
+        if not row["enabled"] or row["direction"] != "adverse":
+            continue
+        if language == "en":
+            terms.extend((row["english"], *RELATED_PHRASES.get(SEED_NAMES.get(normalized(row["english"])), ())))
+        elif phrase := row["translations"].get(language):
+            terms.append(phrase)
+    return list({normalized(term): term for term in terms if normalized(term)}.values())
+
+
+def person_title_terms(language):
+    terms = []
+    for row in _rows:
+        key = SEED_NAMES.get(normalized(row["english"]))
+        if not row["enabled"] or key not in PERSON_TITLES:
+            continue
+        if language == "en":
+            terms.extend((row["english"], *PERSON_TITLES[key]))
+        elif phrase := row["translations"].get(language):
+            terms.append(phrase)
+    return list({normalized(term): term for term in terms if normalized(term)}.values())

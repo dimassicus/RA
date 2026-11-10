@@ -18,7 +18,7 @@ from xml.etree import ElementTree
 
 from . import keywords, news_apis, risk_factors
 from .news_topics import excluded_query_terms, excluded_story
-from .aliases import parse_aliases, provider_name, discovery_names, ambiguous, company_names, normalized as identity_normalized
+from .aliases import parse_aliases, provider_name, discovery_names, ambiguous, company_names, related_names, normalized as identity_normalized
 
 
 LOCALES = {
@@ -172,13 +172,56 @@ def governance_searches(subject):
     return list(dict.fromkeys(plans))
 
 
+def query_groups(expressions, limit=8, max_chars=320):
+    """Bound each OR expression without dropping later terms or names."""
+    batch = []
+    for expression in dict.fromkeys(expressions):
+        if batch and (len(batch) >= limit or len(" OR ".join([*batch, expression])) > max_chars):
+            yield "(" + " OR ".join(batch) + ")"
+            batch = []
+        batch.append(expression)
+    if batch:
+        yield "(" + " OR ".join(batch) + ")"
+
+
+def adverse_searches(subject):
+    """Company/related-person adverse searches, independent of governance-change switches."""
+    country = subject.get("country_registration", "")
+    lang = LOCALES.get(normalized(country), ("en",))[0].split("-")[0]
+    editions = [("en", "")]
+    if lang != "en":
+        editions.append((lang, country))
+    if lang in ("az", "uz"):
+        editions.append(("ru", country))
+    quote = lambda text: '"' + text.replace('"', '').strip() + '"'
+    companies = [quote(name) + (" " + quote(country) if ambiguous(name) and country else "")
+                 for name in discovery_names(subject) if not ambiguous(name) or country]
+    people = [quote(name) for name in related_names(subject)]
+    anchors = list(query_groups([*companies, *people], limit=6))
+    plans = []
+    for code, edition in editions:
+        terms = keywords.adverse_search_terms(code)
+        # A quoted shorter phrase already retrieves its longer literal expansions.
+        # Keep every phrase in the catalog, while avoiding redundant feed requests.
+        terms = [term for term in terms if not any(
+            other.casefold() in term.casefold() and re.search(
+                r"(?<!\w)" + re.escape(other.casefold()) + r"(?!\w)", term.casefold())
+            for other in terms if len(other) < len(term))]
+        for expression in query_groups([quote(term) for term in terms]):
+            plans.extend((f"{anchor} {expression}", edition) for anchor in anchors)
+        # Title queries find unnamed executives/owners, always with company context.
+        for roles in query_groups([quote(term) for term in keywords.person_title_terms(code)]):
+            plans.extend((f"{anchor} {roles}", edition) for anchor in query_groups(companies, limit=6))
+    return list(dict.fromkeys(plans))
+
+
 def company_search_plan(subject):
     country = subject.get("country_registration", "")
     editions = [country]
     if LOCALES.get(normalized(country), ("en",))[0].split("-")[0] != "en":
         editions.append("")
     return list(dict.fromkeys([(q, edition) for q in search_queries(subject) for edition in editions]
-                             + governance_searches(subject)))
+                             + governance_searches(subject) + adverse_searches(subject)))
 
 
 def feed_url(query: str, country: str, *, window=None) -> tuple[str, str]:
