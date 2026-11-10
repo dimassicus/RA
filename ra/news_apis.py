@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import logging
 import os
 import socket
 import ssl
 from datetime import datetime, timedelta, timezone
+from collections import deque
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
@@ -23,6 +26,10 @@ PROVIDERS = {
 
 class ProviderError(Exception):
     """A provider failure whose message never contains the API key or request URL."""
+
+    def __init__(self, message, articles=()):
+        super().__init__(message)
+        self.articles = list(articles)
 
 
 def configured_providers() -> list[str]:
@@ -42,9 +49,10 @@ def plan_subjects(subjects: list[dict], run_id: int, now: datetime | None = None
     providers = configured_providers()
     if not providers or not subjects:
         return subjects
-    limits = {provider: daily_limit(provider) for provider in providers}
+    limits = db.remaining_news_api_requests({provider: daily_limit(provider) for provider in providers})
     if len(providers) == 2 and len(subjects) <= min(limits.values()):
-        return [{**subject, "_news_providers": providers} for subject in subjects]
+        return [{**subject, "_news_providers": providers, "_news_run_id": run_id,
+                 "_news_request_limits": {p: limits[p] // len(subjects) for p in providers}} for subject in subjects]
     now = now or datetime.now(timezone.utc)
     offset = (now.astimezone(timezone.utc).date().toordinal() * 97 + run_id) % len(subjects)
     ordered = subjects[offset:] + subjects[:offset]
@@ -58,7 +66,52 @@ def plan_subjects(subjects: list[dict], run_id: int, now: datetime | None = None
             planned.append({**subject, "_news_providers": [provider]})
         else:
             planned.append({**subject, "_news_providers": []})
+    for subject in planned:
+        subject["_news_run_id"] = run_id
+        subject["_news_request_limits"] = {p: limits[p] // assigned[p] for p in subject["_news_providers"]}
     return planned
+
+
+def provider_queries(subject, provider):
+    """Search reviewed alternatives together, splitting only at the query-size limit."""
+    from babel import Locale, UnknownLocaleError
+    from .aliases import ambiguous, normalized, parse_aliases, provider_name
+    from .search import LOCALES, normalized as country_key
+    country = subject.get("country_registration", "")
+    places = [country] if country else []
+    locale = LOCALES.get(country_key(country))
+    if locale:
+        try:
+            places.append(Locale.parse(locale[0], sep='-').territories.get(locale[1], country))
+            places.append(Locale.parse('en').territories.get(locale[1], country))
+        except (UnknownLocaleError, ValueError):
+            pass
+    join = " OR " if provider == "gnews" else " | "
+    conjunction = " AND " if provider == "gnews" else " + "
+    contexts = join.join('"' + place.replace('"', '') + '"' for place in dict.fromkeys(places) if place)
+    names = [provider_name(subject), *parse_aliases(subject.get("aliases", "")),
+             subject.get("short_name", ""), subject.get("name", "")]
+    seen, queries, terms = set(), [], []
+    for value in names:
+        name = " ".join(value.split()).replace('"', '')
+        canonical = normalized(name)
+        if len(canonical) < 3 or canonical in seen:
+            continue
+        seen.add(canonical)
+        term = f'"{name}"'
+        if ambiguous(name) and contexts:
+            term = f'({term}{conjunction}({contexts}))'
+        if len(term) + 2 > 200:
+            continue
+        if terms and len(join.join([*terms, term])) + 2 > 200:
+            queries.append("(" + join.join(terms) + ")")
+            terms = []
+        terms.append(term)
+    if terms:
+        queries.append("(" + join.join(terms) + ")" if len(terms) > 1 else terms[0])
+    if seen and not queries:
+        raise ProviderError("company names and context exceed the provider query limit")
+    return queries
 
 
 def fetch_json(url: str) -> dict:
@@ -134,40 +187,81 @@ def parse_articles(provider: str, payload: dict, query: str) -> list[dict]:
 
 def search(provider: str, subject: dict, fetcher=fetch_json,
            reserve=db.reserve_news_api_request, now: datetime | None = None, *, window=None) -> list[dict]:
-    """One preferred-name request per provider; leave entity verification to the analyst."""
+    """Page alternative-name queries within the company's reserved share of daily usage."""
     key_env, _, _ = PROVIDERS[provider]
     key = os.environ.get(key_env, "").strip()
     if not key:
         return []
-    from .aliases import provider_name
-    name = provider_name(subject)
-    if not name:
+    queries = provider_queries(subject, provider)
+    if not queries:
         return []
     now = now or datetime.now(timezone.utc)
-    since = (now.astimezone(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    if window:
-        since = window[0].astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    phrase = f'"{name}"'
+    start, end = window or (now - timedelta(days=7), now)
+    since = start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    until = end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     if provider == "gnews":
-        if len(phrase) > 200:
-            raise ProviderError("company name exceeds GNews query limit")
         from .search import LOCALES, normalized
         locale = LOCALES.get(normalized(subject.get("country_registration", "")), ("en",))[0]
-        query = phrase
-        for term in excluded_query_terms(locale):
-            exclusion = f' NOT "{term}"'
-            if len(query + exclusion) <= 200:
-                query += exclusion
-        params = {"q": query, "max": 10, "from": since, "sortby": "publishedAt", "apikey": key}
-        endpoint = "https://gnews.io/api/v4/search"
+        expanded = []
+        for query in queries:
+            for term in excluded_query_terms(locale):
+                exclusion = f' NOT "{term}"'
+                if len(query + exclusion) <= 200:
+                    query += exclusion
+            expanded.append(query)
+        queries = expanded
+        params = {"max": 10, "from": since, "to": until, "sortby": "publishedAt", "apikey": key,
+                  "in": "title,description,content", "nullable": "description,content,image"}
+        endpoint, query_key, result_key, provider_cap = "https://gnews.io/api/v4/search", "q", "articles", 1000
     else:
-        # TheNewsAPI accepts UTC without a timezone suffix (GNews requires it).
-        params = {"search": phrase, "published_after": since.removesuffix("Z"), "sort": "published_on",
-                  "limit": 3, "api_token": key, "exclude_categories": "sports,entertainment"}
-        endpoint = "https://api.thenewsapi.com/v1/news/all"
-    if window:
-        until = window[1].astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        params["to" if provider == "gnews" else "published_before"] = until if provider == "gnews" else until.removesuffix("Z")
-    if not reserve(provider, daily_limit(provider)):
-        raise ProviderError("daily request budget exhausted; this company was not checked")
-    return parse_articles(provider, fetcher(endpoint + "?" + urlencode(params)), phrase)
+        # Omitting limit uses the account's page size rather than imposing the free-tier size.
+        params = {"published_after": since.removesuffix("Z"), "published_before": until.removesuffix("Z"),
+                  "sort": "published_on", "api_token": key, "exclude_categories": "sports,entertainment"}
+        endpoint, query_key, result_key, provider_cap = "https://api.thenewsapi.com/v1/news/all", "search", "data", 20000
+    limit = subject.get("_news_request_limits", {}).get(provider, daily_limit(provider))
+    pending = deque((query, 1) for query in queries)
+    articles, urls, pages = [], set(), set()
+    requests = 0
+    while pending:
+        query, page = pending.popleft()
+        try:
+            if requests >= limit:
+                raise ProviderError("company request allocation reached; additional pages or names remain unchecked")
+            if not reserve(provider, daily_limit(provider)):
+                raise ProviderError("daily request budget exhausted; additional pages or names remain unchecked")
+            requests += 1
+            payload = fetcher(endpoint + "?" + urlencode(params | {query_key: query, "page": page}))
+            found = parse_articles(provider, payload, query)
+            raw = payload[result_key]
+            fingerprint = (query, hashlib.sha256(json.dumps(raw, sort_keys=True).encode()).hexdigest())
+            if raw and fingerprint in pages:
+                raise ProviderError("provider repeated a page; remaining results could not be retrieved")
+            pages.add(fingerprint)
+            added = 0
+            for article in found:
+                if article["url"] not in urls:
+                    urls.add(article["url"])
+                    articles.append(article)
+                    added += 1
+            meta = payload.get("meta") or {}
+            if not isinstance(meta, dict):
+                raise ProviderError("invalid pagination metadata; remaining results could not be retrieved")
+            size = 10 if provider == "gnews" else meta.get("limit", 3)
+            total = payload.get("totalArticles") if provider == "gnews" else meta.get("found")
+            if type(size) is not int or size < 1 or (total is not None and (type(total) is not int or total < 0)):
+                raise ProviderError("invalid pagination metadata; remaining results could not be retrieved")
+            logging.getLogger(__name__).info("news_api_page %s", json.dumps(dict(
+                run_id=subject.get("_news_run_id"), provider=provider, subject=subject.get("name"),
+                query=query, page=page, total=total, returned=len(raw), accepted=len(found), added=added,
+                in_window=sum(bool(a["published_at"] and start <= a["published_at"] <= end) for a in found))))
+            more = bool(raw) and len(raw) >= size and (total is None or page * size < total)
+            if more:
+                if page * size >= provider_cap:
+                    raise ProviderError("provider pagination ceiling reached; narrow the date range for remaining articles")
+                pending.append((query, page + 1))
+        except ProviderError as exc:
+            logging.getLogger(__name__).warning("news_api_incomplete %s", json.dumps(dict(
+                run_id=subject.get("_news_run_id"), provider=provider, subject=subject.get("name"),
+                page=page, requests=requests, retained=len(articles), reason=str(exc))))
+            raise ProviderError(str(exc), articles) from None
+    return articles

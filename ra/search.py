@@ -406,14 +406,17 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
         if provider not in configured:
             continue
         try:
-            for article in news_apis.search(provider, subject, window=window):
-                if article["url"] not in seen_urls:
-                    seen_urls.add(article["url"])
-                    articles.append(article)
+            provider_articles = news_apis.search(provider, subject, window=window)
         except news_apis.ProviderError as exc:
+            provider_articles = exc.articles
             errors.append(f"{provider}: {exc}")
         except Exception as exc:
+            provider_articles = []
             errors.append(f"{provider}: {type(exc).__name__}: request could not be completed")
+        for article in provider_articles:
+            if article["url"] not in seen_urls:
+                seen_urls.add(article["url"])
+                articles.append(article)
     queries = company_search_plan(subject)
     for index, (query, edition) in enumerate(queries):
         if progress:

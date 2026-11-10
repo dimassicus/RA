@@ -1126,3 +1126,12 @@ def test_long_single_company_windows_persist_but_watchlist_limit_remains(databas
     for scope, selected in [('all', subjects), ('selected', subjects * 2), ('one_off', [])]:
         with pytest.raises(ValueError, match='single-company'):
             db.create_run(scope, selected, window_start=start, window_end=end)
+
+
+def test_news_request_allocation_uses_current_usage_and_atomic_cap(database):
+    assert db.remaining_news_api_requests({'gnews': 2}) == {'gnews': 2}
+    assert db.reserve_news_api_request('gnews', 2)
+    assert db.remaining_news_api_requests({'gnews': 2, 'thenewsapi': 3}) == {'gnews': 1, 'thenewsapi': 3}
+    assert db.reserve_news_api_request('gnews', 2)
+    assert not db.reserve_news_api_request('gnews', 2)
+    assert db.remaining_news_api_requests({'gnews': 2}) == {'gnews': 0}

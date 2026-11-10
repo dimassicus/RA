@@ -7,8 +7,8 @@
   <form method="post" action="{{ url_for('update_company', company_id=company.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% include '_company_fields.html' %}<div class="form-actions"><button class="button primary">Save changes</button><a class="button secondary" href="{{ url_for('dashboard') }}">Cancel</a></div></form>
 </section>
 <section class="panel"><h2>Next search — saved names</h2>
-  <p>GNews / TheNewsAPI: <code>"{{ provider_name }}"</code>. At most one request per configured provider, with the existing daily cap.</p>
-  <p>Google News: seven-day company, leadership and ownership searches</p><ul>{% for query in search_queries %}<li><code>{{ query }}</code></li>{% endfor %}</ul>
+  <p>GNews / TheNewsAPI search saved aliases, the short name and legal name together. Long query sets are split; further pages are fetched within the company's share of the daily request budget. All requests use the selected date range.</p>
+  <p>Google News: company, leadership and ownership searches within the selected date range</p><ul>{% for query in search_queries %}<li><code>{{ query }}</code></li>{% endfor %}</ul>
   <p>Save changes to update this preview. Opening this page does not search news.</p>
 </section>
 {% endblock %}

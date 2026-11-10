@@ -63,7 +63,7 @@ def test_searches_keep_legal_name_and_local_alias_without_extra_requests():
     ("gnews", "RA_GNEWS_API_KEY", "q", {"articles": []}),
     ("thenewsapi", "RA_THENEWSAPI_API_KEY", "search", {"data": []}),
 ])
-def test_provider_uses_one_preferred_alias_request(monkeypatch, provider, env, param, payload):
+def test_provider_searches_alternative_names_with_native_query_syntax(monkeypatch, provider, env, param, payload):
     monkeypatch.setenv(env, "fixture-key")
     calls, reservations = [], []
     def fetch(url):
@@ -74,7 +74,12 @@ def test_provider_uses_one_preferred_alias_request(monkeypatch, provider, env, p
         return True
     news_apis.search(provider, VIETNAM, fetcher=fetch, reserve=reserve, now=NOW)
     assert len(calls) == len(reservations) == 1
-    assert calls[0][param][0].split(" NOT ")[0] == '"PVFCCo"'
+    query = calls[0][param][0]
+    assert '"PVFCCo"' in query and '"Phân bón và Hóa chất Dầu khí"' in query
+    assert '"PetroVietnam Fertilizer and Chemicals Corporation"' in query
+    assert (' OR ' if provider == 'gnews' else ' | ') in query
+    assert '"DPM"' in query and 'Vietnam' in query
+    assert 'lang' not in calls[0] and 'language' not in calls[0]
 
 
 def test_empty_new_fields_preserve_pre_alias_intake_fingerprint():

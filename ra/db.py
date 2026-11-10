@@ -45,6 +45,14 @@ def reserve_news_api_request(provider: str, daily_limit: int | None) -> bool:
     return row is not None
 
 
+def remaining_news_api_requests(limits):
+    with connect() as conn:
+        used = {row["provider"]: row["request_count"] for row in conn.execute(
+            "SELECT provider,request_count FROM news_api_usage WHERE usage_date=(now() AT TIME ZONE 'UTC')::date"
+        ).fetchall()}
+    return {provider: max(0, limit - used.get(provider, 0)) for provider, limit in limits.items()}
+
+
 def reserve_firecrawl_credit():
     """One basic Markdown scrape costs at most one credit. Include earlier daily reservations."""
     with connect() as conn:
