@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 from psycopg.types.json import Jsonb
 
-from . import article_translation, db, risk_factors, score_store
+from . import article_translation, db, risk_factors, score_store, search_settings
 from .article_content import READER_VERSION, canonical_url, retrieve, validate_pdf_text
 from .language import detect_language
 from .verification import verify
@@ -100,7 +100,9 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
         subject = subject_for(article, run)
         assessment = verify(document, subject, article)
         next_stage("themes")
-        themes = risk_factors.cached_assess(article, document, subject, [r for r in risk_factors.records() if r["enabled"]])
+        settings = search_settings.for_run(run)
+        themes = risk_factors.cached_assess(article, document, subject, [r for r in risk_factors.records()
+                                           if r["enabled"] and search_settings.scope_enabled(r["scope"], settings)])
         next_stage("persistence")
         assessment['requested_url'] = url
         with db.connect() as conn:

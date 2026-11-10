@@ -12,6 +12,11 @@ from ra.identifiers import split_legacy_identifier
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def search_preferences(monkeypatch):
+    monkeypatch.setattr(preliminary.search_settings, "read", lambda: dict(preliminary.search_settings.DEFAULTS))
+
+
 def test_expanded_workbook_fields_are_preserved():
     rows = read_workbook(ROOT / "companies.xlsx")
     assert len(rows) == 9

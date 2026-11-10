@@ -68,7 +68,7 @@ def _constrain_five_grades(conn):
 
 def _assess(conn, run_id=None):
     rows = conn.execute(
-        "SELECT r.*, s.subjects FROM search_results r JOIN search_runs s ON s.id=r.run_id "
+        "SELECT r.*, s.subjects, s.search_settings FROM search_results r JOIN search_runs s ON s.id=r.run_id "
         "WHERE s.status NOT IN ('running','queued') " +
         ("AND r.run_id=%s " if run_id is not None else "") + "ORDER BY r.id FOR UPDATE OF r",
         (run_id,) if run_id is not None else (),
@@ -83,6 +83,9 @@ def _assess(conn, run_id=None):
         if article["score_version"] == VERSION and article["score_input_hash"] == input_hash(article, subject):
             continue
         assessment = score_article(article, subject)
+        if article["search_settings"].get("adverse_only") and assessment["score"] >= 0:
+            assessment["score_included"] = False
+            assessment["score_reason"] += "; outside this run's adverse-only search setting"
         if article["score"] is not None:
             _audit(conn, article, assessment, "Automatic reassessment after evidence or rule change")
         _write(conn, article["id"], assessment)

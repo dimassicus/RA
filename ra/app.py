@@ -23,7 +23,7 @@ from .publisher_lookup import original_title
 from .search import company_search_plan
 from .reports import make_pdf, make_xlsx
 from .relevance import classify_results
-from . import score_store, verification_store, headline_review
+from . import score_store, verification_store, headline_review, search_settings
 from .scoring import LABELS, RUBRIC, MATERIALITY, VERSION, WEEK_TIMEZONE, week_start
 
 
@@ -138,12 +138,19 @@ def create_app() -> Flask:
             flash("All risk factor edits saved.", "success")
         return jsonify(saved=count)
 
-    @app.get("/setup")
+    @app.route("/setup", methods=["GET", "POST"])
     def setup():
+        if request.method == "POST":
+            if any(request.form.get(key) not in ("on", "off") for key in search_settings.DEFAULTS):
+                abort(400, "Choose On or Off for each search setting.")
+            search_settings.save({key: request.form[key] == "on" for key in search_settings.DEFAULTS})
+            flash("Search settings saved for all new searches.", "success")
+            return redirect(url_for("setup"))
         runs = db.list_runs()
         for run in runs:
             run["checks"] = verification_store.job_summary(run["id"])
-        return render_template("setup.html", runs=runs, reviewer=headline_review.readiness())
+        return render_template("setup.html", runs=runs, reviewer=headline_review.readiness(),
+                               search_settings=search_settings.read())
 
     @app.post("/setup/runs/<int:run_id>/retry")
     def retry_run_stage(run_id):

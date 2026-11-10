@@ -8,6 +8,31 @@
   <a class="button secondary" href="{{ url_for('keyword_settings', factors=true) }}">Risk factors</a>
 </div>
 <section class="panel form-panel">
+  <h2>Search settings</h2>
+  <p>Saved settings apply across the app to new watchlist, individual company and one-off searches. They remain saved until you change them here.</p>
+  <form method="post" action="{{ url_for('setup') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for key, label, help in [
+      ('include_country', 'Include country-related news and risk factors', 'Search country exposure news and assess country risk factors. Country information still identifies companies and selects search languages.'),
+      ('include_industry', 'Include industry-related news and risk factors', 'Search industry exposure news and assess industry risk factors.'),
+      ('adverse_only', 'Search only for negative/adverse newsflow', 'Keep leads with adverse signals in the original or translated headline. Positive and neutral headlines are omitted. Source checks still determine actual impact; headline screening can miss relevant news.')
+    ] %}
+    <div class="search-setting">
+      <label class="search-switch">
+        <input type="checkbox" role="switch" name="{{ key }}" value="on" aria-describedby="{{ key }}-help" {% if search_settings[key] %}checked{% endif %}>
+        <span class="switch-track" aria-hidden="true"></span>
+        <span>{{ label }}</span>
+        <span class="switch-state" aria-hidden="true"></span>
+      </label>
+      <input type="hidden" name="{{ key }}" value="off">
+      <p id="{{ key }}-help" class="subtext">{{ help }}</p>
+    </div>
+    {% endfor %}
+    <p>In-progress and saved runs keep their original settings. Previous results and analyst decisions remain available.</p>
+    <button class="button primary">Save search settings</button>
+  </form>
+</section>
+<section class="panel form-panel">
   <h2>Local models</h2>
   <p role="status">{{ reviewer.message }}</p>
   <p>Start the LM Studio server on port 1234. Keep Gemma 31B and Qwen 27B downloaded. RA loads one at a time: Gemma translates when needed, Qwen reviews. Both use reasoning off. Loading and switching appear in the run’s live status.</p>

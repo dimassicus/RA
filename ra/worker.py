@@ -10,7 +10,7 @@ import threading
 import time
 import logging
 
-from . import db, governance_roster
+from . import db, governance_roster, search_settings
 from .search import search_company
 from .governance_sources import notice_source
 from .exposure import add_exposure_leads, search_topic, sector_markets, topic_editions
@@ -102,6 +102,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
     run = db.get_run(run_id)
     if run is None or run["status"] not in ("queued", "running"):
         return
+    settings = search_settings.for_run(run)
     with db.connect() as conn:
         conn.execute(
             "UPDATE search_runs SET status = 'running', started_at = COALESCE(started_at, now()), "
@@ -124,7 +125,10 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
             detail = f" · {factor[0]}" if factor else ""
             report(f"Searching {branch} news: {topic} ({edition or 'English edition'}){detail}")
             return search_topic(branch, topic, edition=edition, markets=markets, factor=factor, window=historical_window)
-    check = partial(db.run_topic_check, run_id, topic_searcher, editions, include_factors=include_factors)
+    def check(branch, topic):
+        if not search_settings.scope_enabled(branch, settings):
+            return [], ""
+        return db.run_topic_check(run_id, topic_searcher, editions, branch, topic, include_factors=include_factors)
     for subject in plan_subjects(run["subjects"], run_id):
         subject_key = str(subject.get("id") or f"one-off:{run_id}")
         name = subject["name"]
@@ -179,18 +183,22 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
             collected=len(articles), retained=len(retained), excluded=len(articles) - len(retained))))
         articles = retained
         with db.connect() as conn:
+            saved_count = 0
             for index, article in enumerate(articles):
                 company_progress(f"Processing lead {index + 1} of {len(articles)}", index, len(articles))
                 language = detect_language(article["title"], article["language"])
                 title_en, provider = translate_text(
                     article["title"], language, name, article["publisher"]
                 )
+                if settings["adverse_only"] and not search_settings.adverse_lead(
+                        {**article, "language": language, "title_en": title_en}, subject):
+                    continue
                 publisher_en = article["publisher"]
                 seen_before = conn.execute(
                     "SELECT EXISTS (SELECT 1 FROM search_results WHERE subject_key = %s AND url = %s "
                     "AND run_id <> %s)", (subject_key, article["url"], run_id)
                 ).fetchone()["exists"]
-                conn.execute(
+                inserted = conn.execute(
                     "INSERT INTO search_results "
                     "(run_id, company_id, subject_key, subject_name, title, url, publisher, discovery_service, source_kind, "
                     "published_at, query, language, title_en, publisher_en, translation_provider, "
@@ -203,6 +211,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
                      article["query"], language, title_en, publisher_en, provider,
                      article["signal_terms"], seen_before, article.get("exposure_paths", [])),
                 )
+                saved_count += inserted.rowcount
             for message in errors:
                 conn.execute(
                     "INSERT INTO search_errors (run_id, subject_name, message) VALUES (%s, %s, %s)",
@@ -211,7 +220,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
             conn.execute(
                 "UPDATE search_runs SET completed_companies = completed_companies + 1, "
                 "result_count = result_count + %s, error_count = error_count + %s WHERE id = %s",
-                (len(articles), len(errors), run_id),
+                (saved_count, len(errors), run_id),
             )
         time.sleep(0.25)
     from .headline_review import review_saved

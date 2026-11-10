@@ -61,6 +61,13 @@ CREATE TABLE IF NOT EXISTS company_identity_evidence (
     UNIQUE (company_id, identifier_type, identifier_value, source_url)
 );
 
+CREATE TABLE IF NOT EXISTS search_preferences (
+    id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
+    include_country BOOLEAN NOT NULL DEFAULT TRUE,
+    include_industry BOOLEAN NOT NULL DEFAULT TRUE,
+    adverse_only BOOLEAN NOT NULL DEFAULT FALSE
+);
+
 CREATE TABLE IF NOT EXISTS search_runs (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     scope TEXT NOT NULL CHECK (scope IN ('all', 'selected', 'one_off')),
@@ -79,6 +86,7 @@ CREATE TABLE IF NOT EXISTS search_runs (
 ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS retry_translations BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS window_start TIMESTAMPTZ;
 ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS window_end TIMESTAMPTZ;
+ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS search_settings JSONB NOT NULL DEFAULT '{}';
 
 CREATE TABLE IF NOT EXISTS search_results (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

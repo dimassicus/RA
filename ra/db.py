@@ -364,6 +364,7 @@ def set_active(company_id: int, active: bool):
 
 def create_run(scope: str, subjects: list[dict], *, window_start=None, window_end=None):
     from psycopg.types.json import Jsonb
+    from . import search_settings
 
     if window_start is not None or window_end is not None:
         if (not isinstance(window_start, datetime) or not isinstance(window_end, datetime)
@@ -371,11 +372,12 @@ def create_run(scope: str, subjects: list[dict], *, window_start=None, window_en
                 or not timedelta(0) < window_end - window_start <= timedelta(days=7)
                 or window_end > datetime.now(timezone.utc)):
             raise ValueError("Choose a past publication window of up to seven days, with timezone offsets.")
+    settings = search_settings.read()
     with connect() as conn:
         return conn.execute(
-            "INSERT INTO search_runs (scope, subjects, total_companies, retry_translations, window_start, window_end) "
-            "VALUES (%s, %s, %s, TRUE, %s, %s) RETURNING id",
-            (scope, Jsonb(subjects), len(subjects), window_start, window_end),
+            "INSERT INTO search_runs (scope, subjects, total_companies, retry_translations, window_start, window_end, search_settings) "
+            "VALUES (%s, %s, %s, TRUE, %s, %s, %s) RETURNING id",
+            (scope, Jsonb(subjects), len(subjects), window_start, window_end, Jsonb(settings)),
         ).fetchone()["id"]
 
 
