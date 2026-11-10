@@ -11,6 +11,7 @@ from psycopg.types.json import Jsonb
 from . import db, keywords
 
 SCOPES = ("company", "sector", "country")
+MAX_DESCRIPTION = 300
 MANAGEMENT = "Changes in top management"
 OWNERSHIP = "Significant changes in major shareholdings or control"
 # Bump when the thematic prompt, schema or evidence validation changes.
@@ -75,8 +76,8 @@ def search_phrase(row, code):
 
 def validated_description(english, scope, previous):
     text = " ".join(english.split())
-    if not 3 <= len(text) <= 180 or not re.fullmatch(r"[A-Za-z][A-Za-z0-9 %,.'’&()/<>+=:–—-]*", text):
-        raise ValueError("Enter a short English risk description, up to 180 characters.")
+    if not 3 <= len(text) <= MAX_DESCRIPTION or not re.fullmatch(r"[A-Za-z][A-Za-z0-9 %,.'’&()/<>+=:–—-]*", text):
+        raise ValueError(f"Enter a short English risk description, up to {MAX_DESCRIPTION} characters.")
     if scope not in SCOPES:
         raise ValueError("Choose company, sector or country.")
     if text not in SEEDS and text != previous:
@@ -101,7 +102,7 @@ def save(row_id, english, scope, enabled, previous):
 
 def reviewed_translation(english, code, phrase, active_languages):
     phrase = " ".join(phrase.split())
-    if not 3 <= len(english) <= 180:
+    if not 3 <= len(english) <= MAX_DESCRIPTION:
         raise ValueError("Choose an existing risk factor.")
     if code not in active_languages or not 1 <= len(phrase) <= 500:
         raise ValueError("Choose an active language and enter a translation of up to 500 characters.")

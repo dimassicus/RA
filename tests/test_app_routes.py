@@ -81,3 +81,46 @@ def test_non_ascii_form_token_is_rejected_without_server_error():
         with client.session_transaction() as session:
             session["csrf_token"] = "token"
         assert client.post("/companies/import", data={"csrf_token": "токен"}).status_code == 400
+
+
+@pytest.mark.parametrize("path", ["/keywords", "/risk-factors"])
+def test_settings_render_languages_without_babel_locales(monkeypatch, path):
+    from ra import keywords, risk_factors
+    catalog = risk_factors if path == "/risk-factors" else keywords
+    monkeypatch.setattr(catalog, "languages", lambda: ["av", "ru", "unknown"])
+    monkeypatch.setattr(catalog, "records", lambda: [
+        {"id": 1, "english": "Factory closes", "scope": "company", "direction": "adverse",
+         "enabled": True, "translations": {"ru": "Закрытие завода"}},
+    ])
+    with create_app().test_client() as client:
+        response = client.get(path)
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert "Avaric" in body and "Russian" in body and "unknown" in body
+        assert 'id="translation-progress"' in body
+        assert "translation-progress.js" in body
+        assert ('data-character-limit="300"' in body) == (path == "/risk-factors")
+
+
+@pytest.mark.parametrize("factors", ["0", "1"])
+def test_live_translation_status_counts_only_enabled_terms_and_target_languages(monkeypatch, factors):
+    from ra import keywords, risk_factors, local_models
+    catalog = risk_factors if factors == "1" else keywords
+    monkeypatch.setattr(catalog, "languages", lambda: ["ru", "av"])
+    monkeypatch.setattr(catalog, "records", lambda: [
+        {"enabled": True, "translations": {"ru": "Текст", "es": "Texto"}},
+        {"enabled": True, "translations": {}},
+        {"enabled": False, "translations": {"ru": "Текст", "av": "Text"}},
+    ])
+    monkeypatch.setattr(keywords, "translation_status", lambda: {
+        "running": True, "retry_requested": True, "message": "Checking translations",
+        "elapsed_seconds": 12, "error": "",
+    })
+    monkeypatch.setattr(local_models, "activity", lambda: "Waiting for another local-model task")
+    with create_app().test_client() as client:
+        response = client.get("/api/translations/status?factors=" + factors)
+        assert response.status_code == 200
+        data = response.get_json()
+        assert (data["saved"], data["total"], data["missing"]) == (1, 4, 3)
+        assert data["running"] and data["retry_requested"]
+        assert data["elapsed_seconds"] == 12 and "Waiting" in data["model_activity"]

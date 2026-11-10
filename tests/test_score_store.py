@@ -760,13 +760,20 @@ def test_risk_descriptions_reject_overlength_without_clipping(database, monkeypa
         session["csrf_token"] = "token"
     Fields().feed(client.get("/risk-factors").text)
     assert len(inputs) == 2
-    assert all(field.get("pattern") == ".{3,180}" and "maxlength" not in field for field in inputs)
-    text = "Negative trends in related sectors " * 6
+    assert all(field.get("pattern") == ".{3,300}" and field.get("data-character-limit") == "300" and "maxlength" not in field for field in inputs)
+    text = "Negative trends in related sectors " * 10
     form = dict(csrf_token="token", english=text, scope="sector", enabled="yes")
     for edit in ({}, dict(id=row["id"], previous=row["english"])):
         response = client.post("/risk-factors", data=form | edit, follow_redirects=True)
-        assert "up to 180 characters" in response.text
+        assert "up to 300 characters" in response.text
         assert risk_factors.records() == [row]
+    complete = ("Changes to taxation legislation, customs tariffs or regulations (domestic or by major trading partners), "
+                "other related domestic or international legislation and/or regulation that affects the company")
+    monkeypatch.setattr(keywords, "validate_english", lambda *args: None)
+    monkeypatch.setattr(keywords, "schedule", lambda: None)
+    response = client.post("/risk-factors", data=form | dict(id=row["id"], previous=row["english"], english=complete))
+    assert response.status_code == 302
+    assert risk_factors.records()[0]["english"] == complete
 
 
 def test_edit_one_risk_translation_from_list(database, monkeypatch):

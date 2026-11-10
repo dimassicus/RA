@@ -118,8 +118,10 @@ def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None,
         # These regional feeds also index Russian-language reporting.
         languages = (lang, "ru") if lang in ("az", "uz") else (lang,)
         names = list(dict.fromkeys(name for code in languages
-                                   for name in NAMES[code].get(topic, topic).split("|")))
-        channels = {label: [term for code in languages for term in CHANNEL_TERMS[code][label].split("|")]
+                                   for name in NAMES.get(code, {}).get(topic, topic).split("|")))
+        # shortcut: new languages reuse English channel terms until native vocabulary is added.
+        channels = {label: [term for code in languages for term in
+                           CHANNEL_TERMS.get(code, {}).get(label, "|".join(channels[label])).split("|")]
                     for label in channels}
     terms = [term for phrases in channels.values() for term in phrases]
     query = "(" + " OR ".join(f'"{name}"' for name in names) + ")"
@@ -131,7 +133,7 @@ def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None,
         geo = []
         for place in places:
             if edition:
-                geo.extend(name for code in languages for name in NAMES[code].get(place, place).split("|"))
+                geo.extend(name for code in languages for name in NAMES.get(code, {}).get(place, place).split("|"))
             else:
                 geo.append(place)
             geo.extend(MARKET_ALIASES.get(place, "").split("|")[:1])

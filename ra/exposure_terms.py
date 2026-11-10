@@ -22,7 +22,9 @@ NAMES = {
     "az": {"azerbaijan": "Azərbaycan|Azərbaycanda|Azərbaycanın", "pipe production": "boru istehsalı|polad borular"},
     "uz": {"uzbekistan": "O‘zbekiston|O‘zbekistonda|Ўзбекистон|Ўзбекистонда",
            "wholesale trading": "ulgurji savdo|улгуржи савдо"},
-    "ru": {"azerbaijan": "Азербайджан|Азербайджане|Азербайджана",
+    "ru": {"russia": "Россия|России|РФ", "russian federation": "Россия|России|Российская Федерация|РФ",
+           "fertilizer": "удобрения|удобрений|удобрение", "agriculture": "сельское хозяйство|сельского хозяйства",
+           "azerbaijan": "Азербайджан|Азербайджане|Азербайджана",
            "uzbekistan": "Узбекистан|Узбекистане|Узбекистана",
            "pipe production": "производство труб|стальные трубы|стальных труб",
            "wholesale trading": "оптовая торговля|оптовой торговли|оптовом рынке"},
@@ -61,6 +63,8 @@ CHANNEL_TERMS = {
 }
 
 MARKET_ALIASES = {
+    "russia": "Russian|Россия|России|российский|российская",
+    "russian federation": "Russia|Russian|Россия|России|российский|российская",
     "brazil": "Brazilian|brasileiro|brasileira|brasileiros|brasileiras|brasileño|brasileña",
     "vietnam": "Vietnamese", "greece": "Greek|ελληνικό|ελληνικός", "egypt": "Egyptian|المصري",
     "turkey": "Turkish|Türk", "azerbaijan": "Azerbaijani", "uzbekistan": "Uzbek",

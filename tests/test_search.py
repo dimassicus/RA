@@ -67,6 +67,79 @@ def test_google_news_queries_are_limited_to_seven_days():
     assert language == "pt-BR"
 
 
+@pytest.mark.parametrize("country,region,language", [
+    ("Russia", "RU", "ru"), ("Russian Federation", "RU", "ru"),
+    ("Germany", "DE", "de"), ("Japan", "JP", "ja"),
+    ("Poland", "PL", "pl"), ("United Kingdom", "GB", "en"),
+])
+def test_country_language_is_used_without_a_handwritten_locale(country, region, language):
+    from urllib.parse import parse_qs, urlsplit
+    from ra.search import feed_url
+    url, detected = feed_url('"Company"', country)
+    params = parse_qs(urlsplit(url).query)
+    assert params["gl"] == [region]
+    assert params["ceid"] == [f"{region}:{language}"]
+    assert detected.split("-")[0] == language
+
+
+def test_company_name_searches_keep_local_and_english_even_without_translated_factors(monkeypatch):
+    from ra import search
+    monkeypatch.setattr(search.risk_factors, "active", lambda scope: [])
+    for country, language in (("Russian Federation", "ru"), ("Japan", "ja")):
+        plan = search.company_search_plan({"name": "Example Manufacturing", "country_registration": country})
+        languages = {search.feed_url(query, edition)[1].split("-")[0] for query, edition in plan}
+        assert languages == {"en", language}
+        assert len(plan) == len(set(plan))
+
+
+def test_russian_governance_uses_cyrillic_alias_and_russian_feed(monkeypatch):
+    from ra import search
+    monkeypatch.setattr(search.risk_factors, "active", lambda scope: [
+        {"english": "Factory closes", "translations": {"ru": "закрытие завода"}},
+    ])
+    plans = search.governance_searches({"name": "Acron", "aliases": "Акрон", "country_registration": "Russia"})
+    query, edition = next((q, e) for q, e in plans if "закрытие завода" in q)
+    assert '"Акрон"' in query
+    assert search.feed_url(query, edition)[1] == "ru-RU"
+
+
+def test_new_country_exposure_editions_do_not_require_static_vocabulary():
+    from ra.exposure import search_topic, topic_editions
+    from urllib.parse import parse_qs, urlsplit
+    subject = {"country_registration": "Germany", "primary_industries": "fertilizer"}
+    assert topic_editions([subject])["sector", "fertilizer"] == {"germany"}
+    calls = []
+    def fetch(url):
+        calls.append(parse_qs(urlsplit(url).query))
+        return b"<rss><channel/></rss>"
+    assert search_topic("sector", "fertilizer", fetch, edition="germany") == []
+    assert calls[0]["hl"] == ["de-DE"]
+
+
+def test_all_country_choices_have_locales_and_keep_established_editions():
+    import pycountry
+    from ra.search import LOCALES, normalized
+    assert all(normalized(country.name) in LOCALES for country in pycountry.countries)
+    assert LOCALES["russia"] == LOCALES["russian federation"] == LOCALES["ru"]
+    assert LOCALES["mexico"] == ("es-419", "MX", "MX:es")
+    assert LOCALES["turkey"] == LOCALES[normalized("Türkiye")]
+    assert LOCALES["china"][2] == "CN:zh-Hans"
+    assert LOCALES["taiwan"][2] == "TW:zh-Hant"
+
+
+def test_russian_country_and_sector_queries_find_native_headlines():
+    from urllib.parse import parse_qs, urlsplit
+    from ra.exposure import search_topic
+    def fetch(url):
+        params = parse_qs(urlsplit(url).query)
+        assert params["hl"] == ["ru-RU"]
+        assert "Россия" in params["q"][0] or "удобрения" in params["q"][0]
+        return ("<rss><channel><item><title>Россия: цены на удобрения растут, инфляция ускоряется</title>"
+                "<link>https://example.test/russian-news</link></item></channel></rss>").encode()
+    assert search_topic("country", "russian federation", fetch, edition="russian federation")
+    assert search_topic("sector", "fertilizer", fetch, edition="russian federation")
+
+
 def test_historical_queries_reach_company_and_exposure_feeds(monkeypatch):
     from datetime import datetime, timezone
     from urllib.parse import parse_qs, urlparse

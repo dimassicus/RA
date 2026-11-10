@@ -1,3 +1,22 @@
+document.querySelectorAll('[data-character-limit]').forEach((input, index) => {
+  const limit = Number(input.dataset.characterLimit);
+  const counter = document.createElement('small');
+  counter.id = `risk-character-count-${index}`;
+  counter.className = 'character-count';
+  counter.setAttribute('aria-live', 'polite');
+  input.setAttribute('aria-describedby', counter.id);
+  input.insertAdjacentElement('afterend', counter);
+  const update = () => {
+    const count = [...input.value.trim().replace(/\s+/gu, ' ')].length;
+    const excess = count - limit;
+    counter.textContent = `${count}/${limit} characters` + (excess > 0 ? ` — ${excess} over the limit` : '');
+    counter.style.color = excess > 0 ? 'var(--danger)' : 'var(--muted)';
+    input.setCustomValidity(excess > 0 ? `Shorten this description by ${excess} characters.` : '');
+  };
+  input.addEventListener('input', update);
+  update();
+});
+
 const saveAll = document.getElementById('save-all');
 const list = saveAll.closest('section');
 const statusText = document.getElementById('save-all-status');
@@ -21,6 +40,7 @@ saveAll.addEventListener('click', async () => {
       changed = true;
     }
     if (!changed) continue;
+    if (!fields.english.reportValidity()) return;
     data.set('csrf_token', fields.csrf_token.value);
     data.append('id', id);
     data.set(id + '.previous', fields.previous.value);

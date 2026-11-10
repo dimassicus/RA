@@ -1,12 +1,14 @@
 """Editable English headline cues and their literal translations."""
 import json
+import logging
 import re
 import threading
+import time
 import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
-from babel import Locale
+from babel import Locale, UnknownLocaleError
 from psycopg.types.json import Jsonb
 
 from . import db, online_translation
@@ -58,6 +60,10 @@ GROUPS = {
 }
 SEEDS = {term: (group, pattern) for group, concepts in GROUPS.items() for term, pattern in concepts.items()}
 MEANINGS = {
+    "conviction": "A criminal court's finding of guilt, not a belief or confidence in an investment.",
+    "explosion": "A physical explosion at a facility, not a rapid increase in prices or demand.",
+    "appointment": "Appointment of a person to an executive or board position, not a meeting or medical visit.",
+    "dismissal": "Removal of an executive from their job, not dismissal of a court case.",
     "sanction": "A punitive legal or regulatory measure against a company.",
     "layoff": "Employer cuts staff or eliminates jobs for economic reasons.",
     "insolvency": "Inability to meet debts as they fall due. Distinguish this from formal bankruptcy.",
@@ -156,7 +162,11 @@ def languages():
 
 @lru_cache(maxsize=128)
 def language_name(code):
-    return Locale.parse(code).get_display_name("en")
+    try:
+        return Locale.parse(code).get_display_name("en")
+    except (UnknownLocaleError, ValueError):
+        # Babel names some languages without shipping their formatting locales.
+        return Locale("en").languages.get(code, code)
 
 
 def model_json(instruction, data, schema, *, model=None):
@@ -233,6 +243,9 @@ def translate_batch(rows, code, *, factors=False):
     terms = [r["english"] for r in rows]
     from .translation import installed_keyword_translations
     language = language_name(code)
+    label = "risk-factor" if factors else "keyword"
+    context = f"{len(rows)} {label} translations · {language}"
+    _report(f"Finding candidates for {context}")
     try:
         proposed = installed_keyword_translations(terms, code)
     except (RuntimeError, OSError, ValueError):
@@ -247,10 +260,13 @@ def translate_batch(rows, code, *, factors=False):
     constraints = (" Preserve the event, direction, strict thresholds, time windows and parentheses."
                    if factors else "")
     accepted = {}
+    saved = 0
+    table = "risk_factors" if factors else "monitor_keywords"
     meanings = {term: MEANINGS[term] for term in terms if term in MEANINGS}
     for attempt in range(2):
         needed = [term for term in terms if term not in accepted and (attempt or not proposed.get(term))]
         if needed:
+            _report(f"Generating {len(needed)} {label} translations · {language}")
             prompt = (f"Translate each English credit-monitoring {subject} into {language} ({code}). "
                       "Use natural financial-news wording. Return an empty string if uncertain." + constraints)
             data = needed
@@ -263,23 +279,41 @@ def translate_batch(rows, code, *, factors=False):
                       and isinstance(proposed.get(term), str) and 0 < len(proposed[term].strip()) <= (500 if factors else 120)
                       and (not factors or not percentage_values(term) or percentage_values(term) == percentage_values(proposed[term]))}
         if candidates:
+            _report(f"Checking {len(candidates)} {label} translations · {language}")
             checked = review_translations(candidates, code, factors, meanings)
-            accepted.update({term: phrase for term, phrase in candidates.items() if checked.get(term) is True})
+            approved = {term: phrase for term, phrase in candidates.items() if checked.get(term) is True}
+            # Commit approved wording before a later generation/review can time out.
+            with db.connect() as conn:
+                for row in rows:
+                    term = row["english"]
+                    if term in approved:
+                        result = conn.execute(f"UPDATE {table} SET translations=translations || %s WHERE id=%s AND english=%s "
+                                              "AND NOT (translations ? %s)", (Jsonb({code: approved[term]}), row["id"], term, code))
+                        saved += result.rowcount
+            accepted.update(approved)
         if len(accepted) == len(terms):
             break
-    table = "risk_factors" if factors else "monitor_keywords"
-    with db.connect() as conn:
-        for row in rows:
-            term = row["english"]
-            if term in accepted:
-                conn.execute(f"UPDATE {table} SET translations=translations || %s WHERE id=%s AND english=%s "
-                             "AND NOT (translations ? %s)", (Jsonb({code: accepted[term]}), row["id"], term, code))
+    _report(f"Saved {saved} of {context}")
 
 
 _sync_lock = threading.Lock()
 _requested = False
 _running = False
 last_error = ""
+_progress = ("No translation pass requested.", time.monotonic())
+
+
+def _report(message):
+    global _progress
+    _progress = (message, time.monotonic())
+    logging.getLogger(__name__).info("translation_progress %s", message)
+
+
+def translation_status():
+    message, updated = _progress
+    with _sync_lock:
+        return {"running": _running, "retry_requested": _requested, "message": message,
+                "elapsed_seconds": int(time.monotonic() - updated), "error": last_error}
 
 
 def schedule():
@@ -289,6 +323,7 @@ def schedule():
         if _running:
             return
         _running = True
+        _report("Translation pass queued.")
     threading.Thread(target=_work, daemon=True, name="ra-keyword-translations").start()
 
 
@@ -298,29 +333,62 @@ def _work():
         with _sync_lock:
             if not _requested:
                 _running = False
+                _report("Translation pass finished.")
                 return
             _requested = False
         from . import risk_factors
+        from .exposure import topic_editions
+        from .search import LOCALES
         last_error = ""
+        jobs = []
+        primary = set()
+        try:
+            editions = topic_editions(db.list_companies(True))
+            primary = {LOCALES[place][0].split("-")[0] for places in editions.values() for place in places}
+        except (ValueError, OSError, KeyError, TypeError, db.psycopg.Error):
+            logging.getLogger(__name__).exception("Could not prioritize translation languages")
         for factors in (True, False):
             try:
                 rows = risk_factors.records() if factors else records()
                 codes = risk_factors.languages() if factors else languages()
                 for code in codes:
                     missing = [r for r in rows if r["enabled"] and code not in r["translations"]]
-                    for i in range(0, len(missing), 16):
-                        translate_batch(missing[i:i + 16], code, factors=factors)
-                        if factors:
-                            risk_factors.reload()
-                        else:
-                            reload_rules()
+                    if missing:
+                        jobs.append((code, factors, missing))
             except (ValueError, OSError, KeyError, TypeError, db.psycopg.Error) as exc:
                 last_error = f"Translation interrupted ({type(exc).__name__}). Retry missing translations."
-        try:
-            for code in ["en", *risk_factors.languages()]:
+        # Fill small gaps in search languages before large regional-language backlogs.
+        for code, factors, missing in sorted(jobs, key=lambda job: (job[0] not in primary, len(job[2]), job[0], not job[1])):
+            batch_size = 8 if factors else 16
+            batches = [missing[i:i + batch_size] for i in range(0, len(missing), batch_size)]
+            while batches:
+                batch = batches.pop(0)
+                try:
+                    translate_batch(batch, code, factors=factors)
+                except (ValueError, OSError, KeyError, TypeError, db.psycopg.Error) as exc:
+                    label = "Risk factors" if factors else "Keywords"
+                    if isinstance(exc, (TimeoutError, ValueError)) and len(batch) > 1:
+                        current = {row["id"]: row for row in (risk_factors.records() if factors else records())}
+                        pending = [row for row in batch if row["id"] in current and current[row["id"]]["enabled"]
+                                   and current[row["id"]]["english"] == row["english"]
+                                   and code not in current[row["id"]]["translations"]]
+                        size = len(batch) // 2
+                        batches[:0] = [pending[i:i + size] for i in range(0, len(pending), size)]
+                        _report(f"{label} · {language_name(code)}: retrying {len(pending)} unfinished items in smaller batches ({type(exc).__name__}).")
+                    else:
+                        last_error = f"{label} · {language_name(code)}: batch failed ({type(exc).__name__}); other batches were not cancelled."
+                        logging.getLogger(__name__).exception("Translation batch failed: %s / %s", label, code)
+                finally:
+                    if factors:
+                        risk_factors.reload()
+                    else:
+                        reload_rules()
+        for code in ["en", *risk_factors.languages()]:
+            try:
+                _report(f"Preparing risk-factor search phrases · {language_name(code)}")
                 risk_factors.expand_queries(code)
-        except (ValueError, OSError, KeyError, TypeError, db.psycopg.Error) as exc:
-            last_error = f"Search phrase generation interrupted ({type(exc).__name__}). Retry to resume."
+            except (ValueError, OSError, KeyError, TypeError, db.psycopg.Error) as exc:
+                last_error = f"Search phrases · {language_name(code)}: interrupted ({type(exc).__name__}). Retry to resume."
 
 
 def discovery_terms(groups, language):

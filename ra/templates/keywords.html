@@ -2,7 +2,7 @@
 {% set heading = 'Risk factors' if factors else 'Monitoring keywords' %}
 {% set field = 'scope' if factors else 'direction' %}
 {% set field_label = 'Search scope' if factors else 'Sentiment' %}
-{% set limit = 180 if factors else 80 %}
+{% set limit = risk_factor_limit if factors else 80 %}
 {% block title %}{{ heading }} · RA{% endblock %}
 {% block content %}
 <p class="back"><a href="{{ url_for('setup') }}">← Back to Setup</a></p>
@@ -13,13 +13,16 @@
   <h2>Add a {{ label }}</h2>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="enabled" value="yes">
-    <div class="form-grid"><label>{{ 'Short English description (3–180 characters)' if factors else 'English word or phrase' }}<input name="english" required {% if factors %}pattern=".{3,180}" title="Use 3–180 characters. Shorten the description before saving; pasted text is kept in full."{% else %}maxlength="{{ limit }}"{% endif %} placeholder="{{ 'e.g. A lender suspends the company’s credit line' if factors else 'e.g. covenant breach' }}"></label>
+    <div class="form-grid"><label>{{ 'English description (3–' ~ limit ~ ' characters)' if factors else 'English word or phrase' }}<input name="english" required {% if factors %}pattern=".{3,{{ limit }}}" data-character-limit="{{ limit }}" title="Use 3–{{ limit }} characters. Shorten the description before saving; pasted text is kept in full."{% else %}maxlength="{{ limit }}"{% endif %} placeholder="{{ 'e.g. A lender suspends the company’s credit line' if factors else 'e.g. covenant breach' }}"></label>
     <label>{{ field_label }}<select name="{{ field }}">{% for direction in options %}<option>{{ direction }}</option>{% endfor %}</select></label></div>
     <div class="form-actions"><button class="button primary">Add and translate</button></div>
   </form>
 </section>
 <section class="panel list-panel"><h2>{{ label|capitalize }} list</h2>
-  <p>Translation languages follow {{ 'active watchlist countries and search editions' if factors else 'active companies’ registration countries' }}. Missing Argos pairs use MyMemory online, with local Qwen as backup. Qwen checks each phrase before use. Refresh to see progress.</p>
+  <p>Translation languages follow {{ 'active watchlist countries and search editions' if factors else 'active companies’ registration countries' }}. Missing Argos pairs use free MyMemory and local Gemma. Qwen checks each phrase before use. Both lists share one queue, prioritizing search languages and smaller gaps.</p>
+  <p id="translation-progress" role="status" aria-live="polite" data-url="{{ url_for('translation_status', factors='1' if factors else '0') }}">Checking translation progress…</p>
+  <p>Live progress updates leave your edits untouched. Save any edits before reloading this page to see newly saved wording in the list below.</p>
+  <script src="{{ url_for('static', filename='translation-progress.js') }}" defer></script>
   {% if error %}<p role="status">{{ error }}</p>{% endif %}
   {% if factors %}<div class="form-actions">
     <button type="button" class="button primary" id="save-all" data-url="{{ url_for('save_all_risk_factors') }}" hidden>Save all</button>
@@ -30,7 +33,7 @@
   <div class="table-scroll"><table><thead><tr><th>English {{ label }}</th><th>{{ field_label }}</th><th>Active</th><th>Translations</th><th></th></tr></thead><tbody>
   {% for row in rows %}
     {% set fid = 'keyword-' ~ row.id %}
-    <tr><td><input form="{{ fid }}" aria-label="English {{ label }} {{ row.english }}" name="english" value="{{ row.english }}" required {% if factors %}pattern=".{3,180}" title="Use 3–180 characters. Shorten the description before saving; pasted text is kept in full."{% else %}maxlength="{{ limit }}"{% endif %}></td>
+    <tr><td><input form="{{ fid }}" aria-label="English {{ label }} {{ row.english }}" name="english" value="{{ row.english }}" required {% if factors %}pattern=".{3,{{ limit }}}" data-character-limit="{{ limit }}" title="Use 3–{{ limit }} characters. Shorten the description before saving; pasted text is kept in full."{% else %}maxlength="{{ limit }}"{% endif %}></td>
       <td><select form="{{ fid }}" name="{{ field }}" aria-label="{{ field_label }} for {{ row.english }}">{% for direction in options %}<option {% if direction == row[field] %}selected{% endif %}>{{ direction }}</option>{% endfor %}</select></td>
       <td><input form="{{ fid }}" name="enabled" type="checkbox" value="yes" aria-label="Enable {{ row.english }}" {% if row.enabled %}checked{% endif %}></td>
       <td><details id="translations-{{ row.id }}" {% if editing == row.id %}open{% endif %}><summary>{{ languages|select('in', row.translations)|list|length }}/{{ languages|length }} languages</summary>

@@ -6,6 +6,9 @@ import re
 import unicodedata
 import json
 import time
+import pycountry
+from babel import Locale
+from babel.languages import get_territory_language_info
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode, urlparse
@@ -57,8 +60,33 @@ UK_NAMES = {"united kingdom", "uk", "great britain", "england", "scotland", "wal
 
 
 def normalized(value: str) -> str:
-    value = unicodedata.normalize("NFKD", value.casefold())
+    value = unicodedata.normalize("NFKD", value.strip().casefold())
     return "".join(character for character in value if not unicodedata.combining(character))
+
+
+def _country_locales():
+    """Extend established editions with each country's main official language."""
+    names = Locale("en").territories
+    for country in pycountry.countries:
+        region = country.alpha_2
+        info = get_territory_language_info(region)
+        if not info:
+            continue
+        code = max(info, key=lambda code: (
+            info[code].get("official_status") in ("official", "de_facto_official"),
+            info[code].get("population_percent") or 0,
+        )).replace("_", "-")
+        language = code.split("-")[0]
+        if language == "zh" and "-" not in code:
+            code = "zh-Hans"
+        locale = LOCALES.get(normalized(country.name), (f"{language}-{region}", region, f"{region}:{code}"))
+        for name in (country.name, country.alpha_2, country.alpha_3,
+                     getattr(country, "official_name", ""), getattr(country, "common_name", ""), names.get(region, "")):
+            if name:
+                LOCALES.setdefault(normalized(name), locale)
+
+
+_country_locales()
 
 
 def signal_terms(title: str, language: str = "") -> list[str]:
@@ -145,7 +173,12 @@ def governance_searches(subject):
 
 
 def company_search_plan(subject):
-    return [(q, subject.get("country_registration", "")) for q in search_queries(subject)] + governance_searches(subject)
+    country = subject.get("country_registration", "")
+    editions = [country]
+    if LOCALES.get(normalized(country), ("en",))[0].split("-")[0] != "en":
+        editions.append("")
+    return list(dict.fromkeys([(q, edition) for q in search_queries(subject) for edition in editions]
+                             + governance_searches(subject)))
 
 
 def feed_url(query: str, country: str, *, window=None) -> tuple[str, str]:
