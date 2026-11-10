@@ -68,6 +68,7 @@ for term in PERSON_TITLES:
         GROUPS["ownership" if term in ("beneficial owner", "founder") else "executive role"][term] = ""
 SEEDS = {term: (group, pattern) for group, concepts in GROUPS.items() for term, pattern in concepts.items()}
 SEED_NAMES = {normalized(term): term for term in SEEDS}
+PHRASES = {**RELATED_PHRASES, **PERSON_TITLES}
 MEANINGS = {
     "change of control": "A change in who controls a company through ownership or voting rights, not equipment controls.",
     "conviction": "A criminal court's finding of guilt, not a belief or confidence in an investment.",
@@ -116,14 +117,17 @@ def compile_terms(rows):
         key = SEED_NAMES.get(normalized(term), term)
         group, variants = SEEDS.get(key, (term, ""))
         alternatives = [re.escape(normalized(term))]
-        alternatives.extend(re.escape(normalized(phrase)) for phrase in
-                            RELATED_PHRASES.get(key, ()) + PERSON_TITLES.get(key, ()))
+        alternatives.extend(re.escape(normalized(phrase)) for phrase in PHRASES.get(key, ()))
         if variants:
             alternatives.append(variants)
         pattern = re.compile(r"(?<!\w)(?:" + "|".join(alternatives) + r")(?!\w)")
+        approved = {}
+        for item in (row, *row.get("phrases", ())):
+            for code, phrase in item["translations"].items():
+                approved.setdefault(code, set()).add(native_text(phrase))
         native = {}
-        for code, phrase in row["translations"].items():
-            literal = re.escape(native_text(phrase))
+        for code, phrases in approved.items():
+            literal = "(?:" + "|".join(map(re.escape, sorted(phrases))) + ")"
             native[code] = re.compile(literal if code in ("th", "zh", "ja") else r"(?<!\w)" + literal + r"(?!\w)")
         rules.append((term, group, row["direction"], pattern, native))
     return tuple(rules)
@@ -149,7 +153,17 @@ def matches(text, language=""):
 
 def records():
     with db.connect() as conn:
-        return conn.execute("SELECT * FROM monitor_keywords ORDER BY english").fetchall()
+        rows = conn.execute("SELECT * FROM monitor_keywords ORDER BY english").fetchall()
+        phrases = {(p["family"], p["english"]): p for p in conn.execute("SELECT * FROM keyword_phrases")}
+    for row in rows:
+        family = SEED_NAMES.get(normalized(row["english"]))
+        row["phrases"] = [phrases[family, phrase] for phrase in PHRASES.get(family, ()) if (family, phrase) in phrases]
+    return rows
+
+
+def active_phrases(rows):
+    return [dict(phrase, parent_id=row["id"], parent_english=row["english"], enabled=True)
+            for row in rows if row["enabled"] for phrase in row.get("phrases", ())]
 
 
 def reload_rules():
@@ -165,6 +179,10 @@ def seed(conn):
         cursor.executemany("INSERT INTO monitor_keywords(english,direction,seed_key,translations) VALUES (%s,%s,%s,%s) "
                            "ON CONFLICT DO NOTHING", [(row["english"], row["direction"], row["english"], Jsonb(row["translations"]))
                                                       for row in defaults() if normalized(row["english"]) not in existing])
+        saved = {(p["family"], p["english"]) for p in conn.execute("SELECT family,english FROM keyword_phrases")}
+        cursor.executemany("INSERT INTO keyword_phrases(family,english) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                           [(family, phrase) for family, phrases in PHRASES.items() for phrase in phrases
+                            if (family, phrase) not in saved])
 
 
 def languages():
@@ -303,7 +321,8 @@ def translate_batch(rows, code, *, factors=False):
     terms = [r["english"] for r in rows]
     from .translation import installed_keyword_translations
     language = language_name(code)
-    label = "risk-factor" if factors else "keyword"
+    phrases = "family" in rows[0]
+    label = "related phrase" if phrases else "risk-factor" if factors else "keyword"
     context = f"{len(rows)} {label} translations · {language}"
     _report(f"Finding candidates for {context}")
     feedback = translation_feedback(rows, code, factors)
@@ -332,6 +351,9 @@ def translate_batch(rows, code, *, factors=False):
     saved = 0
     table = "risk_factors" if factors else "monitor_keywords"
     meanings = {term: MEANINGS[term] for term in terms if term in MEANINGS}
+    if phrases:
+        meanings = {r["english"]: f'Translate this specific wording in the context of {r["family"]}.'
+                    for r in rows}
     for attempt in range(3):
         reviewer = QWEN
         needed = [term for term in terms if term not in accepted and (attempt or not proposed.get(term))]
@@ -369,8 +391,15 @@ def translate_batch(rows, code, *, factors=False):
                 for row in rows:
                     term = row["english"]
                     if term in approved:
-                        result = conn.execute(f"UPDATE {table} SET translations=translations || %s WHERE id=%s AND english=%s AND enabled "
-                                              "AND NOT (translations ? %s)", (Jsonb({code: approved[term]}), row["id"], term, code))
+                        params = (Jsonb({code: approved[term]}), row["id"], term, code)
+                        if phrases:
+                            result = conn.execute("UPDATE keyword_phrases SET translations=translations || %s "
+                                                  "WHERE id=%s AND english=%s AND NOT (translations ? %s) AND EXISTS "
+                                                  "(SELECT 1 FROM monitor_keywords WHERE id=%s AND english=%s AND enabled)",
+                                                  (*params, row["parent_id"], row["parent_english"]))
+                        else:
+                            result = conn.execute(f"UPDATE {table} SET translations=translations || %s WHERE id=%s AND english=%s AND enabled "
+                                                  "AND NOT (translations ? %s)", params)
                         saved += result.rowcount
             accepted.update(approved)
         if len(accepted) == len(terms):
@@ -452,10 +481,12 @@ def _run_passes():
             try:
                 rows = risk_factors.records() if factors else records()
                 codes = risk_factors.languages() if factors else languages()
-                for code in codes:
-                    missing = [r for r in rows if r["enabled"] and code not in r["translations"]]
-                    if missing:
-                        jobs.append((code, factors, missing))
+                groups = [rows] if factors else [rows, active_phrases(rows)]
+                for group in groups:
+                    for code in codes:
+                        missing = [r for r in group if r["enabled"] and code not in r["translations"]]
+                        if missing:
+                            jobs.append((code, factors, missing))
             except (ValueError, OSError, KeyError, TypeError, db.psycopg.Error) as exc:
                 last_error = f"Translation interrupted ({type(exc).__name__}). Retry missing translations."
         # Fill small gaps in search languages before large regional-language backlogs.
@@ -469,7 +500,8 @@ def _run_passes():
                 except (ValueError, OSError, KeyError, TypeError, db.psycopg.Error) as exc:
                     label = "Risk factors" if factors else "Keywords"
                     if isinstance(exc, (TimeoutError, ValueError)) and len(batch) > 1:
-                        current = {row["id"]: row for row in (risk_factors.records() if factors else records())}
+                        rows = risk_factors.records() if factors else records()
+                        current = {row["id"]: row for row in (active_phrases(rows) if "family" in batch[0] else rows)}
                         pending = [row for row in batch if row["id"] in current and current[row["id"]]["enabled"]
                                    and current[row["id"]]["english"] == row["english"]
                                    and code not in current[row["id"]]["translations"]]
@@ -500,27 +532,27 @@ def discovery_terms(groups, language):
     return list(dict.fromkeys(t for t in terms if t))
 
 
-def adverse_search_terms(language):
-    """Only company search plans consume this expanded vocabulary."""
+def _company_terms(language, *, titles):
     terms = []
+    variants = PERSON_TITLES if titles else RELATED_PHRASES
     for row in _rows:
-        if not row["enabled"] or row["direction"] != "adverse":
+        family = SEED_NAMES.get(normalized(row["english"]))
+        eligible = family in PERSON_TITLES if titles else row["direction"] == "adverse"
+        if not row["enabled"] or not eligible:
             continue
         if language == "en":
-            terms.extend((row["english"], *RELATED_PHRASES.get(SEED_NAMES.get(normalized(row["english"])), ())))
-        elif phrase := row["translations"].get(language):
-            terms.append(phrase)
-    return list({normalized(term): term for term in terms if normalized(term)}.values())
+            terms.extend((row["english"], *variants.get(family, ())))
+        else:
+            phrases = row.get("phrases", ()) if family in variants else ()
+            for item in (row, *phrases):
+                if phrase := item["translations"].get(language):
+                    terms.append(phrase)
+    return list({native_text(term): term for term in terms}.values())
+
+
+def adverse_search_terms(language):
+    return _company_terms(language, titles=False)
 
 
 def person_title_terms(language):
-    terms = []
-    for row in _rows:
-        key = SEED_NAMES.get(normalized(row["english"]))
-        if not row["enabled"] or key not in PERSON_TITLES:
-            continue
-        if language == "en":
-            terms.extend((row["english"], *PERSON_TITLES[key]))
-        elif phrase := row["translations"].get(language):
-            terms.append(phrase)
-    return list({normalized(term): term for term in terms if normalized(term)}.values())
+    return _company_terms(language, titles=True)

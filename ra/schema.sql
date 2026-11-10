@@ -246,6 +246,15 @@ CREATE TABLE IF NOT EXISTS monitor_keywords (
     translations jsonb NOT NULL DEFAULT '{}'
 );
 
+-- Keywords and their related phrases share the keyword review audit ID namespace.
+CREATE TABLE IF NOT EXISTS keyword_phrases (
+    id bigint PRIMARY KEY DEFAULT nextval('monitor_keywords_id_seq'),
+    family text NOT NULL,
+    english text NOT NULL,
+    translations jsonb NOT NULL DEFAULT '{}',
+    UNIQUE (family, english)
+);
+
 CREATE TABLE IF NOT EXISTS governance_rosters (
     run_id BIGINT NOT NULL REFERENCES search_runs(id) ON DELETE CASCADE,
     subject_key TEXT NOT NULL,

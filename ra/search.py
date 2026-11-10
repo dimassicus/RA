@@ -186,20 +186,27 @@ def query_groups(expressions, limit=8, max_chars=320):
 
 def adverse_searches(subject):
     """Company/related-person adverse searches, independent of governance-change switches."""
+    from .exposure import topic_editions
+    from .model_store import country_languages, EXCLUDED_LANGUAGES
     country = subject.get("country_registration", "")
     lang = LOCALES.get(normalized(country), ("en",))[0].split("-")[0]
     editions = [("en", "")]
-    if lang != "en":
-        editions.append((lang, country))
+    codes = set(country_languages(country)) | {lang}
     if lang in ("az", "uz"):
-        editions.append(("ru", country))
+        codes.add("ru")
+    editions.extend((code, country) for code in sorted(codes - {"en"} - EXCLUDED_LANGUAGES))
+    places = {place for locations in topic_editions([subject]).values() for place in locations}
+    for place in sorted(places):
+        code = LOCALES[place][0].split("-")[0]
+        if code != "en" and code not in EXCLUDED_LANGUAGES and LOCALES[place] != LOCALES.get(normalized(country)):
+            editions.append((code, place))
     quote = lambda text: '"' + text.replace('"', '').strip() + '"'
     companies = [quote(name) + (" " + quote(country) if ambiguous(name) and country else "")
                  for name in discovery_names(subject) if not ambiguous(name) or country]
     people = [quote(name) for name in related_names(subject)]
     anchors = list(query_groups([*companies, *people], limit=6))
     plans = []
-    for code, edition in editions:
+    for code, edition in dict.fromkeys(editions):
         terms = keywords.adverse_search_terms(code)
         # A quoted shorter phrase already retrieves its longer literal expansions.
         # Keep every phrase in the catalog, while avoiding redundant feed requests.

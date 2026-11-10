@@ -169,3 +169,93 @@ def test_keyword_page_exposes_phrases_and_title_scope(database):
     page = client.get('/keywords')
     assert page.status_code == 200
     assert b'drug dealing' in page.data and b'company-linked titles' in page.data
+
+
+def test_reviewed_phrase_translations_reach_company_and_person_searches(database, monkeypatch):
+    from ra import translation
+    from ra.app import create_app
+    from ra.local_models import GEMMA, QWEN
+
+    keywords.seed(database)
+    keywords.seed(database)
+    rows = keywords.records()
+    phrases = keywords.active_phrases(rows)
+    assert len(phrases) == sum(map(len, keywords.PHRASES.values()))
+    assert not {p["id"] for p in phrases} & {row["id"] for row in rows}
+
+    candidates = {"falsified accounts": "contas falsificadas", "fabricated revenue": "receita inventada",
+                  "main shareholder": "acionista principal", "managing director": "diretor-geral"}
+    batch = [p for p in phrases if p["english"] in candidates]
+    monkeypatch.setattr(translation, "installed_keyword_translations", lambda terms, code: dict(candidates))
+    reviewers = []
+    def model(prompt, data, schema, *, model):
+        if "terms" in data:
+            assert model == GEMMA
+            return {"fabricated revenue": "candidate rejected again"}
+        reviewers.append(model)
+        assert "accounting fraud" in data["intended_meanings"]["falsified accounts"]
+        return {term: {"approved": term != "fabricated revenue", "reason": "", "correction": ""}
+                for term in data["translations"]}
+    monkeypatch.setattr(keywords, "model_json", model)
+    monkeypatch.setattr(keywords, "last_error", "")
+    keywords.translate_batch(batch, "pt")
+    assert reviewers[0] == QWEN
+    keywords.reload_rules()
+    plan = [q for q, edition in company_search_plan(COMPANY) if edition == "Brazil"]
+    for name in ["Acme Manufacturing", "Jane Smith", "Alex White"]:
+        assert any(f'"{name}"' in q and '"contas falsificadas"' in q for q in plan)
+    for title in ["acionista principal", "diretor-geral"]:
+        assert all('"Acme Manufacturing"' in q for q in plan if f'"{title}"' in q)
+        assert any(f'"{title}"' in q for q in plan)
+    assert not any("receita inventada" in q or "candidate rejected" in q for q in plan)
+    assert ("accounting fraud", "financial crime", "adverse") in keywords.matches("contas falsificadas", "pt-BR")
+    assert not keywords.matches("contas falsificadas", "es")
+    attempts = keywords.translation_feedback(batch, "pt", False)
+    assert not attempts["fabricated revenue"]["approved"] and attempts["main shareholder"]["approved"]
+
+    monkeypatch.setattr(keywords, "languages", lambda: ["pt"])
+    client = create_app().test_client()
+    page = client.get("/keywords").get_data(as_text=True)
+    assert "contas falsificadas" in page and "receita inventada" not in page
+    totals = client.get("/api/translations/status?factors=0").get_json()
+    assert totals["total"] == len(rows) + len(phrases)
+    assert totals["saved"] == 3 + sum("pt" in row["translations"] for row in rows)
+
+    parent = next(row for row in rows if row["english"] == "accounting fraud")
+    keywords.save(parent["id"], parent["english"], "adverse", False, parent["english"])
+    assert "contas falsificadas" not in keywords.adverse_search_terms("pt")
+    assert not keywords.matches("contas falsificadas", "pt")
+    assert not any(p["family"] == "accounting fraud" for p in keywords.active_phrases(keywords.records()))
+
+
+def test_company_phrase_search_includes_registration_and_operating_languages(monkeypatch):
+    row = dict(english="accounting fraud", enabled=True, direction="adverse", translations={},
+               phrases=[dict(english="fabricated revenue", translations={"tt": "ялган керем", "zh": "虚构收入"})])
+    monkeypatch.setattr(keywords, "_rows", [row])
+    subject = dict(COMPANY, country_registration="Russian Federation", primary_countries="China")
+    plan = adverse_searches(subject)
+    assert any(edition == "Russian Federation" and '"ялган керем"' in q and '"Jane Smith"' in q for q, edition in plan)
+    assert any(edition == "china" and '"虚构收入"' in q and '"Alex White"' in q for q, edition in plan)
+
+
+def test_worker_schedules_each_enabled_phrase_for_each_missing_language(database, monkeypatch):
+    keywords.seed(database)
+    database.execute("UPDATE monitor_keywords SET enabled = (english = 'accounting fraud')")
+    database.execute("UPDATE keyword_phrases SET translations='{\"pt\":\"contas falsificadas\"}' "
+                     "WHERE english='falsified accounts'")
+    monkeypatch.setattr(keywords, "_requested", True)
+    monkeypatch.setattr(keywords, "_running", True)
+    monkeypatch.setattr(keywords, "_progress", ("", 0))
+    monkeypatch.setattr(keywords, "last_error", "")
+    monkeypatch.setattr(keywords, "languages", lambda: ["pt", "ru"])
+    monkeypatch.setattr(risk_factors, "languages", lambda: [])
+    monkeypatch.setattr(risk_factors, "expand_queries", lambda code: None)
+    work = []
+    def collect(rows, code, *, factors):
+        assert not factors
+        work.extend((row["english"], code) for row in rows)
+    monkeypatch.setattr(keywords, "translate_batch", collect)
+    keywords._run_passes()
+    expected = {(term, code) for term in ("accounting fraud", *RELATED_PHRASES["accounting fraud"])
+                for code in ("pt", "ru")} - {("falsified accounts", "pt")}
+    assert len(work) == len(expected) and set(work) == expected

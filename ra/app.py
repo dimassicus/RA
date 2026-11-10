@@ -112,8 +112,7 @@ def create_app() -> Flask:
         return render_template("keywords.html", rows=catalog.records(), languages=catalog.languages(),
                                language_name=keywords.language_name, factors=factors, label=label,
                                options=risk_factors.SCOPES if factors else keywords.DIRECTIONS, editing=editing, draft=draft,
-                               error=keywords.last_error, risk_factor_limit=risk_factors.MAX_DESCRIPTION,
-                               related_phrases={**keywords.RELATED_PHRASES, **keywords.PERSON_TITLES})
+                               error=keywords.last_error, risk_factor_limit=risk_factors.MAX_DESCRIPTION)
 
     @app.get("/api/translations/status")
     def translation_status():
@@ -121,6 +120,8 @@ def create_app() -> Flask:
         catalog = risk_factors if request.args.get("factors") == "1" else keywords
         codes = catalog.languages()
         rows = [row for row in catalog.records() if row["enabled"]]
+        if catalog is keywords:
+            rows.extend(keywords.active_phrases(rows))
         saved = sum(code in row["translations"] for row in rows for code in codes)
         total = len(rows) * len(codes)
         return jsonify(**keywords.translation_status(), saved=saved, total=total,
