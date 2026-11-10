@@ -105,6 +105,34 @@ def test_historical_cutoff_excludes_selected_date_and_default_stays_rolling(monk
     assert client.post("/search/all", data=form | {"cutoff_date": "2026-10-12", "window_start": "2026-10-05T00:00:00+03:00"}).status_code == 400
 
 
+def test_inclusive_end_date_keeps_selected_day_and_caps_today_at_launch(monkeypatch):
+    from zoneinfo import ZoneInfo
+    from ra import app, worker
+    now = datetime(2026, 11, 10, 15, 30, tzinfo=ZoneInfo("Europe/Moscow"))
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz)
+    monkeypatch.setattr(app, "datetime", Clock)
+    calls = []
+    monkeypatch.setattr(db, "list_companies", lambda active: [{"id": 1, "name": "Company"}])
+    monkeypatch.setattr(db, "create_run", lambda scope, subjects, **window: calls.append(window) or 10)
+    monkeypatch.setattr(worker, "enqueue", lambda run_id: None)
+    client = create_app().test_client()
+    with client.session_transaction() as session:
+        session["csrf_token"] = "token"
+    form = {"csrf_token": "token", "end_date": "2026-11-10"}
+    assert client.post("/search/all", data=form).status_code == 302
+    assert calls[-1] == {"window_start": now.replace(day=4, hour=0, minute=0), "window_end": now}
+    assert client.post("/search/all", data=form | {"end_date": "2026-11-04"}).status_code == 302
+    assert calls[-1] == {"window_start": now.replace(month=10, day=29, hour=0, minute=0),
+                         "window_end": now.replace(day=4, hour=23, minute=59, second=59, microsecond=999999)}
+    for extra in ({"end_date": "2026-11-11"}, {"end_date": "bad"},
+                  {"cutoff_date": "2026-11-10"}, {"window_end": now.isoformat()}):
+        assert client.post("/search/all", data=form | extra).status_code == 400
+    assert len(calls) == 2
+
+
 @pytest.mark.parametrize("path", ["/keywords", "/risk-factors"])
 def test_settings_render_languages_without_babel_locales(monkeypatch, path):
     from ra import keywords, risk_factors

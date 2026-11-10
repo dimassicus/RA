@@ -75,6 +75,7 @@ def create_app() -> Flask:
             archived=db.list_companies(False), runs=db.list_runs(), intake=db.list_intake(),
             model_coverage=model_store.coverage([company["country_registration"] for company in companies]),
             news_api_providers=news_apis.configured_providers(),
+            search_today=datetime.now(WEEK_TIMEZONE).date().isoformat(),
             reviewer=headline_review.readiness(),
         )
 
@@ -365,6 +366,16 @@ def create_app() -> Flask:
         try:
             window = {key: datetime.fromisoformat(request.form[key]) if request.form.get(key) else None
                       for key in ("window_start", "window_end")}
+            if request.form.get("end_date"):
+                if any(window.values()) or request.form.get("cutoff_date"):
+                    raise ValueError("Choose an inclusive end date or another date range, not both.")
+                now = datetime.now(WEEK_TIMEZONE)
+                selected = date.fromisoformat(request.form["end_date"])
+                if selected > now.date():
+                    raise ValueError("Search end date cannot be in the future.")
+                end_day = datetime.combine(selected, datetime.min.time(), WEEK_TIMEZONE)
+                window = {"window_start": end_day - timedelta(days=6),
+                          "window_end": min(end_day + timedelta(days=1) - timedelta(microseconds=1), now)}
             if request.form.get("cutoff_date"):
                 if any(window.values()):
                     raise ValueError("Choose a cutoff date or explicit timestamps, not both.")
