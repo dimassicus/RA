@@ -389,3 +389,12 @@ def test_exposure_excludes_sport_and_culture_even_when_risk_factor_matches():
     for scope, topic in (("country", "brazil"), ("sector", "fertilizer")):
         hits = search_topic(scope, topic, fetcher=lambda _: feed, factor=("New restrictions", "restrictions"))
         assert [item["url"] for item, channel in hits] == ["https://x.test/r"]
+
+
+def test_heringer_custom_range_queries_each_requested_year():
+    years = []
+    def fetcher(url, payload):
+        years.append(payload['year'])
+        return {'success': True, 'data': {'document_metas': []}}
+    assert heringer_official_notices(fetcher=fetcher, year=2026, start_year=2023) == []
+    assert years == [2026, 2025, 2024, 2023]

@@ -369,9 +369,11 @@ def create_run(scope: str, subjects: list[dict], *, window_start=None, window_en
     if window_start is not None or window_end is not None:
         if (not isinstance(window_start, datetime) or not isinstance(window_end, datetime)
                 or window_start.tzinfo is None or window_end.tzinfo is None
-                or not timedelta(0) < window_end - window_start <= timedelta(days=7)
+                or window_end <= window_start
                 or window_end > datetime.now(timezone.utc)):
-            raise ValueError("Choose a past publication window of up to seven days, with timezone offsets.")
+            raise ValueError("Choose an ordered, past publication window with timezone offsets.")
+        if window_end - window_start > timedelta(days=7) and not (scope in ("selected", "one_off") and len(subjects) == 1):
+            raise ValueError("Date ranges longer than seven days require a single-company search.")
     settings = search_settings.read()
     with connect() as conn:
         return conn.execute(

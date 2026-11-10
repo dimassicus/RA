@@ -291,10 +291,10 @@ def fca_warning_list(subject: dict, fetcher=fetch_feed) -> list[dict]:
     return matches
 
 
-def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None) -> list[dict]:
+def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None, *, start_year: int | None = None) -> list[dict]:
     current_year = year or datetime.now(timezone.utc).year
     articles = []
-    for filing_year in (current_year, current_year - 1):
+    for filing_year in range(current_year, (start_year if start_year is not None else current_year - 1) - 1, -1):
         response = fetcher(HERINGER_IR_URL, {
             "year": filing_year, "categories": [HERINGER_IR_CATEGORY],
             "language": "pt_BR", "published": True,
@@ -342,7 +342,8 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
                 articles.append(article)
     if is_heringer(subject):
         try:
-            for article in heringer_official_notices(fetcher=official_fetcher, year=window[1].year if window else None):
+            for article in heringer_official_notices(fetcher=official_fetcher, year=window[1].year if window else None,
+                                                     start_year=window[0].year if window else None):
                 seen_urls.add(article["url"])
                 articles.append(article)
         except Exception as exc:

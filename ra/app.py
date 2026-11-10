@@ -366,13 +366,15 @@ def create_app() -> Flask:
             flash(f"Workbook import failed: {exc}", "error")
         return redirect(url_for("dashboard"))
 
-    def begin_search(scope: str, subjects: list[dict]):
+    def begin_search(scope: str, subjects: list[dict], *, custom_range=False):
         reviewer = headline_review.readiness()
         if not reviewer["ready"]:
             flash(reviewer["message"], "warning")
         try:
             window = {key: datetime.fromisoformat(request.form[key]) if request.form.get(key) else None
                       for key in ("window_start", "window_end")}
+            if request.form.get("start_date") and (not custom_range or not request.form.get("end_date")):
+                raise ValueError("Choose both start and end dates for a single-company search.")
             if request.form.get("end_date"):
                 if any(window.values()) or request.form.get("cutoff_date"):
                     raise ValueError("Choose an inclusive end date or another date range, not both.")
@@ -381,13 +383,21 @@ def create_app() -> Flask:
                 if selected > now.date():
                     raise ValueError("Search end date cannot be in the future.")
                 end_day = datetime.combine(selected, datetime.min.time(), WEEK_TIMEZONE)
-                window = {"window_start": end_day - timedelta(days=6),
+                start = (datetime.combine(date.fromisoformat(request.form["start_date"]), datetime.min.time(), WEEK_TIMEZONE)
+                         if request.form.get("start_date") else end_day - timedelta(days=6))
+                if start > end_day:
+                    raise ValueError("Search start date must be on or before the end date.")
+                window = {"window_start": start,
                           "window_end": min(end_day + timedelta(days=1) - timedelta(microseconds=1), now)}
             if request.form.get("cutoff_date"):
                 if any(window.values()):
                     raise ValueError("Choose a cutoff date or explicit timestamps, not both.")
                 cutoff = datetime.combine(date.fromisoformat(request.form["cutoff_date"]), datetime.min.time(), WEEK_TIMEZONE)
                 window = {"window_start": cutoff - timedelta(days=7), "window_end": cutoff - timedelta(microseconds=1)}
+            if (not custom_range and all(window.values())
+                    and all(value.tzinfo is not None for value in window.values())
+                    and window["window_end"] - window["window_start"] > timedelta(days=7)):
+                raise ValueError("Watchlist searches cover up to seven days. Use a single-company search for a longer range.")
             run_id = db.create_run(scope, subjects, **window)
         except ValueError as exc:
             abort(400, str(exc))
@@ -414,7 +424,7 @@ def create_app() -> Flask:
         company = db.get_company(company_id)
         if not company or not company["active"]:
             abort(404)
-        return begin_search("selected", [db.company_snapshot(company)])
+        return begin_search("selected", [db.company_snapshot(company)], custom_range=True)
 
     @app.post("/search/one-off")
     def search_one_off():
@@ -423,7 +433,7 @@ def create_app() -> Flask:
         except ValueError as exc:
             flash(str(exc), "error")
             return redirect(url_for("dashboard"))
-        return begin_search("one_off", [subject])
+        return begin_search("one_off", [subject], custom_range=True)
 
     @app.get("/runs/<int:run_id>", strict_slashes=False)
     def run_detail(run_id: int):

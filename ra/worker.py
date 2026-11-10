@@ -149,7 +149,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
             publisher, index_url = source
             failures = [message for message in errors if message.startswith(publisher + ':')]
             count = sum(item.get('discovery_service') == publisher for item in articles)
-            summary = f'{count} notices collected in the seven-day window.'
+            summary = f'{count} notices collected in the selected publication window.'
             if failures:
                 summary += ' Incomplete check. ' + ' '.join(failures)
             elif search_failure:

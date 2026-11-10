@@ -34,13 +34,12 @@
     <p>Choose a saved company and run a fresh search on demand.</p>
     <form method="post" action="{{ url_for('search_selected') }}" class="select-action">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label class="sr-only" for="company_id">Company</label>
+      <label for="company_id">Company</label>
       <select id="company_id" name="company_id" required {% if not companies %}disabled{% endif %}>
         <option value="">Select a company</option>
         {% for company in companies %}<option value="{{ company.id }}">{{ company.name }} · {{ company.country_registration }}</option>{% endfor %}
       </select>
-      <label>Search end date (inclusive, optional)<input type="date" name="end_date" max="{{ search_today }}" data-search-end aria-describedby="selected-window"><small>Includes the selected date and the preceding six dates, in Moscow time. Today includes news only through launch time.</small></label>
-      <p id="selected-window" data-search-window role="status">Blank: rolling seven days ending at launch time.</p>
+      {% set range_id = 'selected' %}{% include '_search_range.html' %}
       <button class="button primary" {% if not companies %}disabled{% endif %}>Run selected search <span aria-hidden="true">↗</span></button>
     </form>
   </section>
@@ -52,6 +51,7 @@
   <form method="post" action="{{ url_for('search_one_off') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     {% set company = none %}{% include '_company_fields.html' %}
+    {% set range_id = 'one-off' %}{% include '_search_range.html' %}
     <div class="form-actions"><button class="button primary" type="submit">Search once <span aria-hidden="true">↗</span></button><button class="button secondary" type="submit" formaction="{{ url_for('add_company') }}">Research for review &amp; addition</button></div>
   </form>
 </section>

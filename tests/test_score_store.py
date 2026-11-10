@@ -1113,3 +1113,16 @@ def test_five_grade_migration_rolls_back_atomically(database, monkeypatch):
             score_store.refresh_scores()
     assert score_store.get_article(article["id"]) == before
     assert score_store.article_history(article["id"]) == history
+
+
+def test_long_single_company_windows_persist_but_watchlist_limit_remains(database):
+    company, _, _ = seed(database)
+    subjects = [db.company_snapshot(company)]
+    end = datetime.now(timezone.utc) - timedelta(days=1)
+    start = end - timedelta(days=800)
+    for scope in ('selected', 'one_off'):
+        run = db.get_run(db.create_run(scope, subjects, window_start=start, window_end=end))
+        assert (run['window_start'], run['window_end']) == (start, end)
+    for scope, selected in [('all', subjects), ('selected', subjects * 2), ('one_off', [])]:
+        with pytest.raises(ValueError, match='single-company'):
+            db.create_run(scope, selected, window_start=start, window_end=end)

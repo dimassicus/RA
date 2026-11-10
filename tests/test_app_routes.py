@@ -174,3 +174,33 @@ def test_live_translation_status_counts_only_enabled_terms_and_target_languages(
         assert (data["saved"], data["total"], data["missing"]) == (1, 4, 3)
         assert data["running"] and data["retry_requested"]
         assert data["elapsed_seconds"] == 12 and "Waiting" in data["model_activity"]
+
+
+@pytest.mark.parametrize('path', ['/search/selected', '/search/one-off'])
+def test_single_company_custom_inclusive_range(monkeypatch, path):
+    from zoneinfo import ZoneInfo
+    from ra import app, worker
+    now = datetime(2026, 11, 10, 15, 30, tzinfo=ZoneInfo('Europe/Moscow'))
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz)
+    monkeypatch.setattr(app, 'datetime', Clock)
+    monkeypatch.setattr(db, 'get_company', lambda _: dict(id=1, name='Acme', country_registration='Brazil', active=True))
+    calls = []
+    monkeypatch.setattr(db, 'create_run', lambda scope, subjects, **window: calls.append(window) or 99)
+    monkeypatch.setattr(worker, 'enqueue', lambda _: None)
+    client = create_app().test_client()
+    with client.session_transaction() as session:
+        session['csrf_token'] = 'token'
+    form = dict(csrf_token='token', company_id='1', name='Acme', country_registration='Brazil',
+                start_date='2024-01-01', end_date='2026-11-10')
+    assert client.post(path, data=form).status_code == 302
+    assert calls[-1] == dict(window_start=now.replace(year=2024, month=1, day=1, hour=0, minute=0), window_end=now)
+    assert client.post(path, data=form | {'start_date': '2026-10-04', 'end_date': '2026-10-04'}).status_code == 302
+    assert calls[-1]['window_start'] == now.replace(month=10, day=4, hour=0, minute=0)
+    assert calls[-1]['window_end'] == now.replace(month=10, day=4, hour=23, minute=59, second=59, microsecond=999999)
+    for invalid in ({'start_date': 'bad'}, {'start_date': '2026-11-11'}, {'end_date': ''},
+                    {'end_date': '2026-11-11'}, {'cutoff_date': '2026-11-10'}, {'window_start': now.isoformat()}):
+        assert client.post(path, data=form | invalid).status_code == 400
+    assert len(calls) == 2
