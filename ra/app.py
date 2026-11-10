@@ -6,6 +6,7 @@ import hmac
 import logging
 import os
 import secrets
+import pycountry
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -46,6 +47,7 @@ def form_company(form) -> dict:
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    app.jinja_env.globals["country_names"] = sorted(country.name for country in pycountry.countries)
     app.secret_key = os.environ.get("RA_SECRET_KEY") or secrets.token_hex(32)
     app.config["MAX_CONTENT_LENGTH"] = 3 * 1024 * 1024
 
