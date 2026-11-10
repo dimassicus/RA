@@ -83,6 +83,28 @@ def test_non_ascii_form_token_is_rejected_without_server_error():
         assert client.post("/companies/import", data={"csrf_token": "токен"}).status_code == 400
 
 
+def test_historical_cutoff_excludes_selected_date_and_default_stays_rolling(monkeypatch):
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+    from ra import worker
+    calls = []
+    monkeypatch.setattr(db, "list_companies", lambda active: [{"id": 1, "name": "Company"}])
+    monkeypatch.setattr(db, "create_run", lambda scope, subjects, **window: calls.append(window) or 10)
+    monkeypatch.setattr(worker, "enqueue", lambda run_id: None)
+    client = create_app().test_client()
+    with client.session_transaction() as session:
+        session["csrf_token"] = "token"
+    form = {"csrf_token": "token"}
+    assert client.post("/search/all", data=form).status_code == 302
+    assert calls[-1] == {"window_start": None, "window_end": None}
+    for cutoff in ("2026-10-12", "2026-11-09", "2026-11-10"):
+        assert client.post("/search/all", data=form | {"cutoff_date": cutoff}).status_code == 302
+        end = datetime.fromisoformat(cutoff).replace(tzinfo=ZoneInfo("Europe/Moscow"))
+        assert calls[-1] == {"window_start": end - timedelta(days=7), "window_end": end - timedelta(microseconds=1)}
+    assert client.post("/search/all", data=form | {"cutoff_date": "bad"}).status_code == 400
+    assert client.post("/search/all", data=form | {"cutoff_date": "2026-10-12", "window_start": "2026-10-05T00:00:00+03:00"}).status_code == 400
+
+
 @pytest.mark.parametrize("path", ["/keywords", "/risk-factors"])
 def test_settings_render_languages_without_babel_locales(monkeypatch, path):
     from ra import keywords, risk_factors
@@ -99,7 +121,7 @@ def test_settings_render_languages_without_babel_locales(monkeypatch, path):
         assert "Avaric" in body and "Russian" in body and "unknown" in body
         assert 'id="translation-progress"' in body
         assert "translation-progress.js" in body
-        assert ('data-character-limit="300"' in body) == (path == "/risk-factors")
+        assert ('data-character-limit="200"' in body) == (path == "/risk-factors")
 
 
 @pytest.mark.parametrize("factors", ["0", "1"])

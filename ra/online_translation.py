@@ -1,9 +1,37 @@
 """Online translation for individual public headlines and monitoring terms."""
 from functools import lru_cache
 from html import unescape
+import json
 from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+from urllib.error import URLError
 
 from .news_apis import ProviderError, fetch_json
+
+
+@lru_cache(maxsize=2048)
+def translate_public(text, source, target):
+    """Keyless public translation; never calls the paid Cloud Translation API."""
+    if not text.strip() or len(text) > 500:
+        raise ProviderError("text outside public translation request limits")
+    query = urlencode({"client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text})
+    # shortcut: this public endpoint is undocumented; fail closed if its format/access changes.
+    try:
+        with urlopen(Request("https://translate.googleapis.com/translate_a/single?" + query,
+                             headers={"User-Agent": "RA-Credit-Monitor/0.2"}), timeout=12) as response:
+            raw = response.read(65537)
+        if len(raw) > 65536:
+            raise ValueError("response too large")
+        data = json.loads(raw)
+        segments = data[0]
+        if not isinstance(segments, list) or not segments:
+            raise ValueError("missing segments")
+        result = "".join(segment[0] for segment in segments if isinstance(segment[0], str)).strip()
+        if not result or "".join(segment[1] for segment in segments) != text:
+            raise ValueError("source mismatch")
+        return result
+    except (OSError, URLError, ValueError, TypeError, IndexError, KeyError) as exc:
+        raise ProviderError("Public translation unavailable or invalid response") from exc
 
 
 @lru_cache(maxsize=2048)

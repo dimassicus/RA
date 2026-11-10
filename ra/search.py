@@ -326,6 +326,13 @@ def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None) 
 def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_json_post, *, progress=None, window=None) -> tuple[list[dict], list[str]]:
     articles, errors = [], []
     seen_urls = set()
+    from . import disclosures
+    discovered, gaps = disclosures.collect(subject, window=window)
+    for article in discovered:
+        if article["url"] not in seen_urls:
+            articles.append(article)
+            seen_urls.add(article["url"])
+    errors.extend("Disclosure coverage: " + gap for gap in gaps)
     from .governance_sources import notice_source, recent_notices
     source = notice_source(subject)
     if source:

@@ -14,7 +14,7 @@ from psycopg.types.json import Jsonb
 from . import db, online_translation
 from .news_apis import ProviderError
 from .aliases import normalized
-from .model_store import country_languages
+from .model_store import country_languages, EXCLUDED_LANGUAGES
 
 # Keep established native inflections with the English concept that owns them.
 # Replacing a concept also retires its old inflections.
@@ -60,6 +60,7 @@ GROUPS = {
 }
 SEEDS = {term: (group, pattern) for group, concepts in GROUPS.items() for term, pattern in concepts.items()}
 MEANINGS = {
+    "change of control": "A change in who controls a company through ownership or voting rights, not equipment controls.",
     "conviction": "A criminal court's finding of guilt, not a belief or confidence in an investment.",
     "explosion": "A physical explosion at a facility, not a rapid increase in prices or demand.",
     "appointment": "Appointment of a person to an executive or board position, not a meeting or medical visit.",
@@ -148,8 +149,10 @@ def seed(conn):
 
 def languages():
     from .search import LOCALES
+    from .exposure import topic_editions
     codes = set()
-    for company in db.list_companies(True):
+    companies = db.list_companies(True)
+    for company in companies:
         country = company["country_registration"]
         codes.update(country_languages(country))
         locale = LOCALES.get(normalized(country))
@@ -157,7 +160,8 @@ def languages():
             codes.add(locale[0].split("-")[0])
         if normalized(country) in ("azerbaijan", "uzbekistan"):
             codes.add("ru")
-    return sorted(codes - {"en"})
+    codes.update(LOCALES[place][0].split("-")[0] for places in topic_editions(companies).values() for place in places)
+    return sorted(codes - {"en"} - EXCLUDED_LANGUAGES)
 
 
 @lru_cache(maxsize=128)
@@ -228,34 +232,79 @@ def percentage_values(text):
                   re.findall(r"(\d+(?:[.,]\d+)?)\s*%|%\s*(\d+(?:[.,]\d+)?)", text))
 
 
-def review_translations(candidates, code, factors, meanings):
+def review_translations(candidates, code, factors, meanings, *, feedback=None, model=None):
     subject = "risk factor description" if factors else "keyword"
     constraints = " Preserve the event, direction, strict thresholds, time windows and parentheses." if factors else ""
-    return model_json(f"Verify each English {subject} and its proposed {language_name(code)} ({code}) translation. "
+    prompt = (f"Verify each English {subject} and its proposed {language_name(code)} ({code}) translation. "
                       "Accept only an accurate financial-news meaning in the target language. "
-                      "Reject explanations, unrelated text, and untranslated English unless it is a local loanword." + constraints,
-                      {"translations": candidates, "intended_meanings": meanings},
-                      object_schema({term: {"type": "boolean"} for term in candidates}))
+                      "Reject explanations, unrelated text, and untranslated English unless it is a local loanword. "
+                      "Judge semantic fidelity, not whether you prefer a different style. Reject if unsure." + constraints)
+    schema = {term: {"type": "boolean"} for term in candidates}
+    if feedback is not None:
+        prompt += (" For each phrase, give approved, a concrete error in at most 20 English words "
+                   "(empty if accurate), and a corrected target-language phrase (empty if accurate or unable).")
+        schema = {term: object_schema({"approved": {"type": "boolean"}, "reason": {"type": "string"},
+                                       "correction": {"type": "string"}}) for term in candidates}
+    result = model_json(prompt, {"translations": candidates, "intended_meanings": meanings},
+                        object_schema(schema), **({"model": model} if model else {}))
+    if feedback is None:
+        return result
+    for term, phrase in candidates.items():
+        item = result.get(term)
+        if (not isinstance(item, dict) or type(item.get("approved")) is not bool
+                or not all(isinstance(item.get(key), str) for key in ("reason", "correction"))):
+            raise ValueError("Incomplete translation review")
+        feedback[term] = dict(item, candidate=phrase)
+    return {term: feedback[term]["approved"] for term in candidates}
+
+
+def translation_feedback(rows, code, factors):
+    with db.connect() as conn:
+        attempts = conn.execute("SELECT row_id,english,review FROM translation_attempts "
+                                "WHERE factors=%s AND language=%s AND row_id=ANY(%s)",
+                                (factors, code, [row["id"] for row in rows])).fetchall()
+    current = {row["id"]: row["english"] for row in rows}
+    return {item["english"]: item["review"] for item in attempts
+            if current.get(item["row_id"]) == item["english"]}
+
+
+def record_translation_attempts(rows, code, factors, feedback):
+    with db.connect() as conn:
+        for row in rows:
+            if row["english"] in feedback:
+                conn.execute("INSERT INTO translation_attempts(factors,row_id,language,english,review) VALUES (%s,%s,%s,%s,%s) "
+                             "ON CONFLICT(factors,row_id,language) DO UPDATE SET english=EXCLUDED.english,"
+                             "review=EXCLUDED.review,updated_at=now()",
+                             (factors, row["id"], code, row["english"], Jsonb(feedback[row["english"]])))
 
 
 def translate_batch(rows, code, *, factors=False):
-    from .headline_review import GEMMA
+    from .headline_review import GEMMA, QWEN
     terms = [r["english"] for r in rows]
     from .translation import installed_keyword_translations
     language = language_name(code)
     label = "risk-factor" if factors else "keyword"
     context = f"{len(rows)} {label} translations · {language}"
     _report(f"Finding candidates for {context}")
+    feedback = translation_feedback(rows, code, factors)
     try:
         proposed = installed_keyword_translations(terms, code)
     except (RuntimeError, OSError, ValueError):
         proposed = {}
+    # A previous Gemma correction can go straight to independent Qwen review.
+    proposed.update({term: review["correction"] for term, review in feedback.items()
+                     if review.get("reviewer") == GEMMA and review.get("correction")})
+    russian = {row["english"]: row.get("translations", {}).get("ru") for row in rows}
     for term in terms:
         if not proposed.get(term):
             try:
                 proposed[term] = online_translation.translate(term, "en", code)
             except ProviderError:
-                continue  # Local generation below can still supply the missing phrase.
+                try:
+                    pivot = russian.get(term) if code in ("ba", "tt") else None
+                    proposed[term] = online_translation.translate_public(pivot or term, "ru" if pivot else "en", code)
+                except ProviderError:
+                    continue  # Local generation below can still supply the missing phrase.
     subject = "risk factor description" if factors else "keyword"
     constraints = (" Preserve the event, direction, strict thresholds, time windows and parentheses."
                    if factors else "")
@@ -263,37 +312,57 @@ def translate_batch(rows, code, *, factors=False):
     saved = 0
     table = "risk_factors" if factors else "monitor_keywords"
     meanings = {term: MEANINGS[term] for term in terms if term in MEANINGS}
-    for attempt in range(2):
+    for attempt in range(3):
+        reviewer = QWEN
         needed = [term for term in terms if term not in accepted and (attempt or not proposed.get(term))]
-        if needed:
+        if attempt == 2:
+            # Reviewer corrections require the other model's independent approval.
+            proposed.update({term: feedback.get(term, {}).get("correction", "") for term in needed})
+            reviewer = GEMMA
+        elif needed:
             _report(f"Generating {len(needed)} {label} translations · {language}")
             prompt = (f"Translate each English credit-monitoring {subject} into {language} ({code}). "
                       "Use natural financial-news wording. Return an empty string if uncertain." + constraints)
             data = needed
-            if attempt:
-                prompt += " The previous wording failed review. Supply a more precise idiomatic equivalent."
-                data = {term: proposed.get(term, "") for term in needed}
+            if attempt or feedback:
+                prompt += " Correct the specific review errors; do not repeat rejected wording."
+                data = {term: {"previous": proposed.get(term, ""), "review": feedback.get(term, {})} for term in needed}
             proposed.update(model_json(prompt, {"terms": data, "intended_meanings": meanings},
                                        object_schema({term: {"type": "string"} for term in needed}), model=GEMMA))
         candidates = {term: proposed[term].strip() for term in terms if term not in accepted
                       and isinstance(proposed.get(term), str) and 0 < len(proposed[term].strip()) <= (500 if factors else 120)
                       and (not factors or not percentage_values(term) or percentage_values(term) == percentage_values(proposed[term]))}
+        for term in terms:
+            if term not in accepted and term not in candidates:
+                feedback[term] = {"approved": False, "candidate": proposed.get(term, ""), "correction": "",
+                                  "reason": "Supply nonempty target-language wording within the length limit, preserving every percentage exactly."}
+        record_translation_attempts(rows, code, factors, feedback)
         if candidates:
             _report(f"Checking {len(candidates)} {label} translations · {language}")
-            checked = review_translations(candidates, code, factors, meanings)
+            checked = review_translations(candidates, code, factors, meanings, feedback=feedback, model=reviewer)
+            for term in candidates:
+                feedback[term]["reviewer"] = reviewer
+            record_translation_attempts(rows, code, factors, feedback)
             approved = {term: phrase for term, phrase in candidates.items() if checked.get(term) is True}
             # Commit approved wording before a later generation/review can time out.
             with db.connect() as conn:
                 for row in rows:
                     term = row["english"]
                     if term in approved:
-                        result = conn.execute(f"UPDATE {table} SET translations=translations || %s WHERE id=%s AND english=%s "
+                        result = conn.execute(f"UPDATE {table} SET translations=translations || %s WHERE id=%s AND english=%s AND enabled "
                                               "AND NOT (translations ? %s)", (Jsonb({code: approved[term]}), row["id"], term, code))
                         saved += result.rowcount
             accepted.update(approved)
         if len(accepted) == len(terms):
             break
     _report(f"Saved {saved} of {context}")
+    if len(accepted) < len(terms):
+        global last_error
+        example = next((feedback.get(term, {}).get("reason") for term in terms
+                        if term not in accepted and feedback.get(term, {}).get("reason")), "No independently approved candidate.")
+        last_error = f"{language}: {len(terms) - len(accepted)} {label} translations still unapproved. {example[:250]}"
+        logging.getLogger(__name__).warning("translation_unresolved %s %s", code,
+            json.dumps({term: feedback.get(term, {}) for term in terms if term not in accepted}, ensure_ascii=False))
 
 
 _sync_lock = threading.Lock()
@@ -328,6 +397,18 @@ def schedule():
 
 
 def _work():
+    global _running, last_error
+    try:
+        _run_passes()
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Translation worker stopped")
+        with _sync_lock:
+            _running = False
+            last_error = f"Translation worker stopped ({type(exc).__name__}). Retry missing translations to resume."
+        _report(last_error)
+
+
+def _run_passes():
     global _requested, _running, last_error
     while True:
         with _sync_lock:

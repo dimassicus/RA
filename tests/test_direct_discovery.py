@@ -39,7 +39,7 @@ def test_company_discovery_finds_primary_notices_without_google_results(monkeypa
     monkeypatch.setattr(search.news_apis, 'configured_providers', lambda: [])
     monkeypatch.setattr(search, 'company_search_plan', lambda _: [('company', 'Turkey')])
     articles, errors = search.search_company(subject, fetcher=fetch, window=bounds)
-    assert not errors
+    assert len(errors) == 1 and "requires a saved company" in errors[0]
     assert any(a['url'].endswith(expected) for a in articles)
     assert all(a['source_kind'] == 'official' and a['language'] == 'tr' for a in articles)
     assert all(bounds[0] <= a['published_at'] <= bounds[1] for a in articles)

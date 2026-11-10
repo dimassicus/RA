@@ -492,4 +492,5 @@ def get_errors(run_id: int):
 
 
 def company_snapshot(company: dict):
-    return {field: company.get(field, "") for field in FIELDS} | {"id": company.get("id")}
+    return {field: company.get(field, "") for field in FIELDS} | {
+        "id": company.get("id"), "disclosure_sources": company.get("disclosure_sources", {})}

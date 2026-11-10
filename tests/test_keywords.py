@@ -5,6 +5,24 @@ from ra.relevance import classify
 from ra.scoring import score_article
 
 
+@pytest.fixture(autouse=True)
+def isolated_translation_audits(monkeypatch):
+    monkeypatch.setattr(keywords, "translation_feedback", lambda *args: {})
+    monkeypatch.setattr(keywords, "record_translation_attempts", lambda *args: None)
+    def offline(*args):
+        raise keywords.ProviderError("Offline test")
+    monkeypatch.setattr(keywords.online_translation, "translate_public", offline)
+
+
+def test_both_catalogs_share_languages_and_follow_new_operating_countries(monkeypatch):
+    from ra import risk_factors
+    companies = [{"country_registration": "Russian Federation", "primary_countries": "Argentina; China"}]
+    monkeypatch.setattr(keywords.db, "list_companies", lambda active: companies)
+    assert keywords.languages() == risk_factors.languages() == ["ba", "es", "ru", "tt", "zh"]
+    companies.append({"country_registration": "Japan"})
+    assert keywords.languages() == risk_factors.languages() == ["ba", "es", "ja", "ru", "tt", "zh"]
+
+
 def test_translation_retry_keeps_one_worker_and_exposes_pending_pass(monkeypatch):
     started = []
     class Thread:
@@ -22,6 +40,18 @@ def test_translation_retry_keeps_one_worker_and_exposes_pending_pass(monkeypatch
     assert len(started) == 1
     assert status["running"] and status["retry_requested"]
     assert status["message"] == "Translation pass queued."
+
+
+def test_unexpected_worker_failure_does_not_leave_running_status_stuck(monkeypatch):
+    monkeypatch.setattr(keywords, "_running", True)
+    monkeypatch.setattr(keywords, "last_error", "")
+    monkeypatch.setattr(keywords, "_progress", ("Idle", 0))
+    def failed():
+        raise RuntimeError("Reload failed")
+    monkeypatch.setattr(keywords, "_run_passes", failed)
+    keywords._work()
+    assert not keywords.translation_status()["running"]
+    assert "RuntimeError" in keywords.last_error
 
 
 def test_batch_timeout_does_not_skip_other_languages_or_keywords(monkeypatch):
@@ -99,7 +129,11 @@ def test_approved_translations_survive_a_later_retry_timeout(monkeypatch):
             return type("Result", (), {"rowcount": 1})()
     monkeypatch.setattr(keywords.db, "connect", Connection)
     monkeypatch.setattr(translation, "installed_keyword_translations", lambda terms, code: {"First": "Первый", "Second": "Второй"})
-    monkeypatch.setattr(keywords, "review_translations", lambda *args: {"First": True, "Second": False})
+    def review(*args, feedback, **kwargs):
+        feedback.update({term: {"approved": approved, "reason": "", "correction": ""}
+                         for term, approved in {"First": True, "Second": False}.items()})
+        return {"First": True, "Second": False}
+    monkeypatch.setattr(keywords, "review_translations", review)
     def timeout(*args, **kwargs): raise TimeoutError("retry timed out")
     monkeypatch.setattr(keywords, "model_json", timeout)
     monkeypatch.setattr(keywords, "_progress", ("Idle", 0))
@@ -126,7 +160,8 @@ def test_ambiguous_keyword_meanings_reach_generator_and_reviewer(monkeypatch):
         calls.append(data)
         assert "court" in data["intended_meanings"]["conviction"]
         assert "physical explosion" in data["intended_meanings"]["explosion"]
-        return {"conviction": "putusan bersalah", "explosion": "ledakan"} if "terms" in data else {"conviction": True, "explosion": True}
+        return ({"conviction": "putusan bersalah", "explosion": "ledakan"} if "terms" in data else
+                {term: {"approved": True, "reason": "", "correction": ""} for term in data["translations"]})
     monkeypatch.setattr(keywords.db, "connect", Connection)
     monkeypatch.setattr(translation, "installed_keyword_translations", lambda *args: {})
     monkeypatch.setattr(keywords.online_translation, "translate", unavailable)
@@ -134,6 +169,67 @@ def test_ambiguous_keyword_meanings_reach_generator_and_reviewer(monkeypatch):
     monkeypatch.setattr(keywords, "_progress", ("Idle", 0))
     keywords.translate_batch([{"id": 1, "english": "conviction"}, {"id": 2, "english": "explosion"}], "id")
     assert len(calls) == 2 and len(writes) == 2
+
+
+@pytest.mark.parametrize("cached_correction", [True, False])
+def test_saved_correction_or_russian_pivot_gets_independent_review(monkeypatch, cached_correction):
+    from ra import translation
+    from ra.local_models import GEMMA, QWEN
+    writes, public_calls = [], []
+    class Connection:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, sql, params):
+            writes.append(params)
+            return type("Result", (), {"rowcount": 1})()
+    monkeypatch.setattr(keywords.db, "connect", Connection)
+    monkeypatch.setattr(translation, "installed_keyword_translations", lambda *args: {})
+    monkeypatch.setattr(keywords, "translation_feedback", lambda *args:
+        {"conviction": {"reviewer": GEMMA, "correction": "candidate"}} if cached_correction else {})
+    def unavailable(*args):
+        raise keywords.ProviderError("Unavailable")
+    monkeypatch.setattr(keywords.online_translation, "translate", unavailable)
+    def public(*args):
+        public_calls.append(args)
+        return "candidate"
+    monkeypatch.setattr(keywords.online_translation, "translate_public", public)
+    def model(prompt, data, schema, *, model):
+        assert model == QWEN
+        assert data["translations"] == {"conviction": "candidate"}
+        return {"conviction": {"approved": True, "reason": "", "correction": ""}}
+    monkeypatch.setattr(keywords, "model_json", model)
+    keywords.translate_batch([{"id": 18, "english": "conviction", "translations": {"ru": "осуждение"}}], "tt")
+    assert public_calls == ([] if cached_correction else [("осуждение", "ru", "tt")])
+    assert len(writes) == 1 and writes[0][0].obj == {"tt": "candidate"}
+
+
+def test_rejection_feedback_reaches_retry_and_correction_has_independent_review(monkeypatch):
+    from ra import translation
+    from ra.local_models import GEMMA, QWEN
+    writes, reviews = [], []
+    class Connection:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, sql, params):
+            writes.append(params)
+            return type("Result", (), {"rowcount": 1})()
+    monkeypatch.setattr(keywords.db, "connect", Connection)
+    monkeypatch.setattr(translation, "installed_keyword_translations", lambda *args: {"conviction": "belief"})
+    def model(prompt, data, schema, *, model):
+        if "terms" in data:
+            assert model == GEMMA
+            assert data["terms"]["conviction"]["review"]["reason"] == "Wrong sense: belief, not criminal verdict"
+            return {"conviction": "belief again"}
+        reviews.append(model)
+        if model == GEMMA:
+            assert data["translations"] == {"conviction": "criminal verdict"}
+        return {"conviction": {"approved": model == GEMMA,
+                "reason": "Wrong sense: belief, not criminal verdict", "correction": "criminal verdict"}}
+    monkeypatch.setattr(keywords, "model_json", model)
+    keywords.translate_batch([{"id": 18, "english": "conviction"}], "tt")
+    assert reviews == [QWEN, QWEN, GEMMA]
+    assert len(writes) == 1
+    assert writes[0][0].obj == {"tt": "criminal verdict"}
 
 
 @pytest.mark.parametrize('valid_later_quote', [True, False])

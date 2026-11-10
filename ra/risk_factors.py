@@ -11,7 +11,7 @@ from psycopg.types.json import Jsonb
 from . import db, keywords
 
 SCOPES = ("company", "sector", "country")
-MAX_DESCRIPTION = 300
+MAX_DESCRIPTION = 200
 MANAGEMENT = "Changes in top management"
 OWNERSHIP = "Significant changes in major shareholdings or control"
 # Bump when the thematic prompt, schema or evidence validation changes.
@@ -38,11 +38,7 @@ def seed(conn):
 
 
 def languages():
-    from .exposure import topic_editions
-    from .search import LOCALES
-    editions = topic_editions(db.list_companies(True))
-    edition_codes = {LOCALES[place][0].split("-")[0] for places in editions.values() for place in places}
-    return sorted((set(keywords.languages()) | edition_codes) - {"en"})
+    return keywords.languages()
 
 
 def records():

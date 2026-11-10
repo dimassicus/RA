@@ -49,10 +49,12 @@ def test_company_report_windows_ranking_and_sparse_history():
     assert "company 0 to 2" in report["comparisons"][0][1] and "moved +2" in report["comparisons"][0][1]
     assert "No archived" in report["comparisons"][1][1]
     assert dict(periods(now))["1 month ago"].day == 29
+    assert report["ratings"][0][1] == "2024-04-01"
     book = load_workbook(company_xlsx(report))
     assert book["Sources"].max_row == 4 and book["Sources"]["J2"].hyperlink.target.startswith("https://")
     text = " ".join(p.extract_text() for p in PdfReader(company_pdf(report)).pages)
     assert "Company Alpha" in text and "No snapshot" in text and "12 months ago" in text
+    assert "Cutoff" in text and "preceding seven days" in text
 
 
 def test_filing_dates_respect_issuer_cutoff_revisions_and_export_links():

@@ -20,7 +20,11 @@ from ra.scoring import week_start
 
 @pytest.fixture
 def database(monkeypatch):
-    from ra import headline_review
+    from ra import disclosures, headline_review, online_translation
+    monkeypatch.setattr(disclosures, "schedule", lambda *args, **kwargs: None)
+    def offline_translation(*args):
+        raise online_translation.ProviderError("Offline test")
+    monkeypatch.setattr(online_translation, "translate_public", offline_translation)
     monkeypatch.setattr(headline_review, "readiness", lambda: {"ready": False, "message": "Offline test"})
     url = os.environ.get("RA_TEST_DATABASE_URL")
     if not url:
@@ -628,9 +632,10 @@ def test_keyword_edit_translate_and_disable_in_review(database, monkeypatch):
     def model(prompt, data, schema, **kwargs):
         if "english" in schema["properties"]:
             return {"english": True}
-        if schema["properties"][term]["type"] == "boolean":
-            assert not kwargs
-            return {term: data["translations"][term] == "violação de cláusula"}
+        if "translations" in data:
+            from ra.headline_review import QWEN
+            assert kwargs == {"model": QWEN}
+            return {term: {"approved": data["translations"][term] == "violação de cláusula", "reason": "Wrong sense", "correction": "violação de cláusula"}}
         from ra.headline_review import GEMMA
         assert kwargs == {"model": GEMMA}
         return {term: "violação de cláusula" if isinstance(data["terms"], dict) else "unrelated wording"}
@@ -715,8 +720,9 @@ def test_risk_factor_editing_translation_and_retry(database, monkeypatch):
         if "english" in schema["properties"]:
             return {"english": True}
         if "translations" in data:
-            assert not kwargs
-            return {text: data["translations"][text] == good}
+            from ra.headline_review import QWEN
+            assert kwargs == {"model": QWEN}
+            return {text: {"approved": data["translations"][text] == good, "reason": "", "correction": ""}}
         from ra.headline_review import GEMMA
         assert kwargs == {"model": GEMMA}
         return {text:good}
@@ -760,12 +766,12 @@ def test_risk_descriptions_reject_overlength_without_clipping(database, monkeypa
         session["csrf_token"] = "token"
     Fields().feed(client.get("/risk-factors").text)
     assert len(inputs) == 2
-    assert all(field.get("pattern") == ".{3,300}" and field.get("data-character-limit") == "300" and "maxlength" not in field for field in inputs)
-    text = "Negative trends in related sectors " * 10
+    assert all(field.get("pattern") == ".{3,200}" and field.get("data-character-limit") == "200" and "maxlength" not in field for field in inputs)
+    text = "A" * 201
     form = dict(csrf_token="token", english=text, scope="sector", enabled="yes")
     for edit in ({}, dict(id=row["id"], previous=row["english"])):
         response = client.post("/risk-factors", data=form | edit, follow_redirects=True)
-        assert "up to 300 characters" in response.text
+        assert "up to 200 characters" in response.text
         assert risk_factors.records() == [row]
     complete = ("Changes to taxation legislation, customs tariffs or regulations (domestic or by major trading partners), "
                 "other related domestic or international legislation and/or regulation that affects the company")
@@ -774,6 +780,9 @@ def test_risk_descriptions_reject_overlength_without_clipping(database, monkeypa
     response = client.post("/risk-factors", data=form | dict(id=row["id"], previous=row["english"], english=complete))
     assert response.status_code == 302
     assert risk_factors.records()[0]["english"] == complete
+    response = client.post("/risk-factors", data=form | dict(id=row["id"], previous=complete, english=complete + "."))
+    assert response.status_code == 302
+    assert len(risk_factors.records()[0]["english"]) == 200
 
 
 def test_edit_one_risk_translation_from_list(database, monkeypatch):
@@ -806,7 +815,7 @@ def test_edit_one_risk_translation_from_list(database, monkeypatch):
     assert "Translation saved" in submit()
     assert "factor or translation changed" in submit()
     monkeypatch.setattr(translation, "installed_keyword_translations", lambda terms, code: {english: original})
-    monkeypatch.setattr(keywords, "model_json", lambda *args: {english: True})
+    monkeypatch.setattr(keywords, "model_json", lambda *args, **kwargs: {english: {"approved": True, "reason": "", "correction": ""}})
     keywords.translate_batch([row], "pt", factors=True)
     saved, = risk_factors.records()
     assert saved["translations"] == {"pt": corrected, "el": "old Greek"} and saved["search_cues"] == {"el": ["Greek cue"]}
@@ -954,6 +963,31 @@ def test_historical_run_route_validates_and_preserves_window_on_retry(database, 
     assert retry.status_code == 302
     repeated = db.get_run(int(retry.location.rsplit('/',1)[1]))
     assert (repeated["window_start"],repeated["window_end"]) == (start,end)
+
+
+def test_weekly_cutoff_labels_do_not_move_or_rewrite_reviewed_articles(database):
+    company, _, article = seed(database)
+    published = datetime(2026, 10, 13, 12, tzinfo=timezone.utc)
+    database.execute("UPDATE search_results SET published_at=%s WHERE id=%s", (published, article["id"]))
+    score_store.review_score(article["id"], -1, True, "Preserved analyst decision")
+    before = database.execute("SELECT * FROM search_results WHERE id=%s", (article["id"],)).fetchone()
+    client = create_app().test_client()
+    body = client.get('/scores').text
+    assert 'cutoff 2026-10-19' in body
+    detail = client.get(f'/scores/{company["id"]}/2026-10-12').text
+    assert "Cutoff 19 Oct 2026" in detail and "13 Oct 2026" in detail
+    assert "Preserved analyst decision" in detail
+    assert database.execute("SELECT * FROM search_results WHERE id=%s", (article["id"],)).fetchone() == before
+
+
+def test_translation_feedback_is_saved_and_not_reused_for_changed_english(database):
+    from ra import keywords
+    row = database.execute("INSERT INTO monitor_keywords(english,direction) VALUES ('default','adverse') RETURNING *").fetchone()
+    feedback = {"default": {"approved": False, "reason": "Wrong financial sense", "correction": "", "candidate": "settings"}}
+    keywords.record_translation_attempts([row], 'es', False, feedback)
+    assert keywords.translation_feedback([row], 'es', False) == feedback
+    assert keywords.translation_feedback([dict(row, english='bankruptcy')], 'es', False) == {}
+    assert database.execute("SELECT translations FROM monitor_keywords WHERE id=%s", (row['id'],)).fetchone()['translations'] == {}
 
 
 def test_report_translation_audit_releases_connection_before_inference(database, monkeypatch):

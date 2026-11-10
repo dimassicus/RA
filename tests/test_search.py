@@ -209,7 +209,7 @@ def test_fca_rss_is_used_for_uk_presence_and_only_keeps_name_matches_on_fca_doma
 
     assert has_uk_presence(subject)
     articles, errors = search_company(subject, fetcher=fetcher)
-    assert errors == []
+    assert len(errors) == 1 and "requires a saved company" in errors[0]
     assert calls.count(FCA_WARNINGS_RSS_URL) == 1
     assert len(articles) == 1
     assert articles[0]["source_kind"] == "official"

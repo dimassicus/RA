@@ -20,6 +20,7 @@ def test_multilingual_countries_expand_expected_model_list():
     assert {"kk", "ru"} <= set(country_languages("Kazakhstan"))
     assert {"de", "fr", "it"} <= set(country_languages("Switzerland"))
     assert "tr" in country_languages("Turkey")
+    assert set(country_languages("Russian Federation")) == {"ru", "ba", "tt"}
 
 
 def test_concurrent_detection_does_not_use_partially_initialized_profiles(monkeypatch):

@@ -107,7 +107,7 @@ def build_report(run, subject, articles, history, errors, previous_runs=None):
     ratings = []
     for label, point in periods(end):
         metrics = history.get(label)
-        ratings.append((label, week_start(point).isoformat(), metrics))
+        ratings.append((label, (week_start(point) + timedelta(days=7)).isoformat(), metrics))
     current = history.get("Current")
     comparisons = []
     for label in ("1 week ago", "1 month ago", "12 months ago"):

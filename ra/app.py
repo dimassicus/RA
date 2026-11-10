@@ -13,7 +13,7 @@ from pathlib import Path
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from psycopg.errors import UniqueViolation
 
-from . import db, governance_roster, keywords, risk_factors, intake_worker, model_store, news_apis, preliminary, worker
+from . import db, disclosures, governance_roster, keywords, risk_factors, intake_worker, model_store, news_apis, preliminary, worker
 from .importer import stage_workbook
 from .exposure import topic_links
 from .company_report import load_report
@@ -24,7 +24,7 @@ from .search import company_search_plan
 from .reports import make_pdf, make_xlsx
 from .relevance import classify_results
 from . import score_store, verification_store, headline_review
-from .scoring import LABELS, RUBRIC, MATERIALITY, VERSION, week_start
+from .scoring import LABELS, RUBRIC, MATERIALITY, VERSION, WEEK_TIMEZONE, week_start
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,6 +48,7 @@ def form_company(form) -> dict:
 def create_app() -> Flask:
     app = Flask(__name__)
     app.jinja_env.globals["country_names"] = sorted(country.name for country in pycountry.countries)
+    app.jinja_env.filters["week_cutoff"] = lambda start: start + timedelta(days=7)
     app.secret_key = os.environ.get("RA_SECRET_KEY") or secrets.token_hex(32)
     app.config["MAX_CONTENT_LENGTH"] = 3 * 1024 * 1024
 
@@ -203,6 +204,7 @@ def create_app() -> Flask:
         return jsonify({"timezone": "Europe/Moscow", "week_starts": "Monday", "version": VERSION,
                         "weeks": [{"company_id": r["company_id"], "company_name": r["name"],
                                    "week_start": r["week_start"].isoformat(), **r["metrics"],
+                                   "cutoff_date": (r["week_start"] + timedelta(days=7)).isoformat(),
                                    "updated_at": r["updated_at"].isoformat()} for r in rows]})
 
     @app.get("/scores/<int:company_id>/<start>")
@@ -305,6 +307,7 @@ def create_app() -> Flask:
             if other and other["id"] != company_id:
                 raise ValueError("Another record already has this name and registration country")
             db.save_company(data, company_id)
+            disclosures.schedule(company_id)
             keywords.schedule()
             model_store.schedule_countries([data["country_registration"]])
             flash("Company details saved.", "success")
@@ -320,11 +323,20 @@ def create_app() -> Flask:
         flash("Company removed from the active watchlist. Its search history was kept.", "success")
         return redirect(url_for("dashboard"))
 
+    @app.post("/companies/<int:company_id>/disclosures")
+    def discover_disclosures(company_id):
+        if not db.get_company(company_id):
+            abort(404)
+        disclosures.schedule(company_id, force=True)
+        flash("Disclosure discovery queued. Saved news searches and scores remain unchanged.", "success")
+        return redirect(url_for("dashboard"))
+
     @app.post("/companies/<int:company_id>/restore")
     def restore_company(company_id: int):
         if not db.set_active(company_id, True):
             abort(404)
         keywords.schedule()
+        disclosures.schedule(company_id)
         flash("Company restored to the active watchlist.", "success")
         return redirect(url_for("dashboard"))
 
@@ -353,6 +365,11 @@ def create_app() -> Flask:
         try:
             window = {key: datetime.fromisoformat(request.form[key]) if request.form.get(key) else None
                       for key in ("window_start", "window_end")}
+            if request.form.get("cutoff_date"):
+                if any(window.values()):
+                    raise ValueError("Choose a cutoff date or explicit timestamps, not both.")
+                cutoff = datetime.combine(date.fromisoformat(request.form["cutoff_date"]), datetime.min.time(), WEEK_TIMEZONE)
+                window = {"window_start": cutoff - timedelta(days=7), "window_end": cutoff - timedelta(microseconds=1)}
             run_id = db.create_run(scope, subjects, **window)
         except ValueError as exc:
             abort(400, str(exc))
@@ -559,6 +576,7 @@ def create_app() -> Flask:
                 raise ValueError("Double-check the legal name, country, registration number and tax ID, then tick the review box")
             data = form_company(request.form)
             company_id, updated = db.confirm_intake(intake_id, data)
+            disclosures.schedule(company_id)
             keywords.schedule()
             model_store.schedule_countries([data["country_registration"]])
             flash(f"{'Updated' if updated else 'Added'} {data['name']} after review. It is now available for searches.", "success")
@@ -594,6 +612,7 @@ def main():
     intake_worker.start()
     worker.start_worker()
     verification_store.start()
+    disclosures.schedule()
     model_store.schedule_countries([company["country_registration"] for company in db.list_companies(True)])
     app = create_app()
     port = int(os.environ.get("RA_PORT", "8765"))

@@ -28,6 +28,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS companies_registration_idx
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS short_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS legal_address TEXT NOT NULL DEFAULT '';
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS tax_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS disclosure_sources JSONB NOT NULL DEFAULT '{}'::jsonb;
 CREATE UNIQUE INDEX IF NOT EXISTS companies_tax_id_idx
     ON companies (lower(country_registration), tax_id)
     WHERE tax_id <> '';
@@ -130,6 +131,16 @@ CREATE TABLE IF NOT EXISTS news_api_usage (
     usage_date DATE NOT NULL,
     request_count INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (provider, usage_date)
+);
+
+CREATE TABLE IF NOT EXISTS translation_attempts (
+    factors BOOLEAN NOT NULL,
+    row_id BIGINT NOT NULL,
+    language TEXT NOT NULL,
+    english TEXT NOT NULL,
+    review JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (factors, row_id, language)
 );
 
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score SMALLINT CONSTRAINT search_results_score_five_grades CHECK (score BETWEEN -2 AND 2);

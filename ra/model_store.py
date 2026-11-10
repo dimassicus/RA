@@ -21,6 +21,7 @@ CACHE = ROOT / ".local" / "cache" / "argos-index.json"
 INDEX_URL = "https://raw.githubusercontent.com/argosopentech/argospm-index/main/index.json"
 MAX_ARCHIVE_BYTES = 200_000_000
 MAX_EXTRACTED_BYTES = 500_000_000
+EXCLUDED_LANGUAGES = {"av", "ce"}  # Explicit watchlist-language exclusions; retain saved translations.
 _lock = threading.RLock()
 _backfill_lock = threading.Lock()
 _recent_failures: dict[str, float] = {}
@@ -178,7 +179,7 @@ def country_languages(country: str) -> list[str]:
             languages.append(code)
         if len(languages) >= 5:
             break
-    return languages
+    return [code for code in languages if code not in EXCLUDED_LANGUAGES]
 
 
 def schedule_countries(countries: list[str]) -> None:
