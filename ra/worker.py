@@ -110,11 +110,9 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
                 article["title"], language, subject["name"], article["publisher"]
             )
             candidate = {**article, "language": language, "title_en": title_en, "publisher_en": article["publisher"]}
-            if (not settings["adverse_only"] and not settings["include_country"] and not settings["include_industry"]
+            if (not settings["include_country"] and not settings["include_industry"]
                     and not search_settings.company_lead(candidate, subject)
                     and not company_developments.review_topics(candidate, subject)):
-                continue
-            if settings["adverse_only"] and not search_settings.adverse_lead(candidate, subject):
                 continue
             publisher_en = article["publisher"]
             seen_before = conn.execute(
@@ -150,7 +148,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
     settings = search_settings.for_run(run)
     with db.connect() as conn:
         conn.execute(
-            "UPDATE search_runs SET status = 'running', started_at = COALESCE(started_at, now()), "
+            "UPDATE search_runs SET status = 'running', event_analysis_status = 'waiting_sources', started_at = COALESCE(started_at, now()), "
             "completed_companies = 0, result_count = 0, candidates_in_window = 0, monthly_backfill = '{}', error_count = 0, retry_translations = TRUE WHERE id = %s", (run_id,)
         )
         conn.execute("DELETE FROM search_results WHERE run_id = %s", (run_id,))
@@ -266,3 +264,5 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
     refresh_scores(run_id)
     from .verification_store import enqueue_run
     enqueue_run(run_id, limit_per_company=None)
+    with db.connect() as conn:
+        conn.execute("UPDATE search_runs SET event_analysis_status='pending' WHERE id=%s", (run_id,))

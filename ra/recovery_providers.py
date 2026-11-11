@@ -146,13 +146,19 @@ def read_publisher(url, hint, original_error, page_dates=()):
                 raise PermissionError('Publisher access gate detected')
             if not isinstance(text, str) or len(text) > MAX_TEXT:
                 raise ValueError('unusable text')
+            from .article_content import ranked_links
+            article = re.split(r'(?im)^#{1,6}\s+(?:related|latest news|recommended|more news)\b', text, maxsplit=1)[0]
+            anchors = re.findall(r'(?<!!)\[([^]\n]+)\]\(([^\s)]+)\)', article)
+            links = ranked_links([(href, label) for label, href in anchors], url)
             # Omit linked cards, headings, embedded images and short interface labels.
             lines = [line.strip() for line in text.splitlines() if len(line.split()) >= 8 and
                      not line.lstrip().startswith(('#','* ','- ','!','|')) and '](http' not in line]
             body = '\n'.join(lines)
             if len(body) < 200 or len(body.split()) < 30:
-                raise ValueError('insufficient publisher paragraphs')
-            return body, provider + ' publisher text (analyst review)'
+                if not links:
+                    raise ValueError('insufficient publisher paragraphs')
+                body = ''
+            return body, provider + ' publisher text (analyst review)', links
         except PermissionError:
             raise ValueError(f'{provider}: publisher access gate detected') from None
         except (ValueError, OSError, http.client.HTTPException) as exc:

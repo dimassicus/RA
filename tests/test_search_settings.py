@@ -78,6 +78,10 @@ def test_every_search_route_snapshots_current_global_settings(database, monkeypa
         session['csrf_token'] = 'token'
     form = dict(csrf_token='token', company_id=company['id'], name='One off', country_registration='Brazil')
     response = client.post('/search/' + scope.replace('_', '-'), data=form)
+    if scope == 'one_off':
+        assert response.status_code == 410
+        assert queued == []
+        return
     assert response.status_code == 302
     new = db.get_run(queued[0])
     assert new['search_settings'] == settings
@@ -116,7 +120,7 @@ def test_worker_settings_cover_branches_sources_and_retained_counts(database, mo
                        roster_check=lambda *args: None)
     assert set(called) == ({'country'} if country else set()) | ({'sector'} if industry else set())
     results = db.get_results(run_id)
-    assert len(results) == (4 if adverse else 12) + int(country) + int(industry)
+    assert len(results) == 12 + int(country) + int(industry)
     assert db.get_run(run_id)['result_count'] == len(results)
     assert database.execute('SELECT count(*) AS n FROM verification_jobs').fetchone()['n'] == len(results)
     if not country:
@@ -151,15 +155,14 @@ def test_source_checks_assess_only_enabled_scopes(database, monkeypatch, country
     assert {r['scope'] for r in seen} == {'company'} | ({'country'} if country else set()) | ({'sector'} if industry else set())
 
 
-def test_adverse_only_excludes_source_confirmed_positive_but_preserves_analyst_decision(database, monkeypatch):
+def test_adverse_view_retains_positive_source_and_analyst_decision(database, monkeypatch):
     search_settings.save(search_settings.DEFAULTS | {'adverse_only': True})
     _, run_id, article = seed(database)
     monkeypatch.setattr(risk_factors, 'records', lambda: [])
     verification_store.verify_article(article['id'], fetcher=lambda url: dict(status='available', language='en',
         body='Acme Manufacturing returns to profit.', sha256='recovery', final_url=url, method='test'))
     saved = score_store.get_article(article['id'])
-    assert saved['score'] == 2 and not saved['score_included']
-    assert 'adverse-only' in saved['score_reason']
-    score_store.review_score(article['id'], 2, True, 'Analyst confirms recovery despite misleading headline')
+    assert saved['score'] == 1 and saved['score_included']
+    score_store.review_score(article['id'], 1, True, 'Analyst confirms recovery despite misleading headline')
     assert score_store.refresh_scores(run_id)['articles_updated'] == 0
     assert score_store.get_article(article['id'])['score_included']

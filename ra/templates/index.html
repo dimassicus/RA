@@ -3,7 +3,7 @@
 <section class="hero">
   <p class="eyebrow">Research workspace</p>
   <h1>Company watchlist</h1>
-  <p>Search the full portfolio, select one saved company, or research a new company without adding it to the watchlist.</p>
+  <p>Search the watchlist or choose one active company. Add new companies through identity review first.</p>
   <div class="hero-stats"><span><strong>{{ companies|length }}</strong> active companies</span><span><strong>{{ runs|length }}</strong> recent runs</span></div>
 </section>
 
@@ -46,13 +46,12 @@
 </div>
 
 <section class="panel form-panel" id="new-company">
-  <div class="section-heading"><div><span class="step">03 · New company</span><h2>Research a company or add it to the watchlist</h2></div><span class="pill">Name + country required</span></div>
-  <p>One-time search keeps the input with its run. Adding a company starts preliminary identity research and requires your review before it is saved.</p>
-  <form method="post" action="{{ url_for('search_one_off') }}">
+  <div class="section-heading"><div><span class="step">03 · New company</span><h2>Add a company to the watchlist</h2></div><span class="pill">Name + country required</span></div>
+  <p>Review the company’s identity before saving it. Once active, it is available for individual searches.</p>
+  <form method="post" action="{{ url_for('add_company') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     {% set company = none %}{% include '_company_fields.html' %}
-    {% set range_id = 'one-off' %}{% include '_search_range.html' %}
-    <div class="form-actions"><button class="button primary" type="submit">Search once <span aria-hidden="true">↗</span></button><button class="button secondary" type="submit" formaction="{{ url_for('add_company') }}">Research for review &amp; addition</button></div>
+    <div class="form-actions"><button class="button primary" type="submit">Research for review &amp; addition</button></div>
   </form>
 </section>
 

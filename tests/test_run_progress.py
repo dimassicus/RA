@@ -9,6 +9,7 @@ from flask import render_template
 import pytest
 
 from ra.app import create_app
+from ra.scoring import LABELS
 
 
 def run_page(status="completed", theme_status="inconclusive"):
@@ -29,7 +30,7 @@ def run_page(status="completed", theme_status="inconclusive"):
     with create_app().test_request_context("/runs/15?view=all"):
         html = render_template("run.html", run=run, verification_jobs=checks,
                                reviewer={"message": "Ready"}, search_progress=None,
-                               results=[article], errors=[], view="all", counts={}, all_count=2,
+                               score_labels=LABELS, results=[article], errors=[], view="all", counts={}, all_count=2,
                                selected_count=0, hidden_selected=[], rosters=[], exposure_checks=[])
     return html, checks
 

@@ -21,7 +21,7 @@ def test_selected_export_preserves_bilingual_text_and_uses_real_utc():
     }
     book = load_workbook(make_xlsx(run, [lead], [], selected=True), read_only=True)
     assert book["Summary"]["B4"].value == "2026-10-31 14:29 UTC"
-    assert "Article score (-2 to +2)" in [cell.value for cell in book["Selected leads"][1]]
+    assert "Article sentiment (-1 to +1)" in [cell.value for cell in book["Selected leads"][1]]
     row = [cell.value for cell in book["Selected leads"][2]]
     assert row[0] == "2026-10-30"
     assert row[5:7] == ["Fato Relevante", "Material Fact"]
@@ -35,8 +35,8 @@ def test_company_report_windows_ranking_and_sparse_history():
     now = datetime(2024, 3, 31, 13, tzinfo=timezone.utc)
     run = {"id": 1, "created_at": now, "status": "completed"}
     company = {"name": "Company Alpha", "country_registration": "Brazil", "primary_industries": "Fertilizers"}
-    base = {"title": "Company Alpha resumes production", "published_at": now, "publisher": "Example",
-            "language": "en", "score": 2, "score_included": True, "event_group": "one", "verification": {"status": "supported"}}
+    base = {"title": "Company Alpha suspends production", "published_at": now, "publisher": "Example",
+            "language": "en", "score": -1, "score_included": True, "event_group": "one", "verification": {"status": "supported"}}
     articles = [{**base, "id": i, "url": f"https://example.test/{i}", **extra} for i, extra in enumerate([
         {}, {}, {"published_at": now-timedelta(days=7)}, {"published_at": now+timedelta(seconds=1)},
         {"published_at": None}, {"title": "Brazil raises tariffs on fertilizer", "score_included": False, "score": None,

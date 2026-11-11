@@ -21,7 +21,7 @@ INK, TEAL, MUTED, PALE = "18373B", "096B67", "496368", "EAF3F1"
 BRANCHES = {"Company": "Company news", "Sector": "Sector news", "Country / region": "Country and region news"}
 RATINGS = ("Period", "Cutoff", "Score", "Search coverage", "Scored events")
 COVERAGE = ("Branch", "Relevant sources", "Impact supported", "Awaiting check")
-BASIS = ("Scores range from −2 (strong negative) to +2 (strong positive). Monday cutoffs cover the preceding seven days in Moscow. "
+BASIS = ("Scores range from −1 (negative) to +1 (positive). Monday cutoffs cover the preceding seven days in Moscow. "
          "Earlier ratings use the snapshot available at the comparison time; legacy scales are labelled. A dash means no rating.")
 FLOW_NOTE = "Counts reflect coverage accumulated in each publication week. The current week may still be in progress."
 
@@ -29,7 +29,7 @@ FLOW_NOTE = "Counts reflect coverage accumulated in each publication week. The c
 def rating_basis(report):
     if report['run'].get('window_end'):
         return ("Retrospective assessment using evidence and reviews available at export time, not knowledge available then. "
-                "Scores range from −2 to +2. Monday cutoffs cover the preceding seven days in Moscow. Legacy snapshots retain their labelled original scale. A dash means no rating.")
+                "Scores range from −1 to +1. Monday cutoffs cover the preceding seven days in Moscow. Legacy snapshots retain their labelled original scale. A dash means no rating.")
     return BASIS
 
 

@@ -154,8 +154,8 @@ CREATE TABLE IF NOT EXISTS translation_attempts (
     PRIMARY KEY (factors, row_id, language)
 );
 
-ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score SMALLINT CONSTRAINT search_results_score_five_grades CHECK (score BETWEEN -2 AND 2);
-ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_auto SMALLINT CONSTRAINT search_results_score_auto_five_grades CHECK (score_auto BETWEEN -2 AND 2);
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score SMALLINT CONSTRAINT search_results_score_three_grades CHECK (score BETWEEN -1 AND 1);
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_auto SMALLINT CONSTRAINT search_results_score_auto_three_grades CHECK (score_auto BETWEEN -1 AND 1);
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_reason TEXT NOT NULL DEFAULT '';
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_evidence JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS score_status TEXT NOT NULL DEFAULT 'pending'
@@ -179,8 +179,8 @@ CREATE TABLE IF NOT EXISTS article_score_history (
 CREATE TABLE IF NOT EXISTS company_weekly_scores (
     company_id BIGINT NOT NULL REFERENCES companies(id),
     week_start DATE NOT NULL,
-    score SMALLINT CONSTRAINT company_weekly_scores_score_five_grades CHECK (score BETWEEN -2 AND 2),
-    mean_score NUMERIC(4,2) CONSTRAINT company_weekly_scores_mean_score_five_grades CHECK (mean_score BETWEEN -2 AND 2),
+    score SMALLINT CONSTRAINT company_weekly_scores_score_three_grades CHECK (score BETWEEN -1 AND 1),
+    mean_score NUMERIC(4,2) CONSTRAINT company_weekly_scores_mean_score_three_grades CHECK (mean_score BETWEEN -1 AND 1),
     metrics JSONB NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (company_id, week_start)
@@ -284,3 +284,7 @@ CREATE TABLE IF NOT EXISTS risk_factors (
 CREATE UNIQUE INDEX IF NOT EXISTS risk_factors_english_idx ON risk_factors (lower(english));
 ALTER TABLE risk_factors ADD COLUMN IF NOT EXISTS search_cues jsonb NOT NULL DEFAULT '{}';
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS risk_factor_review jsonb NOT NULL DEFAULT '{}';
+
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS event_draft JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS event_analysis_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS selection_saved BOOLEAN NOT NULL DEFAULT FALSE;

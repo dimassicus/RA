@@ -9,7 +9,7 @@ from .aliases import LEGAL_SUFFIX, company_names, headline_identity, related_ide
 from .adverse_terms import PERSON_TITLES
 from .relevance import case_context
 from .article_content import validate_pdf_text
-from .scoring import COMPILED, UNCERTAIN, NEGATION
+from .scoring import COMPILED, UNCERTAIN, NEGATION, sentiment_assessment
 from . import article_translation
 
 VERSION = 'source-attribution-v5'
@@ -51,6 +51,10 @@ def declared_hibernation(sentence, names):
 
 
 def verify(document, subject, article):
+    return sentiment_assessment(_verify(document, subject, article))
+
+
+def _verify(document, subject, article):
     result = {'version': VERSION, 'status': 'needs_review', 'reason': '', 'evidence': [],
               'document_hash': document.get('sha256', ''), 'source_url': document.get('final_url', article['url']),
               'recovery': document.get('recovery',''), 'method': document.get('method', ''), 'language': document.get('language', '')}

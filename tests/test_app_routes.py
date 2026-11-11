@@ -35,7 +35,7 @@ def test_risk_view_hides_noise_and_preserves_other_view_selections(monkeypatch):
            "created_at": now, "subjects": [{"name": "Acme Manufacturing"}]}
     common = {"subject_name": "Acme Manufacturing", "source_kind": "news", "published_at": now,
               "url": "https://example.test/news", "publisher": "News", "publisher_en": "News",
-              "language": "en", "title_en": "", "translation_provider": "", "seen_before": False, "verification": {"status": "supported"}, "score": -2,
+              "language": "en", "title_en": "", "translation_provider": "", "seen_before": False, "verification": {"status": "supported"}, "score": -1,
               "score_included": True, "score_status": "provisional", "score_reason": "Source-supported bankruptcy", "event_group": "event:1"}
     results = [{**common, "id": 1, "title": "Acme Manufacturing faces bankruptcy", "report_selected": False},
                {**common, "id": 2, "title": "National team wins cup", "report_selected": True, "verification": {"status":"unmatched", "reason":"Company not in source"}, "score_included":False}]
@@ -195,6 +195,10 @@ def test_single_company_custom_inclusive_range(monkeypatch, path):
         session['csrf_token'] = 'token'
     form = dict(csrf_token='token', company_id='1', name='Acme', country_registration='Brazil',
                 start_date='2024-01-01', end_date='2026-11-10')
+    if path == "/search/one-off":
+        assert client.post(path, data=form).status_code == 410
+        assert not calls
+        return
     assert client.post(path, data=form).status_code == 302
     assert calls[-1] == dict(window_start=now.replace(year=2024, month=1, day=1, hour=0, minute=0), window_end=now)
     assert client.post(path, data=form | {'start_date': '2026-10-04', 'end_date': '2026-10-04'}).status_code == 302

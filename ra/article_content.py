@@ -20,7 +20,7 @@ from html.parser import HTMLParser
 from io import BytesIO
 from urllib.parse import urljoin, urlsplit, urlunsplit, parse_qsl, urlencode
 
-READER_VERSION = "public-source-v7"
+READER_VERSION = "public-source-v8"
 MAX_BYTES = 2_000_000
 MAX_TEXT = 100_000
 
@@ -101,6 +101,8 @@ class ArticleHTML(HTMLParser):
         self.article_count = 0
         self.page_titles = []
         self.page_dates = []
+        self.links = []
+        self.anchor = None
 
     def handle_starttag(self, tag, attrs):
         attrs = {key: value or '' for key, value in attrs}
@@ -111,7 +113,9 @@ class ArticleHTML(HTMLParser):
             self.page_dates.append(attrs.get('content', ''))
         parent = self.stack[-1][1:] if self.stack else (False, False)
         in_article, blocked = parent
-        marked = attrs.get('itemprop') == 'articleBody'
+        marked = (attrs.get('itemprop') == 'articleBody' or
+                  bool({'entry-content', 'post-content', 'elementor-widget-theme-post-content'} &
+                       set(attrs.get('class', '').split())))
         if not blocked and ((self.explicit_only and marked) or
                 (not self.explicit_only and tag == 'article' and not any(row[0]=='article' for row in self.stack))):
             self.article_count += 1
@@ -119,6 +123,9 @@ class ArticleHTML(HTMLParser):
         blocked = blocked or tag in ('nav', 'aside', 'footer', 'header', 'script', 'style', 'form', 'noscript', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6') or bool(
             re.search(r'\b(?:related|recommend|recommended|comment|comments|share|newsletter|advert|menu)\b',
                       attrs.get('class', '') + ' ' + attrs.get('id', ''), re.I))
+        if in_article and not blocked and tag == 'a' and attrs.get('href'):
+            self.anchor = [attrs['href'], attrs.get('title', '')]
+            self.links.append(self.anchor)
         if tag == 'script' and attrs.get('type') == 'application/ld+json':
             self.script = []
         if tag not in ('meta', 'link', 'img', 'br', 'hr', 'input', 'source', 'wbr'):
@@ -127,6 +134,8 @@ class ArticleHTML(HTMLParser):
             self.parts.append('\n')
 
     def handle_endtag(self, tag):
+        if tag == 'a':
+            self.anchor = None
         if tag == 'script' and self.script is not None:
             try:
                 self.structured.append(json.loads(''.join(self.script)))
@@ -141,6 +150,8 @@ class ArticleHTML(HTMLParser):
                 break
 
     def handle_data(self, data):
+        if self.anchor is not None:
+            self.anchor[1] += data
         if self.script is not None:
             self.script.append(data)
         if self.stack and self.stack[-1][1] and not self.stack[-1][2]:
@@ -173,6 +184,54 @@ def parse_html(raw, content_type):
         if isinstance(item.get('headline'), str):
             parser.page_titles.append(item['headline'])
     return parser, text
+
+
+def evidence_links(parsed, parent):
+    parser, html = parsed
+    primary = ArticleHTML(explicit_only=True)
+    primary.feed(html)
+    if primary.article_count == 1:
+        parser = primary
+    elif parser.article_count > 1:
+        return []
+    return ranked_links(parser.links, parent)
+
+
+def ranked_links(anchors, parent):
+    links = {}
+    for href, label in anchors:
+        try:
+            url = canonical_url(urljoin(parent, href))
+            target = urlsplit(url)
+            if target.scheme != 'https' or not target.hostname or target.username or target.password or target.port not in (None, 443):
+                continue
+        except ValueError:
+            continue
+        pdf = target.path.lower().endswith('.pdf')
+        if url != canonical_url(parent) and (pdf or re.search(
+                r'\b(?:full (?:text|report|statement|article)|filing|disclosure|source|download|here|document|attachment)\b',
+                label, re.I)):
+            links[url] = 0 if pdf else 1
+    return sorted(links, key=links.get)[:3]
+
+
+def linked_documents(links):
+    children = []
+    for link in links:
+        try:
+            raw, mime, location = fetch_bytes(link)
+            body, method = extract(raw, mime)
+            children.append(source_document(body, method, location))
+        except (OSError, ValueError, http.client.HTTPException):
+            children.append({'status': 'unavailable', 'final_url': link, 'reason': 'Linked source could not be read'})
+    return children
+
+
+def source_document(body, method, url):
+    from .language import detect_language
+    return {'status': 'available', 'body': body, 'final_url': canonical_url(url),
+            'language': detect_language(body[:4000]), 'method': method,
+            'sha256': hashlib.sha256(body.encode()).hexdigest(), 'reason': ''}
 
 
 def validate_pdf_text(body):
@@ -217,7 +276,11 @@ def kap_disclosure_html(page, index):
 def extract(raw, content_type, parsed=None):
     if raw.startswith(b'%PDF-') or 'application/pdf' in content_type:
         from pypdf import PdfReader
-        reader = PdfReader(BytesIO(raw))
+        from pypdf.errors import PdfReadError
+        try:
+            reader = PdfReader(BytesIO(raw))
+        except PdfReadError as exc:
+            raise ValueError('Unreadable PDF document') from exc
         if reader.is_encrypted or len(reader.pages) > 30:
             raise ValueError('Encrypted PDF or document over 30 pages; analyst reading required')
         body = '\n\n'.join(page.extract_text() or '' for page in reader.pages)
@@ -332,24 +395,41 @@ def _retrieve(url, hint=None):
                 raise ValueError('Issuer disclosure attachment is not a PDF')
             destination, parsed = final_url, None
             route = (route + '; ' if route else '') + 'issuer disclosure PDF'
+        parent_error = None
         try:
             if not raw and not content_type:
                 raise TimeoutError('Publisher timed out')
             body, method = extract(raw, content_type, parsed)
         except (ValueError, TimeoutError) as exc:
             recoverable = isinstance(exc, TimeoutError) or str(exc).startswith(('Too little article text', 'Multiple articles'))
-            if not recoverable or not all(hint.get(k) for k in ('title', 'publisher', 'published_at')):
+            if not recoverable:
                 raise
+            parent_error = exc
+        links = evidence_links(parsed, final_url) if parsed else []
+        children = linked_documents(links)
+        if parent_error and not any(c['status'] == 'available' for c in children):
+            exc = parent_error
+            if not all(hint.get(k) for k in ('title', 'publisher', 'published_at')):
+                raise exc
             if page.page_dates and not all(providers.matches_date(d, hint) for d in page.page_dates):
                 raise ValueError('Publisher page does not confirm the publication date')
             if page.page_titles and not any(providers.matches_title(t, hint) for t in page.page_titles):
                 raise ValueError('Publisher page does not confirm the original headline')
-            body, method = providers.read_publisher(destination, hint, exc, page.page_dates)
+            body, method, reader_links = providers.read_publisher(destination, hint, exc, page.page_dates)
+            remaining = [link for link in reader_links if link not in links][:3 - len(links)]
+            children.extend(linked_documents(remaining))
+            if not body and not any(c['status'] == 'available' for c in children):
+                raise exc
             review_only = True
-        from .language import detect_language
-        return {'status': 'available', 'body': body, 'final_url': canonical_url(final_url),
-                'language': detect_language(body[:4000]), 'review_only': review_only, 'method': method, 'recovery':route,
-                'sha256': hashlib.sha256(body.encode()).hexdigest(), 'reason': ''}
+            parent_error = None if body else exc
+        if parent_error:
+            doc = next(c for c in children if c['status'] == 'available')
+            children.remove(doc)
+            review_only = False  # The linked document was fetched directly.
+            route = (route + '; ' if route else '') + 'linked evidence'
+        else:
+            doc = source_document(body, method, final_url)
+        return {**doc, 'review_only': review_only, 'recovery': route, 'linked_documents': children}
     except (socket.timeout, TimeoutError):
         reason = 'Publisher or search endpoint timed out'
     except socket.gaierror:

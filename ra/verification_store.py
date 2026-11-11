@@ -49,7 +49,7 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
         lifetime = timedelta(days=7) if cached and cached['document']['status'] == 'available' else timedelta(hours=24)
         hint = {"title": article["title"], "publisher": article["publisher"],
                 "published_at": article["published_at"].isoformat() if article["published_at"] else ""}
-        upgrade = (READER_VERSION == 'public-source-v7' and cached
+        upgrade = (cached
                    and cached['document'].get('reader_version') in ('public-source-v4', 'public-source-v5', 'public-source-v6')
                    and cached['document']['status'] == 'available'
                    and urlsplit(url).hostname not in ('kap.org.tr', 'www.kap.org.tr')
@@ -91,6 +91,9 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
                              'DO UPDATE SET document=EXCLUDED.document,fetched_at=now()', (url, Jsonb(document)))
         next_stage("translation_review")
         prepared = article_translation.prepare(document)
+        if document.get('linked_documents'):
+            prepared = {**prepared, 'linked_documents': [article_translation.prepare(child)
+                                                         for child in document['linked_documents']]}
         if prepared != document:
             with db.connect() as conn:
                 conn.execute('UPDATE article_documents SET document=%s WHERE url=%s AND document=%s',
@@ -98,7 +101,15 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
         document = prepared
         next_stage("attribution")
         subject = subject_for(article, run)
-        assessment = verify(document, subject, article)
+        checked_docs = [(doc, verify(doc, subject, article)) for doc in
+                        [document, *document.get('linked_documents', [])]]
+        supported = [(doc, check) for doc, check in checked_docs if check['status'] == 'supported']
+        document, assessment = (supported or checked_docs)[0]
+        if len(checked_docs) > 1:
+            assessment['sources'] = [{'url': check['source_url'], 'status': check['status'],
+                                      'reason': check['reason'], 'hash': check['document_hash']} for _, check in checked_docs]
+            if len({check['score'] for _, check in supported}) > 1:
+                assessment.update(status='needs_review', reason='Publisher and linked evidence disagree on direction')
         next_stage("themes")
         settings = search_settings.for_run(run)
         themes = risk_factors.cached_assess(article, document, subject, [r for r in risk_factors.records()
@@ -224,10 +235,12 @@ def details(result_id):
                                (article['event_group'],)).fetchall()
         checked = article['verification'] or {}
         source = conn.execute(
-            "SELECT document FROM article_documents WHERE url=%s AND document->>'sha256'=%s",
-            (checked.get('requested_url'), checked.get('document_hash'))
+            "SELECT document FROM article_documents WHERE url=%s",
+            (checked.get('requested_url'),)
         ).fetchone() if checked.get('document_hash') else None
         document = source['document'] if source else {}
+        document = next((d for d in [document, *document.get('linked_documents', [])]
+                         if d.get('sha256') == checked.get('document_hash')), {})
         return {'recovered_body': document.get('body', '') if document.get('review_only') else '',
                 'body_translation': document.get('translation', {}),
                 'verification_history': conn.execute('SELECT * FROM article_verification_history WHERE result_id=%s ORDER BY id DESC',

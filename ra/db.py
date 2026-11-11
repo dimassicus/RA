@@ -447,7 +447,8 @@ def get_results(run_id: int):
         return [scope_sector_paths(row, subjects.get(row["subject_key"], {})) for row in rows]
 
 
-def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, tuple[str, str]] | None = None) -> int:
+def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, tuple[str, str]] | None = None,
+                         scores: dict[int, int] | None = None, *, save_all=False) -> int:
     """Review translations without DB locks, then save the selection atomically."""
     from . import headline_review, score_store
     with connect() as conn:
@@ -457,7 +458,9 @@ def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, 
         current = {row["id"]: row for row in conn.execute(
             "SELECT id, title, language, title_en, publisher_en FROM search_results WHERE run_id = %s", (run_id,)
         )}
-    if not set(selected_ids) <= current.keys():
+    if save_all:
+        selected_ids = list(current)
+    if (set(selected_ids) | set(scores or {})) - current.keys():
         raise ValueError("A selected lead does not belong to this run")
     for result_id, (title_en, publisher_en) in (edits or {}).items():
         if result_id not in current:
@@ -490,10 +493,18 @@ def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, 
                 "translation_provider = 'analyst edited' WHERE id = %s",
                 (changed, Jsonb(qa), title_en, publisher_en, result_id),
             )
-        return conn.execute(
-            "UPDATE search_results SET report_selected = (id = ANY(%s)) WHERE run_id = %s",
-            (selected_ids, run_id),
-        ).rowcount
+        score_store._assess(conn, run_id)
+        for rid, value in (scores or {}).items():
+            article = conn.execute("SELECT * FROM search_results WHERE id=%s AND run_id=%s FOR UPDATE", (rid, run_id)).fetchone()
+            dated = article["published_at"] and article["published_at"] <= datetime.now(timezone.utc)
+            supported = not article["exposure_paths"] or article["verification"].get("status") == "supported"
+            score_store._review(conn, article, value, bool(dated and supported),
+                                "Analyst confirmed article sentiment on the run report")
+        conn.execute("UPDATE search_results SET report_selected=(id=ANY(%s)) WHERE run_id=%s", (selected_ids, run_id))
+        conn.execute("UPDATE search_runs SET selection_saved=TRUE WHERE id=%s", (run_id,))
+        score_store._weekly(conn)
+        return len(set(selected_ids))
+
 
 
 def get_errors(run_id: int):

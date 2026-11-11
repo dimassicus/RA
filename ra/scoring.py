@@ -16,33 +16,17 @@ from zoneinfo import ZoneInfo
 from .relevance import headline
 from .aliases import headline_identity, normalized
 
-VERSION = "source-credit-v6"
+VERSION = "company-event-v1"
 WEEK_TIMEZONE = ZoneInfo("Europe/Moscow")
-LABELS = {-2: "Strong negative", -1: "Limited negative", 0: "Neutral",
-          1: "Limited positive", 2: "Strong positive"}
+LABELS = {-1: "Negative", 0: "Neutral", 1: "Positive"}
 RUBRIC = {
-    -2: "Material deterioration in debt repayment capacity, funding access or operating continuity. "
-        "Examples: payment default, insolvency, restructuring, serious liquidity stress, a credit downgrade, "
-        "major shutdown or legal action with material financial consequences.",
-    -1: "An evidenced adverse change with limited impact on the company's credit position, without an "
-        "established material threat to repayment or operations. Examples: weaker earnings, losses, "
-        "limited layoffs or a management departure with contained disruption.",
-    0: "Reviewed evidence establishes no net directional credit impact. Examples: routine payments on "
-       "existing terms, administrative updates or balanced effects. Missing or uncertain evidence is not neutral; "
-       "exclude it from the weekly score pending review.",
-    1: "An evidenced favourable change with limited impact on the company's credit position, without an "
-       "established material improvement in repayment capacity or funding. Examples: ordinary earnings or "
-       "contract growth, reduced losses or an evidenced expansion step whose benefits remain unproven.",
-    2: "Material improvement in debt repayment capacity, funding access or operating continuity. "
-       "Examples: a credit upgrade, secured refinancing that resolves funding pressure, a return to profit, "
-       "restored material operations, completed bankruptcy exit or cure of a payment default.",
+    -1: "Evidence of adverse company impact, including losses, payment stress, or disruption.",
+    0: "No directional impact established. An unchecked lead is not confirmed neutral evidence.",
+    1: "Evidence of improvement, such as recovery, stronger earnings, or improved funding.",
 }
-MATERIALITY = ("Positive means improved credit capacity; negative means deterioration. Strong versus limited "
-               "depends on the evidenced size, duration and financial consequences relative to this company. "
-               "There is no universal percentage threshold. Explain the source, event timing and credit impact "
-               "in the review reason. Plans, targets and rumours alone do not establish a strong improvement. "
-               "Automatic event rules propose a grade; analyst review can correct its materiality. "
-               "Unsupported attribution, timing or direction stays excluded, not neutral.")
+MATERIALITY = ("Assess the size, duration and financial consequences for the named company. "
+               "There is no universal percentage threshold. Positive leads are archived. "
+               "Only selected, eligible evidence can contribute to weekly company events.")
 
 # Longest overlapping phrase wins: 'emerges from bankruptcy' must not also
 # become a bankruptcy event. Independent events retain separate evidence.
@@ -63,18 +47,18 @@ UNCERTAIN = re.compile(r"\b(?:denies?|denied|alleged|rumou?r\w*|may|might|could|
 NEGATION = re.compile(r"\b(?:not|no|avoids?|averts?|avoided|averted)\b")
 
 
-def five_grade_score(value):
-    """Map only the two retired grades; leave missing values unchanged."""
-    return {-3: -2, 3: 2}.get(value, value)
+def sentiment(value):
+    """Preserve direction and missing values across historical scales."""
+    return None if value is None else (value > 0) - (value < 0)
 
 
-def five_grade_assessment(assessment):
+def sentiment_assessment(assessment):
     """Return current-scale source evidence without altering an archived assessment."""
     result = dict(assessment)
     if "score" in result:
-        result["score"] = five_grade_score(result["score"])
+        result["score"] = sentiment(result["score"])
     if "evidence" in result:
-        result["evidence"] = [dict(item, score=five_grade_score(item["score"]))
+        result["evidence"] = [dict(item, score=sentiment(item["score"]))
                               for item in result["evidence"]]
     return result
 
@@ -89,6 +73,7 @@ def week_start(value: datetime) -> object:
 def input_hash(article: dict, subject: dict, now: datetime | None = None) -> str:
     values = {key: article.get(key) for key in
               ("title", "title_en", "publisher", "publisher_en", "language", "published_at", "source_kind", "discovery_service", "verification")}
+    values["draft_sentiment"] = (article.get("event_draft") or {}).get("sentiment")
     values["subject"] = subject
     published = article.get("published_at")
     if published and published.tzinfo is None:
@@ -139,12 +124,15 @@ def score_article(article: dict, subject: dict, now: datetime | None = None) -> 
             result["score_reason"] += "; mixed directions, strongest magnitude used (negative wins ties)"
     if problem:
         result.update(score_included=False, score_status="needs_review", score_reason=problem)
-    verification = five_grade_assessment(article.get("verification") or {})
+    verification = sentiment_assessment(article.get("verification") or {})
     if verification.get("status") == "supported":
         result.update(score=verification["score"], score_auto=verification["score"],
                       score_evidence=verification["evidence"], score_status="provisional",
                       score_included=True, score_reason=verification["reason"])
     else:
+        direction = (article.get("event_draft") or {}).get("sentiment")
+        if direction in (-1, 0, 1):
+            result.update(score=direction, score_auto=direction, score_reason="AI source triage; not verified")
         result.update(score_included=False, score_status="needs_review",
                       score_reason=result["score_reason"] + "; " + verification.get("reason", "Full-article verification pending"))
     published = article.get("published_at")
@@ -153,56 +141,57 @@ def score_article(article: dict, subject: dict, now: datetime | None = None) -> 
     if not published or published > now:
         result.update(score_included=False, score_status="needs_review",
                       score_reason=result["score_reason"] + "; missing or future publication date")
-    return result
+    return sentiment_assessment(dict(result, score_auto=sentiment(result["score_auto"]),
+                                     score_evidence=sentiment_assessment({"evidence": result["score_evidence"]})["evidence"]))
 
 
 def aggregate_week(articles: list[dict]) -> dict:
-    """One contribution per event group; reviewed copy takes precedence."""
-    unique = {}
-    for article in articles:
-        key = article.get("event_group") or article["url"]
-        reviewed = article.get("score_status") == "reviewed"
-        rank = (reviewed, bool(article.get("score_included")) if not reviewed else False,
-                article.get("score_updated_at") or article["created_at"], article["id"])
-        if key not in unique or rank > unique[key][0]:
-            unique[key] = (rank, article)
-    records = [item[1] for item in unique.values()]
-    # Conflicting automatic assessments must not silently choose a direction.
-    conflicts = {key for key, (_, representative) in unique.items()
-                 if representative.get("score_status") != "reviewed" and len({
-                     a.get("score") for a in articles
-                     if (a.get("event_group") or a["url"]) == key and a.get("score_included")}) > 1}
-    included = [a for a in records if a.get("score_included") and a.get("score") is not None
-                and (a.get("event_group") or a["url"]) not in conflicts]
-    duplicate_ids = sorted(a["id"] for a in articles if a["id"] not in {r["id"] for r in records})
-    values = [a["score"] for a in included]
-    mean = (Decimal(sum(values)) / len(values)) if values else None
+    """Aggregate eligible event scores, retaining source IDs for audit and drill-down."""
+    from .events import event_assessment
+    by_event = defaultdict(list)
+    for row in articles:
+        by_event[row.get("event_group") or row["url"]].append(row)
+    contributions, groups, included, excluded, duplicates = [], [], [], [], []
+    for key, members in sorted(by_event.items()):
+        result = event_assessment(members, saved=True)
+        first = min(result["sources"] or members, key=lambda a: a["id"])
+        ids = sorted(a["id"] for a in members)
+        groups.append({"id": key, "representative_id": first["id"], "article_ids": ids})
+        duplicates.extend(result["duplicate_ids"])
+        used = {a["id"] for a in result["sources"]}
+        excluded.extend(i for i in ids if i not in used and i not in result["duplicate_ids"])
+        included.extend(used)
+        if result["score"] is not None:
+            draft = first.get("event_draft") or {}
+            contributions.append({"id": first["id"], "event_group": key, "url": first["url"],
+                "title": draft.get("title") or first.get("title_en") or first["title"],
+                "score": result["score"], "reason": result["reason"], "source_count": len(used),
+                "article_ids": sorted(used), "version": VERSION,
+                "status": "reviewed" if any(a.get("score_status") == "reviewed" for a in result["sources"]) else "provisional"})
+    values = [e["score"] for e in contributions]
+    mean = Decimal(sum(values)) / len(values) if values else None
     return {
-        "score": int(mean.quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if mean is not None else None,
-        "mean_score": float(mean.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if mean is not None else None,
-        "event_count": len(values), "duplicate_count": len(duplicate_ids), "duplicate_ids": duplicate_ids,
-        "group_conflicts": sorted(conflicts),
-        "groups": [{"id": key, "representative_id": representative["id"],
-                    "article_ids": sorted(a["id"] for a in articles if (a.get("event_group") or a["url"]) == key)}
-                   for key, (_, representative) in sorted(unique.items())],
-        "article_count": len(values), "excluded_count": len(records) - len(values),
-        "negative_count": sum(value < 0 for value in values),
-        "neutral_count": values.count(0), "positive_count": sum(value > 0 for value in values),
-        "worst_score": min(values) if values else None, "best_score": max(values) if values else None,
-        "reviewed_count": sum(a["score_status"] == "reviewed" for a in included),
-        "article_ids": sorted(a["id"] for a in included),
-        "excluded_ids": sorted(a["id"] for a in records if a not in included),
-        "contributions": [{"id": a["id"], "url": a["url"], "score": a["score"],
-                           "status": a["score_status"], "reason": a.get("score_reason", ""),
-                           "version": a.get("score_version", VERSION), "event_group": a.get("event_group", "")} for a in sorted(included, key=lambda a: a["id"])],
+        "score": int(mean.quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if values else None,
+        "mean_score": float(mean.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if values else None,
+        "event_count": len(values), "duplicate_count": len(duplicates), "duplicate_ids": sorted(duplicates),
+        "groups": groups, "article_count": len(included), "excluded_count": len(excluded),
+        "negative_count": values.count(-1), "neutral_count": values.count(0), "positive_count": values.count(1),
+        "worst_score": min(values, default=None), "best_score": max(values, default=None),
+        "reviewed_count": sum(e["status"] == "reviewed" for e in contributions),
+        "article_ids": sorted(included), "excluded_ids": sorted(excluded), "contributions": contributions,
         "version": VERSION, "timezone": str(WEEK_TIMEZONE),
     }
 
 
 def weekly_groups(articles: list[dict]) -> dict:
-    groups = defaultdict(list)
+    """One event belongs to its first eligible publication week, even across searches."""
+    from .events import event_assessment
+    by_event, groups = defaultdict(list), defaultdict(list)
     for article in articles:
         if article.get("company_id"):
-            date = article.get("published_at") or article["created_at"]
-            groups[(article["company_id"], week_start(date))].append(article)
+            by_event[article["company_id"], article.get("event_group") or article["url"]].append(article)
+    for (company, _), members in by_event.items():
+        sources = event_assessment(members, saved=True)["sources"]
+        date = min(a.get("published_at") or a["created_at"] for a in sources or members)
+        groups[company, week_start(date)].extend(members)
     return groups

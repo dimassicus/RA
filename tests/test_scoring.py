@@ -14,24 +14,24 @@ def article(title, **extra):
 
 
 @pytest.mark.parametrize("title,expected", [
-    ("Acme Manufacturing files for bankruptcy", -2),
-    ("Acme Manufacturing announces plant closure", -2),
+    ("Acme Manufacturing files for bankruptcy", -1),
+    ("Acme Manufacturing announces plant closure", -1),
     ("Acme Manufacturing CEO resigns", -1),
     ("Acme Manufacturing updates its logo", 0),
     ("Acme Manufacturing reduces losses", 1),
-    ("Acme Manufacturing returns to profit", 2),
-    ("Acme Manufacturing emerges from bankruptcy", 2),
+    ("Acme Manufacturing returns to profit", 1),
+    ("Acme Manufacturing emerges from bankruptcy", 1),
     ("Acme Manufacturing losses narrowed", 1),
-    ("Acme Manufacturing fully repays defaulted debt", 2),
+    ("Acme Manufacturing fully repays defaulted debt", 1),
     ("Acme Manufacturing: lucro cresce", 1),
     ("Acme Manufacturing: reduz prejuízo", 1),
-    ("Acme Manufacturing: recuperação judicial", -2),
-    ("Acme Manufacturing encerra recuperação judicial", 2),
+    ("Acme Manufacturing: recuperação judicial", -1),
+    ("Acme Manufacturing encerra recuperação judicial", 1),
     ("Acme Manufacturing sues supplier", 0),
     ("Acme Manufacturing announces a software upgrade", 0),
-    ("Acme Manufacturing rating downgraded", -2),
+    ("Acme Manufacturing rating downgraded", -1),
 ])
-def test_five_grades_and_directional_context(title, expected):
+def test_three_grades_and_directional_context(title, expected):
     result = score_article(article(title), SUBJECT, NOW)
     assert result["score"] == expected
     assert result["score_included"] is False  # Headlines alone no longer enter weekly history.
@@ -62,14 +62,14 @@ def test_missing_date_untranslated_language_and_clone_warning_are_excluded():
 
 def test_company_specific_official_source_and_translation():
     result = score_article(article("Fato Relevante - Hibernação", language="pt", source_kind="official"), SUBJECT, NOW)
-    assert result["score"] == -2
+    assert result["score"] == -1
     result = score_article(article("Acme Manufacturing 财务消息", language="zh", title_en="Acme Manufacturing returns to profit"), SUBJECT, NOW)
-    assert result["score"] == 2
+    assert result["score"] == 1
 
 
 def test_mixed_directions_do_not_add_repeated_terms():
     result = score_article(article("Acme Manufacturing rating upgraded but announces plant closure"), SUBJECT, NOW)
-    assert result["score"] == -2
+    assert result["score"] == -1
     assert "mixed directions" in result["score_reason"]
 
 
@@ -79,7 +79,8 @@ def test_publication_weeks_use_monday_in_moscow():
 
 
 def assessed(value, **extra):
-    return article("Test", score=value, score_included=True, score_status="provisional", **extra)
+    fields = dict(score=value, report_selected=True, score_included=True, score_status="provisional")
+    return article("Test", **(fields | extra))
 
 
 def test_no_data_differs_from_neutral_and_uncertainty():
@@ -87,34 +88,32 @@ def test_no_data_differs_from_neutral_and_uncertainty():
     neutral = aggregate_week([assessed(0)])
     assert neutral["mean_score"] == 0
     assert neutral["neutral_count"] == 1
-    excluded = aggregate_week([article("Unknown", score=0, score_included=False, score_status="needs_review")])
+    excluded = aggregate_week([article("Unknown", score=0, report_selected=True, score_included=False, score_status="needs_review")])
     assert excluded["score"] is None
     assert excluded["excluded_count"] == 1
 
 
 def test_weekly_rounding_extrema_and_offsetting_coverage():
-    data = [assessed(-2), assessed(2, id=2, url="https://example.test/2")]
+    data = [assessed(-1), assessed(1, id=2, url="https://example.test/2")]
     result = aggregate_week(data)
-    assert result["score"] == 0
-    assert result["mean_score"] == 0
-    assert (result["worst_score"], result["best_score"]) == (-2, 2)
-    assert result["negative_count"] == result["positive_count"] == 1
+    assert result["score"] == result["mean_score"] == -1
+    assert (result["worst_score"], result["best_score"]) == (-1, -1)
+    assert result["negative_count"] == 1 and result["positive_count"] == 0
     assert aggregate_week([assessed(-1), assessed(0, id=2, url="b")])["score"] == -1
-    assert aggregate_week([assessed(1), assessed(0, id=2, url="b")])["score"] == 1
+    assert aggregate_week([assessed(1), assessed(0, id=2, url="b")])["score"] == 0
 
 
 def test_repeated_url_counts_once_and_review_takes_precedence():
-    data = [assessed(-2), assessed(-1, id=2),
-            article("Test", score=1, score_included=True, score_status="reviewed", id=3)]
+    data = [assessed(-1), assessed(-1, id=2), assessed(0, score_status="reviewed", id=3)]
     result = aggregate_week(data)
-    assert result["article_count"] == 1
-    assert result["mean_score"] == 1
+    assert result["article_count"] == result["event_count"] == 1
+    assert result["mean_score"] == 0
     assert result["article_ids"] == [3]
-    assert result["contributions"][0]["score"] == 1
+    assert result["contributions"][0]["score"] == 0
 
 
 def test_latest_analyst_exclusion_overrides_older_inclusion():
-    older = {**assessed(-2), "score_status": "reviewed", "score_updated_at": NOW}
+    older = {**assessed(-1), "score_status": "reviewed", "score_updated_at": NOW}
     newer = {**older, "id": 2, "score_included": False, "score_updated_at": NOW + timedelta(minutes=1)}
     result = aggregate_week([newer, older])
     assert result["score"] is None
@@ -132,7 +131,7 @@ def test_score_hash_changes_when_future_publication_becomes_eligible():
     assert after["score_input_hash"] == later["score_input_hash"]
 
 
-@pytest.mark.parametrize("old,new", [(-3, -2), (3, 2)])
+@pytest.mark.parametrize("old,new", [(-3, -1), (-2, -1), (2, 1), (3, 1)])
 def test_cached_legacy_source_grades_map_without_mutating_evidence(old, new):
     from copy import deepcopy
     from ra.scoring import LABELS, RUBRIC, VERSION
@@ -140,7 +139,7 @@ def test_cached_legacy_source_grades_map_without_mutating_evidence(old, new):
              "evidence": [{"score": old, "sentence": "Original source text", "rule": "event"}]}
     original = deepcopy(check)
     result = score_article(article("Acme Manufacturing update", verification=check), SUBJECT, NOW)
-    assert set(LABELS) == set(RUBRIC) == set(range(-2, 3))
+    assert set(LABELS) == set(RUBRIC) == set(range(-1, 2))
     assert result["score"] == result["score_auto"] == new
     assert result["score_evidence"] == [dict(check["evidence"][0], score=new)]
     assert result["score_included"] and result["score_version"] == VERSION

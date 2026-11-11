@@ -117,3 +117,25 @@ def test_uncapped_jina_and_monthly_firecrawl(setup):
     response.read.return_value = b'{"data":{"metadata":{"creditsUsed":0}}}'
     providers.request('Firecrawl', '/v2/scrape', body={'url': URL})
     assert release.call_count == 2
+
+
+@pytest.mark.parametrize('paid', [False, True])
+def test_one_hop_reads_linked_filing_and_ignores_related_navigation(setup, paid):
+    linked = URL + '/document'
+    parent = (META + '<div class="elementor-widget-theme-post-content"><a href="' + linked +
+              '">Full report</a></div><footer><article><a href="/other.pdf">Other</a></article></footer>')
+    calls = []
+    def fetch(url):
+        calls.append(url)
+        if url == URL:
+            return (META if paid else parent).encode(), 'text/html', url
+        assert url == linked
+        return ('<article>' + TEXT + '<a href="/grandchild.pdf">Filing</a></article>').encode(), 'text/html', url
+    setup.setattr(reader, 'fetch_bytes', fetch)
+    setup.setattr(providers, 'request', lambda *args, **kw: {'data': {
+        'title': 'Crédito aprovado', 'url': URL, 'publishedTime': HINT['published_at'],
+        'content': f'[Full report]({linked})\n## Related news\n[Download](https://example.com/other.pdf)'}})
+    doc = reader._retrieve(URL, HINT)
+    assert calls == [URL, linked]
+    assert doc['status'] == 'available' and doc['final_url'] == linked
+    assert 'decline in demand' in doc['body'] and not doc['review_only']

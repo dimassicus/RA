@@ -95,7 +95,7 @@ def test_cache_upgrade_keeps_complete_translation_and_original_age(database, mon
     saved = database.execute("SELECT document,fetched_at FROM article_documents WHERE url=%s", (article['url'],)).fetchone()
     assert result['status'] == 'supported'
     assert saved['fetched_at'] == fetched_at
-    assert saved['document']['reader_version'] == 'public-source-v7'
+    assert saved['document']['reader_version'] == verification_store.READER_VERSION
     assert saved['document']['body'] == document['body'] and saved['document']['sha256'] == document['sha256']
     assert saved['document']['translation']['parts'] == [part]
     assert detected == [document['body']]

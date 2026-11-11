@@ -38,6 +38,8 @@ def same_event(a, b):
 def assign_groups(articles):
     groups = defaultdict(list)
     assigned = {}
+    ai_urls = {(a.get('company_id') or ('oneoff', a['run_id']), canonical_url(a['url'])): a['event_draft']['event']
+               for a in sorted(articles, key=lambda a: a['id']) if (a.get('event_draft') or {}).get('event')}
     manual_urls = {(a.get('company_id') or ('oneoff', a['run_id']), canonical_url(a['url'])): a['event_group_manual']
                    for a in sorted(articles, key=lambda a: a['id']) if a.get('event_group_manual')}
     for article in sorted(articles, key=lambda a: a['id']):
@@ -46,6 +48,10 @@ def assign_groups(articles):
         if manual:
             assigned[article['id']] = manual
             continue
+        ai = ai_urls.get((company, canonical_url(article['url'])))
+        if ai:
+            assigned[article['id']] = f"event:{ai}"
+            continue
         # Compare against the representative only, avoiding transitive chain merges.
         for representative in groups[company]:
             if same_event(article, representative):
@@ -53,5 +59,48 @@ def assign_groups(articles):
                 break
         else:
             groups[company].append(article)
-            assigned[article['id']] = f"event:{article['id']}"
+            assigned[article['id']] = f"source:{article['id']}"
     return assigned
+
+
+def event_assessment(members, *, saved=False):
+    """Count distinct documents. A repeated discovery never adds weight."""
+    articles = [r for r in members if not saved or r.get('report_selected')]
+    parents = {}
+
+    def root(key):
+        parents.setdefault(key, key)
+        while key != parents[key]:
+            parents[key] = parents[parents[key]]
+            key = parents[key]
+        return key
+
+    for row in articles:
+        check = row.get('verification') or {}
+        key = root(canonical_url(row['url']))
+        if check.get('source_url'):
+            parents[root(canonical_url(check['source_url']))] = key
+        if check.get('document_hash'):
+            parents[root(('hash', check['document_hash']))] = key
+    unique, duplicates = {}, []
+    for row in sorted(articles, key=lambda r: (r.get('score_status') == 'reviewed',
+                      str(r.get('score_updated_at') or r.get('created_at') or ''), r['id']), reverse=True):
+        key = root(canonical_url(row['url']))
+        if key in unique:
+            duplicates.append(row['id'])
+        else:
+            unique[key] = row
+    sources = [r for r in unique.values() if r.get('score') in (-1, 0)
+               and (not saved or r.get('score_included'))
+               and (r.get('score_status') == 'reviewed' or not (r.get('event_draft') or {}).get('excluded'))]
+    adverse = [r for r in sources if r['score'] < 0]
+    material = any(any(e.get('rule') in ('default or insolvency', 'material financial deterioration',
+                       'operating disruption', 'legal or creditor pressure') for e in r.get('score_evidence', []))
+                   for r in adverse)
+    # A material negative overrides neutral coverage. Otherwise use a corroboration-weighted vote.
+    weight = len(adverse) + max(0, len(adverse) - 1)
+    score = None if not sources else -1 if adverse and (material or weight >= len(sources) - len(adverse)) else 0
+    reason = (f"{len(adverse)} negative and {len(sources)-len(adverse)} neutral distinct sources."
+              + (" Material adverse evidence takes precedence." if material else ""))
+    return dict(score=score, sources=sources, duplicate_ids=duplicates, reason=reason,
+                priority=(material, weight, len(sources)))

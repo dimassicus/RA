@@ -23,20 +23,20 @@ def document(body, **extra):
 
 
 @pytest.mark.parametrize('sentence,score', [
-    ('Acme Manufacturing has filed for bankruptcy protection after missing bond payments.', -2),
-    ('Acme Manufacturing announces plant closure affecting 300 workers at its Brazilian facility.', -2),
+    ('Acme Manufacturing has filed for bankruptcy protection after missing bond payments.', -1),
+    ('Acme Manufacturing announces plant closure affecting 300 workers at its Brazilian facility.', -1),
     ('Acme Manufacturing reports net losses of 40 million dollars during the third quarter.', -1),
     ('Acme Manufacturing declared a net loss of 40 million dollars.', -1),
     ('Acme Manufacturing company reported a net loss of 40 million dollars.', -1),
     ('Acme Manufacturing announced that it suffered a loss of 40 million dollars.', -1),
     ('Acme Manufacturing reduces losses following a recovery in its core market.', 1),
-    ('Acme Manufacturing returns to profit following a recovery in its core market.', 2),
-    ('Acme Manufacturing emerges from bankruptcy after completing its court-approved debt restructuring.', -2),
-    ('Acme Manufacturing emerges from bankruptcy after completing the court-approved repayment agreement.', 2),
-    ('Acme Manufacturing pede recuperação judicial.', -2),
+    ('Acme Manufacturing returns to profit following a recovery in its core market.', 1),
+    ('Acme Manufacturing emerges from bankruptcy after completing its court-approved debt restructuring.', -1),
+    ('Acme Manufacturing emerges from bankruptcy after completing the court-approved repayment agreement.', 1),
+    ('Acme Manufacturing pede recuperação judicial.', -1),
     ('Acme Manufacturing teve um prejuízo líquido de R$ 13 milhões.', -1),
     ('A Acme Manufacturing teve um prejuízo líquido de R$ 13 milhões.', -1),
-    ('A Acme Manufacturing anunciou uma recuperação judicial.', -2),
+    ('A Acme Manufacturing anunciou uma recuperação judicial.', -1),
 ])
 def test_source_attribution_and_direction(sentence, score):
     result = verify(document(sentence), SUBJECT, ARTICLE)
@@ -95,7 +95,7 @@ ISSUER_DECISION = (
 def test_official_declared_issuer_owns_enumerated_board_decision():
     result = verify(document(ISSUER_DECISION, language='pt', method='PDF text (no OCR)'), SUBJECT,
                     {**ARTICLE, 'source_kind': 'official'})
-    assert result['status'] == 'supported' and result['score'] == -2
+    assert result['status'] == 'supported' and result['score'] == -1
     evidence = result['evidence'][0]
     assert evidence['phrase'] == 'hibernar'
     assert evidence['attribution']['company_declaration'] in ISSUER_DECISION
@@ -235,7 +235,7 @@ def test_fetch_rejects_private_and_mixed_dns(address):
 
 def event(identifier, body, **extra):
     doc = document(body, final_url=f'https://publisher{identifier}.org/article')
-    article = {**ARTICLE, 'id': identifier, 'url': doc['final_url'], **extra}
+    article = {**ARTICLE, 'report_selected': True, 'id': identifier, 'url': doc['final_url'], **extra}
     article['verification'] = verify(doc, SUBJECT, article)
     article.update(score_article(article, SUBJECT, NOW))
     return article
@@ -257,23 +257,23 @@ def test_duplicate_event_grouping_is_company_scoped_and_conservative():
     for row in (first, second, unrelated):
         row['event_group'] = groups[row['id']]
     result = aggregate_week([first, second, unrelated])
-    assert result['event_count'] == 2 and result['duplicate_count'] == 1
+    assert result['event_count'] == 2 and result['article_count'] == 3
     assert result['mean_score'] == -1
     assert len(result['groups'][0]['article_ids']) == 2
     assert canonical_url('https://publisher.org/a?id=1&utm_source=google#x') == 'https://publisher.org/a?id=1'
     assert not same_event({**first, 'verification': {}}, {**second, 'verification': {}})
 
 
-def test_conflicting_auto_scores_excluded_and_review_takes_precedence():
+def test_positive_sources_never_contribute_and_review_takes_precedence():
     first = event(1, 'Acme Manufacturing files for bankruptcy.')
     second = event(2, 'Acme Manufacturing returns to profit.')
     for row in (first, second):
         row['event_group'] = 'manual:1'
     result = aggregate_week([first, second])
-    assert result['score'] is None and result['group_conflicts'] == ['manual:1']
+    assert result['score'] == -1 and result['article_ids'] == [1]
     first.update(score_status='reviewed', score=1)
     result = aggregate_week([first, second])
-    assert result['score'] == 1 and result['article_ids'] == [1]
+    assert result['score'] is None and result['article_ids'] == []
     first['score_included'] = False
     assert aggregate_week([first, second])['score'] is None
 

@@ -63,7 +63,7 @@ def test_backfill_is_idempotent_and_saves_no_data_weeks(database):
     empty = database.execute("INSERT INTO companies (name,country_registration) VALUES ('Empty Ltd','Brazil') RETURNING id").fetchone()
     first = score_store.refresh_scores()
     assert first["articles_updated"] == 1
-    assert score_store.get_article(article["id"])["score"] == -2
+    assert score_store.get_article(article["id"])["score"] == -1
     rows = score_store.weekly_history(company["id"])
     assert next(r for r in rows if r["week_start"] == week_start(article["published_at"]))["score"] is None
     assert score_store.weekly_history(empty["id"])[0]["score"] is None
@@ -77,14 +77,15 @@ def test_review_and_repeat_discovery_preserve_decision_and_weekly_audit(database
     start = week_start(article["published_at"])
     before, _, history = score_store.week_detail(company["id"], start)
     assert before["metrics"]["article_count"] == 0
-    score_store.review_score(article["id"], 2, True, "Source confirms completed recovery, headline was misleading")
+    db.set_report_selection(run_id, [article["id"]])
+    score_store.review_score(article["id"], -1, True, "Source confirms financial distress")
     after, _, revisions = score_store.week_detail(company["id"], start)
-    assert after["score"] == 2
+    assert after["score"] == -1
     assert len(revisions) == len(history) + 1
     assert revisions[-1]["snapshot"]["score"] is None
     assert len(score_store.article_history(article["id"])) == 1
     assert score_store.refresh_scores()["articles_updated"] == 0
-    assert score_store.get_article(article["id"])["score"] == 2
+    assert score_store.get_article(article["id"])["score"] == -1
     score_store.review_score(article["id"], 0, False, "This article concerns another legal entity")
     assert score_store.week_detail(company["id"], start)[0]["score"] is None
 
@@ -95,7 +96,7 @@ def test_translation_change_reassesses_unreviewed_rows(database):
     assert score_store.get_article(article["id"])["score"] == 0
     database.execute("UPDATE search_results SET title_en='Acme Manufacturing rating upgraded' WHERE id=%s", (article["id"],))
     assert score_store.refresh_scores()["articles_updated"] == 1
-    assert score_store.get_article(article["id"])["score"] == 2
+    assert score_store.get_article(article["id"])["score"] == 1
     assert len(score_store.article_history(article["id"])) == 1
 
 
@@ -104,7 +105,7 @@ def test_review_validation_and_database_constraint(database):
     score_store.refresh_scores()
     with pytest.raises(ValueError, match="publication date"):
         score_store.review_score(article["id"], 1, True, "Valid reasoning")
-    for score in (-4, -3, 3, 4, 1.5, True):
+    for score in (-4, -3, -2, 2, 3, 4, 1.5, True):
         with pytest.raises(ValueError, match="whole number"):
             score_store.review_score(article["id"], score, False, "Valid reasoning")
     with pytest.raises(ValueError, match="Explain"):
@@ -127,7 +128,7 @@ def test_worker_scores_new_articles_without_network(database, monkeypatch):
                  "query": "test", "signal_terms": []}], []
     worker.process_run(run_id, searcher=searcher, topic_searcher=lambda *args, **kwargs: [])
     assert db.get_run(run_id)["status"] == "completed"
-    assert db.get_results(run_id)[0]["score"] == 2
+    assert db.get_results(run_id)[0]["score"] == 1
     assert all(r["score"] is None for r in score_store.weekly_history(company["id"]))
     assert database.execute("SELECT count(*) AS n FROM verification_jobs").fetchone()["n"] == 1
 
@@ -138,29 +139,30 @@ def test_scoring_pages_api_and_csrf_protected_correction(database):
     with create_app().test_client() as client:
         score_page = client.get('/scores')
         assert score_page.status_code == 200
-        assert b'Five grades' in score_page.data and b'Strong negative' in score_page.data
+        assert b'Event scores' in score_page.data and b'Negative' in score_page.data
         assert b'There is no universal percentage threshold' in score_page.data
         assert b'Severe negativity' not in score_page.data
         assert client.get('/scores?weeks=bad').status_code == 400
         response = client.get(f'/runs/{run_id}?view=review')
         assert response.status_code == 200
         body = response.get_data(as_text=True)
-        assert 'score--2' in body
+        assert 'score--1' in body
         endpoint = f"/articles/{article['id']}/score"
         review_page = client.get(endpoint)
         assert review_page.status_code == 200
         import re
         select = re.search(r'<select name="score"[^>]*>(.*?)</select>', review_page.get_data(as_text=True)).group(1)
-        assert [int(value) for value in re.findall(r'<option value="(-?\d+)"', select)] == [-2, -1, 0, 1, 2]
-        assert b'limited impact' in review_page.data
+        assert [int(value) for value in re.findall(r'<option value="(-?\d+)"', select)] == [-1, 0, 1]
+        assert b'adverse company impact' in review_page.data
         assert client.post(endpoint, data={"score": "2", "reason": "Reviewed the source"}).status_code == 400
         with client.session_transaction() as session:
             token = session['csrf_token']
-        response = client.post(endpoint, data={"score": "2", "included": "yes", "reason": "Reviewed the completed recovery", "csrf_token": token})
+        db.set_report_selection(run_id, [article["id"]])
+        response = client.post(endpoint, data={"score": "-1", "included": "yes", "reason": "Reviewed the adverse evidence", "csrf_token": token})
         assert response.status_code == 302
         data = client.get(f"/api/scores/weekly?company_id={company['id']}").get_json()
         assert data['timezone'] == 'Europe/Moscow'
-        assert any(row['score'] == 2 for row in data['weeks'])
+        assert any(row['score'] == -1 for row in data['weeks'])
         start = week_start(article['published_at'])
         detail = client.get(f"/scores/{company['id']}/{start}")
         assert detail.status_code == 200
@@ -225,6 +227,8 @@ def test_source_cache_weekly_dedup_review_and_grouping_corrections(database):
     for row in (first, second):
         assert verification_store.verify_article(row['id'], fetcher=fetcher)['status'] == 'supported'
     assert len(calls) == 2
+    for item in [first, second]:
+        db.set_report_selection(item["run_id"], [item["id"]])
     assert score_store.week_detail(company['id'], start)[0]['metrics']['event_count'] == 1
     assert score_store.week_detail(company['id'], start)[0]['metrics']['duplicate_count'] == 1
     count = database.execute('SELECT count(*) AS n FROM article_verification_history').fetchone()['n']
@@ -235,16 +239,16 @@ def test_source_cache_weekly_dedup_review_and_grouping_corrections(database):
     assert score_store.week_detail(company['id'], start)[0]['metrics']['event_count'] == 2
     verification_store.review_group(second['id'], 'merge', first['id'], 'Same proceeding reported by another publisher')
     assert score_store.week_detail(company['id'], start)[0]['metrics']['event_count'] == 1
-    score_store.review_score(first['id'], 2, True, 'Analyst confirms completed recovery after reading the full notice')
+    score_store.review_score(first['id'], 1, True, 'Analyst confirms completed recovery after reading the full notice')
     verification_store.verify_article(first['id'], fetcher=fetcher)
-    assert score_store.week_detail(company['id'], start)[0]['score'] == 2
+    assert score_store.week_detail(company['id'], start)[0]['score'] is None
     assert score_store.get_article(first['id'])['score_status'] == 'reviewed'
     assert database.execute('SELECT count(*) AS n FROM article_event_history').fetchone()['n'] > 2
     assert database.execute('SELECT count(*) AS n FROM weekly_score_history').fetchone()['n'] > 2
     _, _, repeated = seed(database, url=first['url'])
     score_store.refresh_scores()
     assert score_store.get_article(repeated['id'])['event_group'] == score_store.get_article(first['id'])['event_group']
-    assert score_store.week_detail(company['id'], start)[0]['score'] == 2
+    assert score_store.week_detail(company['id'], start)[0]['score'] is None
 
 
 def test_theme_cache_survives_new_run_and_invalidates_changed_factors(database, monkeypatch):
@@ -335,7 +339,7 @@ def test_source_queue_limits_endpoints_and_failure_visibility(database):
     assert not saved['score_included']
     assert b'Publisher access blocked' in client.get(f"/articles/{first['id']}/score").data
     risk_page = client.get(f'/runs/{run_id}').data
-    assert first["title"].encode() not in risk_page and b"No leads in this view" in risk_page
+    assert first["title"].encode() in risk_page and b"No completed event briefs yet" in risk_page
     assert client.post(f'/runs/{run_id}/verify', data=data).status_code == 302
     with pytest.raises(ValueError):
         verification_store.enqueue(first['id'], 'https://user:password@example.org/article')
@@ -397,14 +401,15 @@ def test_shared_news_only_changes_the_company_with_source_evidence(database):
     assert len(leads) == 2 and all(len(a["exposure_paths"]) == 2 for a in leads)
     assert all(not a["score_included"] and a["score"] == 0 for a in leads)
     with pytest.raises(ValueError, match="impact"):
-        score_store.review_score(leads[0]["id"], -2, True, "The whole sector is exposed")
+        score_store.review_score(leads[0]["id"], -1, True, "The whole sector is exposed")
     for lead in leads:
         verification_store.verify_article(lead["id"], fetcher=lambda url: {
             "status": "available", "language": "en", "body": "Acme Manufacturing announces plant closure following the tariff increase."})
     scored = {a["subject_name"]: a for a in db.get_results(run_id)}
-    assert scored["Acme Manufacturing"]["score_included"] and scored["Acme Manufacturing"]["score"] == -2
+    assert scored["Acme Manufacturing"]["score_included"] and scored["Acme Manufacturing"]["score"] == -1
     assert not scored["Other Industries"]["score_included"]
-    assert score_store.weekly_history(subjects[0]["id"])[0]["score"] == -2
+    db.set_report_selection(run_id, [], save_all=True)
+    assert score_store.weekly_history(subjects[0]["id"])[0]["score"] == -1
     assert score_store.weekly_history(subjects[1]["id"])[0]["score"] is None
     client = create_app().test_client()
     page = client.get(f"/runs/{run_id}?view=exposure")
@@ -425,6 +430,7 @@ def test_backfilled_company_report_uses_later_reviewed_scores(database):
     database.execute('UPDATE search_results SET published_at=%s WHERE id=%s', (end,article['id']))
     score_store.refresh_scores(run_id)
     score_store.review_score(article['id'], -1, True, 'Test reviewed source evidence')
+    db.set_report_selection(run_id, [article['id']])
     run = db.get_run(run_id)
     report = load_report(run, run['subjects'][0])
     assert report['ratings'][0][2]['score'] == -1
@@ -970,6 +976,7 @@ def test_weekly_cutoff_labels_do_not_move_or_rewrite_reviewed_articles(database)
     published = datetime(2026, 10, 13, 12, tzinfo=timezone.utc)
     database.execute("UPDATE search_results SET published_at=%s WHERE id=%s", (published, article["id"]))
     score_store.review_score(article["id"], -1, True, "Preserved analyst decision")
+    db.set_report_selection(article["run_id"], [article["id"]])
     before = database.execute("SELECT * FROM search_results WHERE id=%s", (article["id"],)).fetchone()
     client = create_app().test_client()
     body = client.get('/scores').text
@@ -1031,7 +1038,7 @@ def test_report_edit_does_not_overwrite_translation_changed_during_audit(databas
     assert saved['title_en'] == 'Concurrent correction' and not saved['report_selected']
 
 
-def test_five_grade_migration_preserves_audits_decisions_and_recomputes_means(database):
+def test_three_grade_migration_preserves_audits_decisions_and_recomputes_means(database):
     from ra.scoring import VERSION
     company, _, positive = seed(database, title="Acme Manufacturing completes recovery")
     _, _, limited = seed(database, title="Acme Manufacturing wins a contract", url="https://example.test/contract")
@@ -1040,7 +1047,7 @@ def test_five_grade_migration_preserves_audits_decisions_and_recomputes_means(da
     # Emulate an existing seven-grade database, including its original constraints.
     for table, column in (("search_results", "score"), ("search_results", "score_auto"),
                           ("company_weekly_scores", "score"), ("company_weekly_scores", "mean_score")):
-        database.execute(f"ALTER TABLE {table} DROP CONSTRAINT {table}_{column}_five_grades")
+        database.execute(f"ALTER TABLE {table} DROP CONSTRAINT {table}_{column}_three_grades")
         database.execute(f"ALTER TABLE {table} ADD CHECK ({column} BETWEEN -3 AND 3)")
     evidence = [{"score": 3, "rule": "completed recovery", "sentence": "Original source text"}]
     verification = {"status": "supported", "score": 3, "evidence": evidence, "reason": "Original source reason"}
@@ -1052,30 +1059,34 @@ def test_five_grade_migration_preserves_audits_decisions_and_recomputes_means(da
     database.execute("UPDATE search_results SET score_evidence=%s,verification=%s WHERE id=%s",
                      (db.Jsonb(evidence), db.Jsonb(verification), positive["id"]))
     database.execute("UPDATE search_results SET score=-3,score_auto=-3 WHERE id=%s", (pending["id"],))
-    score_store._weekly(database)
     start = week_start(positive["published_at"])
+    legacy = {"mean_score": 2.0, "score": 2, "article_ids": [], "excluded_ids": [], "version": "source-credit-v5"}
+    database.execute("INSERT INTO company_weekly_scores(company_id,week_start,mean_score,score,metrics) VALUES(%s,%s,2,2,%s)",
+                     (company["id"], start, db.Jsonb(legacy)))
+    database.execute("INSERT INTO weekly_score_history(company_id,week_start,snapshot) VALUES(%s,%s,%s)",
+                     (company["id"], start, db.Jsonb(legacy)))
     old_row, _, old_history = score_store.week_detail(company["id"], start)
     assert float(old_row["mean_score"]) == 2.0  # (3 + 1) / 2
     old_history_ids = {r["id"]: r["snapshot"] for r in old_history}
     score_store.refresh_scores()
     migrated = score_store.get_article(positive["id"])
-    assert migrated["score"] == migrated["score_auto"] == 2
-    assert migrated["score_evidence"] == [dict(evidence[0], score=2)]
-    assert migrated["verification"] == dict(verification, score=2, evidence=[dict(evidence[0], score=2)])
+    assert migrated["score"] == migrated["score_auto"] == 1
+    assert migrated["score_evidence"] == [dict(evidence[0], score=1)]
+    assert migrated["verification"] == dict(verification, score=1, evidence=[dict(evidence[0], score=1)])
     for item in (positive, limited, excluded):
         row = score_store.get_article(item["id"])
         assert row["score_reason"] == "Original analyst reason"
         assert row["score_status"] == "reviewed" and row["score_version"] == VERSION
         assert row["score_updated_at"] == item["created_at"]
     assert not score_store.get_article(excluded["id"])["score_included"]
-    assert score_store.get_article(excluded["id"])["score"] == -2
-    assert score_store.get_article(pending["id"])["score"] == -2
+    assert score_store.get_article(excluded["id"])["score"] == -1
+    assert score_store.get_article(pending["id"])["score"] == -1
     assert score_store.get_article(limited["id"])["score"] == 1
     row, _, revisions = score_store.week_detail(company["id"], start)
-    assert float(row["mean_score"]) == 1.5  # Rebuild contributions, never clamp the old mean.
+    assert row["mean_score"] is None  # Rebuild contributions, never clamp the old mean.
     assert {r["id"]: r["snapshot"] for r in revisions if r["id"] in old_history_ids} == old_history_ids
     audit = score_store.article_history(positive["id"])[0]
-    assert audit["previous"]["score"] == 3 and audit["assessment"]["score"] == 2
+    assert audit["previous"]["score"] == 3 and audit["assessment"]["score"] == 1
     source_audit = database.execute("SELECT * FROM article_verification_history WHERE result_id=%s", (positive["id"],)).fetchone()
     assert source_audit["previous"] == verification
     assert score_store.refresh_scores() == {"articles_updated": 0, "weeks_updated": 0}
@@ -1083,14 +1094,14 @@ def test_five_grade_migration_preserves_audits_decisions_and_recomputes_means(da
     assert len(score_store.week_detail(company["id"], start)[2]) == len(revisions)
     for table, column in (("search_results", "score"), ("search_results", "score_auto"),
                           ("company_weekly_scores", "score"), ("company_weekly_scores", "mean_score")):
-        for retired in (-3, 3):
+        for retired in (-3, -2, 2, 3):
             with pytest.raises(psycopg.errors.CheckViolation):
                 with database.transaction():
                     database.execute(f"UPDATE {table} SET {column}=%s", (retired,))
     # The previous values required for rollback remain intact in both audit streams.
     with database.transaction(force_rollback=True):
-        database.execute("ALTER TABLE search_results DROP CONSTRAINT search_results_score_five_grades")
-        database.execute("ALTER TABLE search_results DROP CONSTRAINT search_results_score_auto_five_grades")
+        database.execute("ALTER TABLE search_results DROP CONSTRAINT search_results_score_three_grades")
+        database.execute("ALTER TABLE search_results DROP CONSTRAINT search_results_score_auto_three_grades")
         score_store._write(database, positive["id"], audit["previous"])
         database.execute("UPDATE search_results SET verification=%s WHERE id=%s",
                          (db.Jsonb(source_audit["previous"]), positive["id"]))
@@ -1098,7 +1109,7 @@ def test_five_grade_migration_preserves_audits_decisions_and_recomputes_means(da
         assert restored["score"] == 3 and restored["verification"] == verification
 
 
-def test_five_grade_migration_rolls_back_atomically(database, monkeypatch):
+def test_three_grade_migration_rolls_back_atomically(database, monkeypatch):
     _, _, article = seed(database)
     score_store.refresh_scores()
     score_store.review_score(article["id"], -1, True, "Reviewed original source")
@@ -1107,7 +1118,7 @@ def test_five_grade_migration_rolls_back_atomically(database, monkeypatch):
     history = score_store.article_history(article["id"])
     def fail(conn):
         raise RuntimeError("Injected constraint failure")
-    monkeypatch.setattr(score_store, "_constrain_five_grades", fail)
+    monkeypatch.setattr(score_store, "_constrain_three_grades", fail)
     with pytest.raises(RuntimeError, match="Injected"):
         with database.transaction():
             score_store.refresh_scores()
@@ -1135,3 +1146,41 @@ def test_news_request_allocation_uses_current_usage_and_atomic_cap(database):
     assert db.reserve_news_api_request('gnews', 2)
     assert not db.reserve_news_api_request('gnews', 2)
     assert db.remaining_news_api_requests({'gnews': 2}) == {'gnews': 0}
+
+
+def test_company_events_save_selection_and_keep_original_briefs(database, monkeypatch):
+    from ra import event_analysis
+    company, run_id, first = seed(database, title='Acme Manufacturing update')
+    ids = [first['id']]
+    for i in range(1, 11):
+        row = database.execute(
+            """INSERT INTO search_results (run_id,company_id,subject_key,subject_name,title,url,published_at,query,language)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,'test','en') RETURNING id""",
+            (run_id, company['id'], str(company['id']), company['name'], f"Acme Manufacturing update {i}",
+             f"https://example.test/{i}", first['published_at'])).fetchone()
+        ids.append(row['id'])
+    score_store.refresh_scores(run_id)
+    def model(instruction, payload, schema):
+        if 'leads' in payload:
+            return {'assignments': [dict(id=r['id'], event=0 if r['id'] == ids[-1] else
+                                      ids[0] if r['id'] in ids[:3] else ids[3],
+                                      sentiment=1 if r['id'] == ids[-1] else -1, title='Case')
+                                    for r in payload['leads']]}
+        return {'title': f"Incident {payload['event']['event']}", 'summary': ' '.join(['Evidence'] * 175)}
+    monkeypatch.setattr(event_analysis.keywords, 'model_json', model)
+    event_analysis.process(run_id)
+    def events():
+        return event_analysis.run_events(db.get_run(run_id), db.get_results(run_id))
+    assert [len(e['sources']) for e in events()] == [7, 3]
+    assert all(e['country'] == 'Brazil' and len(e['summary'].split()) == 175 for e in events())
+    assert score_store.get_article(ids[-1])['score'] == 1
+    summaries = {e['key']: e['summary'] for e in events()}
+    def metrics():
+        return score_store.week_detail(company['id'], week_start(first['published_at']))[0]['metrics']
+    assert metrics()['event_count'] == 0
+    db.set_report_selection(run_id, [ids[0]], scores={ids[0]: 0})
+    assert [(e['score'], e['article_ids']) for e in metrics()['contributions']] == [(0, [ids[0]])]
+    assert db.set_report_selection(run_id, [], scores={ids[4]: -1}, save_all=True) == 11
+    assert sorted(e['score'] for e in metrics()['contributions']) == [-1, 0]
+    assert metrics()['event_count'] == 2 and metrics()['article_count'] == 2
+    assert {e['key']: e['summary'] for e in events()} == summaries

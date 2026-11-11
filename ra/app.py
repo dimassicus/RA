@@ -23,7 +23,7 @@ from .publisher_lookup import original_title
 from .search import company_search_plan
 from .reports import make_pdf, make_xlsx
 from .relevance import classify_results
-from . import score_store, verification_store, headline_review, search_settings
+from . import event_analysis, score_store, verification_store, headline_review, search_settings
 from .scoring import LABELS, RUBRIC, MATERIALITY, VERSION, WEEK_TIMEZONE, week_start
 
 
@@ -173,6 +173,8 @@ def create_app() -> Flask:
         elif stage == "search":
             if run["status"] not in ("failed", "partial"):
                 abort(409, "This search has no recorded failure.")
+            if run["scope"] == "one_off" or any(not (db.get_company(s.get("id")) or {}).get("active") for s in run["subjects"]):
+                abort(409, "Choose an active watchlist company to start a new search.")
             new_id = db.create_run(run["scope"], run["subjects"], window_start=run.get("window_start"),
                                    window_end=run.get("window_end"))
             worker.enqueue(new_id)
@@ -191,7 +193,8 @@ def create_app() -> Flask:
         dates = [current - timedelta(weeks=offset) for offset in reversed(range(int(weeks)))]
         records = score_store.weekly_history()
         lookup = {(row["company_id"], row["week_start"]): row for row in records}
-        return render_template("scores.html", companies=db.list_companies(True), dates=dates,
+        scored_ids = {r["company_id"] for r in records if r["score"] is not None}
+        return render_template("scores.html", companies=[c for c in db.list_companies(None) if c["active"] or c["id"] in scored_ids], dates=dates,
                                lookup=lookup, labels=LABELS, rubric=RUBRIC, materiality=MATERIALITY, weeks=weeks,
                                version=VERSION, current=current)
 
@@ -430,12 +433,7 @@ def create_app() -> Flask:
 
     @app.post("/search/one-off")
     def search_one_off():
-        try:
-            subject = form_company(request.form)
-        except ValueError as exc:
-            flash(str(exc), "error")
-            return redirect(url_for("dashboard"))
-        return begin_search("one_off", [subject], custom_range=True)
+        abort(410, "Add the company to the watchlist, then use the individual company search.")
 
     @app.get("/runs/<int:run_id>", strict_slashes=False)
     def run_detail(run_id: int):
@@ -443,35 +441,29 @@ def create_app() -> Flask:
         if not run:
             abort(404)
         all_results = classify_results(run, db.get_results(run_id))
-        view = request.args.get("view", "risk")
-        if view not in ("developments", "risk", "review", "older", "background", "scored", "exposure", "governance", "factors", "all"):
+        view = request.args.get("view", "risk" if (run.get("search_settings") or {}).get("adverse_only") else "events")
+        if view not in ("events", "developments", "risk", "review", "older", "background", "scored", "exposure", "governance", "factors", "all"):
             abort(400, "Unknown lead view")
-        results = [item for item in all_results if view == "all" or item["relevance"] == view
+        ordinary = [item for item in all_results if (item.get("score") or 0) <= 0]
+        results = [item for item in (all_results if view == "all" else ordinary) if view == "all" or item["relevance"] == view
+                   or (view == "events" and event_analysis.candidate(item))
                    or (view == "scored" and item.get("score_included"))
                    or (view == "exposure" and item.get("exposure_paths"))
                    or (view == "developments" and item["credit_developments"])
                    or (view == "factors" and item.get("risk_factor_review", {}).get("matches"))
                    or (view == "governance" and item["governance"])]
-        if view in ("risk", "older", "scored"):
-            grouped = {}
-            for item in results:
-                grouped.setdefault(item.get("event_group") or str(item["id"]), []).append(item)
-            results = []
-            for members in grouped.values():
-                representative = max(members, key=lambda a: (a.get("score_status") == "reviewed",
-                                     a.get("score_updated_at") or a["published_at"] or run["created_at"], a["id"]))
-                representative["group_sources"] = [a for a in members if a["id"] != representative["id"]]
-                results.append(representative)
         visible_ids = {item["id"] for item in results}
         return render_template(
             "run.html", run=run, results=results, errors=db.get_errors(run_id), view=view,
-            counts={**{key: sum(item["relevance"] == key for item in all_results)
+            events=event_analysis.run_events(run, all_results),
+            country_leads=[item for item in ordinary if any(p.startswith("Country ·") for p in item.get("exposure_paths", []))],
+            counts={"events": sum(event_analysis.candidate(item) for item in ordinary), **{key: sum(item["relevance"] == key for item in ordinary)
                     for key in ("risk", "review", "older", "background")},
-                    "developments": sum(bool(item["credit_developments"]) for item in all_results),
-                    "governance": sum(bool(item["governance"]) for item in all_results),
-                    "factors": sum(bool(item.get("risk_factor_review", {}).get("matches")) for item in all_results),
-                    "exposure": sum(bool(item.get("exposure_paths")) for item in all_results),
-                    "scored": sum(bool(item.get("score_included")) for item in all_results)},
+                    "developments": sum(bool(item["credit_developments"]) for item in ordinary),
+                    "governance": sum(bool(item["governance"]) for item in ordinary),
+                    "factors": sum(bool(item.get("risk_factor_review", {}).get("matches")) for item in ordinary),
+                    "exposure": sum(bool(item.get("exposure_paths")) for item in ordinary),
+                    "scored": sum(bool(item.get("score_included")) for item in ordinary)},
             rosters=governance_roster.observations(run_id) if view == "governance" else [],
             exposure_checks=db.exposure_coverage(run_id) if view == "exposure" else [],
             score_labels=LABELS, verification_jobs=verification_store.job_summary(run_id),
@@ -482,13 +474,20 @@ def create_app() -> Flask:
                              if item["report_selected"] and item["id"] not in visible_ids],
         )
 
+    @app.post("/runs/<int:run_id>/retry-events")
+    def retry_events(run_id):
+        with db.connect() as conn:
+            conn.execute("UPDATE search_runs SET event_analysis_status='pending' WHERE id=%s AND event_analysis_status='failed'", (run_id,))
+        event_analysis._wake.set()
+        return redirect(url_for("run_detail", run_id=run_id))
+
     @app.get("/api/runs/<int:run_id>/status")
     def run_status(run_id: int):
         run = db.get_run(run_id)
         if not run:
             abort(404)
         payload = {key: run[key] for key in ("status", "total_companies", "completed_companies", "result_count", "error_count")}
-        return jsonify(**payload, discovery=worker.search_progress(run), verification=verification_store.job_summary(run_id),
+        return jsonify(**payload, event_analysis_status=run.get("event_analysis_status", "pending"), discovery=worker.search_progress(run), verification=verification_store.job_summary(run_id),
                        reviewer=headline_review.readiness())
 
     @app.get("/runs/<int:run_id>/company-report")
@@ -540,9 +539,9 @@ def create_app() -> Flask:
                     edits[result["id"]] = (
                         request.form[title_key].strip(), request.form[publisher_key].strip()
                     )
-            db.set_report_selection(run_id, selected_ids, edits)
-            score_store.refresh_scores(run_id)
-            flash(f"Saved {len(set(selected_ids))} leads and any English corrections for the selected report.", "success")
+            scores = {int(k[6:]): int(value) for k, value in request.form.items() if k.startswith("score_") and value}
+            count = db.set_report_selection(run_id, selected_ids, edits, scores, save_all=request.form.get("action") == "all")
+            flash(f"Saved {count} leads. Weekly scores now reflect the selected, eligible event evidence.", "success")
         except ValueError as exc:
             flash(str(exc), "error")
         return redirect(url_for("run_detail", run_id=run_id))
@@ -644,6 +643,7 @@ def main():
     intake_worker.start()
     worker.start_worker()
     verification_store.start()
+    event_analysis.start()
     disclosures.schedule()
     model_store.schedule_countries([company["country_registration"] for company in db.list_companies(True)])
     app = create_app()

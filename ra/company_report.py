@@ -101,7 +101,7 @@ def build_report(run, subject, articles, history, errors, previous_runs=None):
         source["ref"] = f"S{i}"
         a = source["article"]
         event = a.get("event_group") or a["url"]
-        if event not in seen and len(top) < 5:
+        if (a.get("score") or 0) <= 0 and event not in seen and len(top) < 5:
             top.append(source)
             seen.add(event)
     ratings = []
@@ -122,7 +122,7 @@ def build_report(run, subject, articles, history, errors, previous_runs=None):
             current_driver = strongest_contribution(current)
             if previous_driver and current_driver and previous_driver["reason"] != current_driver["reason"]:
                 summary += f" Earlier driver: {previous_driver['reason']}. Current driver: {current_driver['reason']}."
-            if (past.get("version") == VERSION) != (current.get("version") == VERSION):
+            if scale(past) != scale(current):
                 summary += " Score change omitted: snapshots use different grading scales."
             elif past["score"] is not None and current["score"] is not None:
                 change = current["score"] - past["score"]
@@ -148,6 +148,10 @@ def build_report(run, subject, articles, history, errors, previous_runs=None):
                 ratings=ratings, comparisons=comparisons, errors=errors, dates=watch_dates.upcoming(subject, end))
 
 
+def scale(metrics):
+    return "−1 to +1" if metrics.get("version") == VERSION else "−2 to +2" if metrics.get("version") == "source-credit-v6" else "−3 to +3"
+
+
 def rating_rows(report):
     for label, week, metrics in report["ratings"]:
         if not metrics:
@@ -156,7 +160,7 @@ def rating_rows(report):
         score = metrics["score"]
         coverage = f"{metrics['search_count']} searches · {metrics['source_errors']} errors"
         if metrics.get("version") != VERSION:
-            coverage += " · original scale −3 to +3"
+            coverage += " · original scale " + scale(metrics)
         yield label, week, score if score is not None else "—", coverage, metrics["event_count"]
 
 
@@ -174,5 +178,5 @@ def driver(report):
     event = strongest_contribution(report["ratings"][0][2] or {})
     if not event:
         return "No eligible company event contributed to a recorded score for this week.", ""
-    scale = " · original scale −3 to +3" if report["ratings"][0][2].get("version") != VERSION else ""
-    return f"Strongest contribution ({event['score']:+d}{scale}): {event['reason']}", event["url"]
+    scale_note = " · original scale " + scale(report["ratings"][0][2]) if report["ratings"][0][2].get("version") != VERSION else ""
+    return f"Strongest contribution ({event['score']:+d}{scale_note}): {event['reason']}", event["url"]
