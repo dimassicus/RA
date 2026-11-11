@@ -1,0 +1,5 @@
+# Compact at 70% of the usable context after a turn, across models.
+model_post_turn_compact_threshold_percent = 70
+
+# Also check during long turns: 70% of RA’s current 475,000-token usable window.
+model_auto_compact_token_limit = 332500
