@@ -371,4 +371,15 @@ if __name__ == '__main__':
     resource.setrlimit(resource.RLIMIT_CPU, (15, 15))
     if sys.platform != "darwin":
         resource.setrlimit(resource.RLIMIT_AS, (1024**3, 1024**3))
-    print(json.dumps(_retrieve(sys.argv[1], json.loads(sys.stdin.read(10000) or '{}'))))
+    if sys.argv[1:2] == ['--publication-date']:
+        from datetime import datetime
+        raw, content_type, final = fetch_bytes(sys.argv[2])
+        if 'html' in content_type and canonical_url(final) == canonical_url(sys.argv[2]):
+            page, _ = parse_html(raw, content_type)
+            dates = {datetime.fromisoformat(value.replace('Z', '+00:00')) for value in page.page_dates}
+            if len(dates) == 1 and page.article_count <= 1:
+                stamp = dates.pop()
+                if stamp.tzinfo is not None:
+                    print(stamp.isoformat())
+    else:
+        print(json.dumps(_retrieve(sys.argv[1], json.loads(sys.stdin.read(10000) or '{}'))))

@@ -1,5 +1,6 @@
 """Local translation and shadow review. Reviewer judgments never feed credit scoring."""
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
@@ -53,7 +54,7 @@ def audit(source, language, candidate, *, retry_reason=''):
 
 
 def fallback(source, language, publisher, argos_status, *, article=False):
-    """Try online translation, then Gemma; Qwen reviews the result separately."""
+    """Try MyMemory, local Gemma and public Google translation; Qwen reviews separately."""
     suffix = " - " + publisher
     body = source[:-len(suffix)] if publisher and source.endswith(suffix) else source
     if not body.strip() or len(body) > 4000:
@@ -90,14 +91,28 @@ def fallback(source, language, publisher, argos_status, *, article=False):
         english = english.strip()
         if len(english) > 4000 or "<think>" in english:
             raise ValueError("invalid output")
-        code, confidence = _detected(english)
+        # Filing identifiers can dominate language detection on a short headline.
+        prose = re.sub(r"\b(?=[\w./-]*\d)[\w.-]+(?:/[\w.-]+)+\b", " ", english)
+        code, confidence = _detected(prose)
         if code not in ("", "en") and confidence >= 0.85:
             raise ValueError("output did not read as English")
         if body != source:
             english += suffix
         return english, GEMMA + " local fallback (reasoning off)"
     except (ValueError, KeyError, TypeError, OSError) as exc:
-        reasons.append(f"{GEMMA}: {type(exc).__name__}")
+        known = {"unexpected model, reasoning or incomplete output", "Invalid translation envelope",
+                 "unsupported or uncertain", "invalid output", "output did not read as English"}
+        reason = str(exc) if type(exc) is ValueError and str(exc) in known else type(exc).__name__
+        reasons.append(f"{GEMMA}: {reason}")
+    try:
+        from .article_translation import passages
+        parts = passages(body, limit=500)
+        english = " ".join(online_translation.translate_public(part.strip(), language.split("-")[0], "en")
+                           for part in parts if part.strip())
+        if english.strip():
+            return english + (suffix if body != source else ""), "Google public translation"
+    except (ProviderError, ValueError) as exc:
+        reasons.append(f"Google public translation: {exc}")
     return "", "; ".join(reasons) + "; translation needs review"
 
 

@@ -6,6 +6,14 @@
   <div class="hero-stats"><span><strong>{{ run.completed_companies }}/{{ run.total_companies }}</strong> searched</span><span><strong>{{ run.result_count }}</strong> collected leads</span><span><strong>{{ run.error_count }}</strong> source errors</span><span class="status status-{{ run.status }}">{{ run.status }}</span></div>
   {% if run.window_start %}<p>Publication window: {{ run.window_start.strftime('%d %b %Y %H:%M %Z') }} – {{ run.window_end.strftime('%d %b %Y %H:%M %Z') }}. Historical retrieval performed now; source availability may differ from that week.</p>{% endif %}
   {% if run.candidates_in_window is number %}<p>{{ run.candidates_in_window }} candidates inside the publication window · {{ run.result_count }} kept after search filters.</p>{% endif %}
+  {% if run.monthly_backfill %}
+  <details><summary>Monthly backfill · {{ run.monthly_backfill|length }} previously empty months</summary>
+    <p>Archive searches sample the first results page per query for the company, its executives and its owners.</p>
+    <ul>{% for month, check in run.monthly_backfill|dictsort %}
+      <li>{{ month }} · {{ check.added }} company leads added · {{ check.requests }} archive searches completed{% if check.unconfirmed_dates %} · {{ check.unconfirmed_dates }} publisher dates unavailable{% endif %}</li>
+    {% endfor %}</ul>
+  </details>
+  {% endif %}
   {% set settings = run.search_settings or {} %}
   <p>Search settings: country {{ 'on' if settings.get('include_country', true) else 'off' }} · industry {{ 'on' if settings.get('include_industry', true) else 'off' }} · adverse only {{ 'on' if settings.get('adverse_only', false) else 'off' }}.</p>
 </section>

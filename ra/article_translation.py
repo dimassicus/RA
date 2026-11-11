@@ -9,13 +9,13 @@ from . import headline_review, translation
 VERSION = "article-translation-v1"
 
 
-def passages(body):
+def passages(body, *, limit=900):
     """Keep every character, with bounded passages for Argos and Qwen's context budget."""
     parts = []
     while body:
         end = len(body)
-        if end > 900:
-            window = body[:900]
+        if end > limit:
+            window = body[:limit]
             breaks = list(re.finditer(r'(?<=[.!?。！？])\s+|\n+', window))
             if not breaks:
                 breaks = list(re.finditer(r'\s+', window))

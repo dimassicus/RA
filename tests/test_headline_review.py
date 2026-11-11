@@ -45,6 +45,7 @@ def offline_tests(monkeypatch):
     def unavailable(*args):
         raise qa.ProviderError("offline test")
     monkeypatch.setattr(qa.online_translation, "translate", unavailable)
+    monkeypatch.setattr(qa.online_translation, "translate_public", unavailable)
 
 
 def test_fallback_uses_only_gemma_and_preserves_publisher(monkeypatch):
@@ -187,3 +188,25 @@ def test_retry_feedback_keeps_reasoning_off_and_evidence_validation(monkeypatch)
     with pytest.raises(qa.ReviewError):
         simple.review('original', 'es', 'en', {'A': 'translation'}, qa.QWEN, qa.PORT,
                       enabled=False, shadow_only=True, retry_reason='Evidence does not match an original text span')
+
+
+def test_filing_number_is_preserved_without_skewing_language_detection(monkeypatch):
+    import json
+    english = "Response Regarding BEI Letter No. S-03233/BEI.PP2/03-2026"
+    response = {"model": qa.GEMMA, "choices": [{"finish_reason": "stop", "message": {
+        "content": json.dumps({"supported": True, "english": english})}}]}
+    monkeypatch.setattr(qa, "local_request", lambda *a, **kw: response)
+    result, provider = qa.fallback("Tanggapan Terkait Surat BEI No. S-03233/BEI.PP2/03-2026", "id", "", "No Argos")
+    assert result == english and qa.GEMMA in provider
+
+
+def test_public_backup_after_model_rejects_output_preserves_brand(monkeypatch):
+    monkeypatch.setattr(qa, "local_request", lambda *a, **kw: {"choices": []})
+    calls = []
+    def translate(text, source, target):
+        calls.append((text, source, target))
+        return "Response to the letter"
+    monkeypatch.setattr(qa.online_translation, "translate_public", translate)
+    assert qa.fallback("Tanggapan surat - Brand", "id", "Brand", "No Argos") == (
+        "Response to the letter - Brand", "Google public translation")
+    assert calls == [("Tanggapan surat", "id", "en")]

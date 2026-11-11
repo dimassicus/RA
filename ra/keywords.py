@@ -532,7 +532,7 @@ def discovery_terms(groups, language):
     return list(dict.fromkeys(t for t in terms if t))
 
 
-def _company_terms(language, *, titles):
+def _company_terms(language, *, titles, shortlist=None):
     terms = []
     variants = PERSON_TITLES if titles else RELATED_PHRASES
     for row in _rows:
@@ -541,18 +541,21 @@ def _company_terms(language, *, titles):
         if not row["enabled"] or not eligible:
             continue
         if language == "en":
-            terms.extend((row["english"], *variants.get(family, ())))
+            terms.extend(term for term in (row["english"], *variants.get(family, ()))
+                         if shortlist is None or term in shortlist)
         else:
             phrases = row.get("phrases", ()) if family in variants else ()
             for item in (row, *phrases):
+                if shortlist is not None and item["english"] not in shortlist:
+                    continue
                 if phrase := item["translations"].get(language):
                     terms.append(phrase)
     return list({native_text(term): term for term in terms}.values())
 
 
-def adverse_search_terms(language):
-    return _company_terms(language, titles=False)
+def adverse_search_terms(language, shortlist=None):
+    return _company_terms(language, titles=False, shortlist=shortlist)
 
 
-def person_title_terms(language):
-    return _company_terms(language, titles=True)
+def person_title_terms(language, shortlist=None):
+    return _company_terms(language, titles=True, shortlist=shortlist)

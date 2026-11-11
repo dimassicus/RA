@@ -89,7 +89,7 @@
 
 {% if model_coverage %}<section class="panel list-panel">
   <div class="section-heading"><div><span class="step">Languages</span><h2>Translation model coverage</h2></div></div>
-  <p>Languages are added from each watchlist country, including countries with several local languages. RA detects each headline’s language. When Argos cannot translate it, RA tries MyMemory online, then local Qwen and Gemma. Local Qwen reviews translated headlines.</p>
+  <p>Languages are added from each watchlist country, including countries with several local languages. RA detects each headline’s language. When Argos cannot translate it, RA tries MyMemory online, then local Gemma, then Google public translation. Qwen reviews translated headlines.</p>
   <div class="table-scroll"><table><thead><tr><th>Country</th><th>Language</th><th>Translation to English</th></tr></thead><tbody>
   {% for item in model_coverage %}<tr><td>{{ item.country }}</td><td>{{ item.language }}</td><td>{{ item.status[0]|upper }}{{ item.status[1:] }}</td></tr>{% endfor %}
   </tbody></table></div>

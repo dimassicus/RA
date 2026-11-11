@@ -187,13 +187,14 @@ def parse_articles(provider: str, payload: dict, query: str) -> list[dict]:
 
 
 def search(provider: str, subject: dict, fetcher=fetch_json,
-           reserve=db.reserve_news_api_request, now: datetime | None = None, *, window=None) -> list[dict]:
+           reserve=db.reserve_news_api_request, now: datetime | None = None, *, window=None, queries=None, first_page_only=False) -> list[dict]:
     """Page alternative-name queries within the company's reserved share of daily usage."""
     key_env, _, _ = PROVIDERS[provider]
     key = os.environ.get(key_env, "").strip()
     if not key:
         return []
-    queries = provider_queries(subject, provider)
+    if queries is None:
+        queries = provider_queries(subject, provider)
     if not queries:
         return []
     now = now or datetime.now(timezone.utc)
@@ -266,12 +267,12 @@ def search(provider: str, subject: dict, fetcher=fetch_json,
                     continue
             if total is not None and not raw and (page - 1) * size < total:
                 gaps.append(f"provider reported {total} matches but returned no articles on page {page}; coverage is incomplete")
-                if query not in empty_pages and page * size < min(total, provider_cap):
+                if not first_page_only and query not in empty_pages and page * size < min(total, provider_cap):
                     pending.append((query, page + 1))
                     empty_pages.add(query)
                 continue
             more = bool(raw) and (page * size < total if total is not None else len(raw) >= size)
-            if more:
+            if more and not first_page_only:
                 if page * size >= provider_cap:
                     raise ProviderError("provider pagination ceiling reached; narrow the date range for remaining articles")
                 pending.append((query, page + 1))

@@ -10,7 +10,9 @@ import threading
 import time
 import logging
 
-from . import db, governance_roster, search_settings, company_developments
+from . import db, governance_roster, search_settings, company_developments, monthly_backfill
+from .article_content import canonical_url
+from .scoring import WEEK_TIMEZONE
 from .search import search_company
 from .governance_sources import notice_source
 from .exposure import add_exposure_leads, search_topic, sector_markets, topic_editions
@@ -98,6 +100,49 @@ def _work_loop():
             _queue.task_done()
 
 
+def _save_leads(run_id, subject, subject_key, articles, settings, company_progress, saved, covered):
+    count = 0
+    with db.connect() as conn:
+        for index, article in enumerate(articles):
+            company_progress(f"Processing lead {index + 1} of {len(articles)}", index, len(articles))
+            language = detect_language(article["title"], article["language"])
+            title_en, provider = translate_text(
+                article["title"], language, subject["name"], article["publisher"]
+            )
+            candidate = {**article, "language": language, "title_en": title_en, "publisher_en": article["publisher"]}
+            if (not settings["adverse_only"] and not settings["include_country"] and not settings["include_industry"]
+                    and not search_settings.company_lead(candidate, subject)
+                    and not company_developments.review_topics(candidate, subject)):
+                continue
+            if settings["adverse_only"] and not search_settings.adverse_lead(candidate, subject):
+                continue
+            publisher_en = article["publisher"]
+            seen_before = conn.execute(
+                "SELECT EXISTS (SELECT 1 FROM search_results WHERE subject_key = %s AND url = %s "
+                "AND run_id <> %s)", (subject_key, article["url"], run_id)
+            ).fetchone()["exists"]
+            inserted = conn.execute(
+                "INSERT INTO search_results "
+                "(run_id, company_id, subject_key, subject_name, title, url, publisher, discovery_service, source_kind, "
+                "published_at, query, language, title_en, publisher_en, translation_provider, "
+                "signal_terms, seen_before, exposure_paths, discovery_summary) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (run_id, subject_key, url) DO NOTHING",
+                (run_id, subject.get("id"), subject_key, subject["name"], article["title"],
+                 article["url"], article["publisher"], article.get("discovery_service", ""),
+                 article.get("source_kind", "news"), article["published_at"],
+                 article["query"], language, title_en, publisher_en, provider,
+                 article["signal_terms"], seen_before, article.get("exposure_paths", []), article.get("summary", "")),
+            )
+            count += inserted.rowcount
+            if inserted.rowcount:
+                saved.add(canonical_url(article["url"]))
+                if article.get("source_kind") != "context" and search_settings.company_lead(candidate, subject):
+                    month = article["published_at"].astimezone(WEEK_TIMEZONE).strftime("%Y-%m")
+                    covered[month] = covered.get(month, 0) + 1
+    return count
+
+
 def process_run(run_id: int, searcher=search_company, topic_searcher=None, roster_check=governance_roster.check):
     run = db.get_run(run_id)
     if run is None or run["status"] not in ("queued", "running"):
@@ -106,7 +151,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
     with db.connect() as conn:
         conn.execute(
             "UPDATE search_runs SET status = 'running', started_at = COALESCE(started_at, now()), "
-            "completed_companies = 0, result_count = 0, candidates_in_window = 0, error_count = 0, retry_translations = TRUE WHERE id = %s", (run_id,)
+            "completed_companies = 0, result_count = 0, candidates_in_window = 0, monthly_backfill = '{}', error_count = 0, retry_translations = TRUE WHERE id = %s", (run_id,)
         )
         conn.execute("DELETE FROM search_results WHERE run_id = %s", (run_id,))
         conn.execute("DELETE FROM search_errors WHERE run_id = %s", (run_id,))
@@ -181,41 +226,20 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
         logging.getLogger(__name__).info("run_window %s", json.dumps(dict(
             run_id=run_id, subject=name, start=window_start.isoformat(), end=window_end.isoformat(),
             collected=len(articles), retained=len(retained), excluded=len(articles) - len(retained))))
-        articles = retained
+        saved, covered = set(), {}
+        saved_count = _save_leads(run_id, subject, subject_key, retained, settings, company_progress, saved, covered)
+        notes = {}
+        if (historical_window and window_end - window_start > timedelta(days=7)
+                and run["scope"] in ("selected", "one_off") and len(run["subjects"]) == 1):
+            gaps = dict(monthly_backfill.missing_months(window_start, window_end, covered))
+            if gaps:
+                recovered, notes, problems = monthly_backfill.recover(subject, gaps, saved.copy(), company_progress)
+                errors.extend(problems)
+                saved_count += _save_leads(run_id, subject, subject_key, recovered, settings, company_progress, saved, covered)
+                retained.extend(recovered)
+                for month in notes:
+                    notes[month]["added"] = covered.get(month, 0)
         with db.connect() as conn:
-            saved_count = 0
-            for index, article in enumerate(articles):
-                company_progress(f"Processing lead {index + 1} of {len(articles)}", index, len(articles))
-                language = detect_language(article["title"], article["language"])
-                title_en, provider = translate_text(
-                    article["title"], language, name, article["publisher"]
-                )
-                candidate = {**article, "language": language, "title_en": title_en, "publisher_en": article["publisher"]}
-                if (not settings["adverse_only"] and not settings["include_country"] and not settings["include_industry"]
-                        and not search_settings.company_lead(candidate, subject)
-                        and not company_developments.review_topics(candidate, subject)):
-                    continue
-                if settings["adverse_only"] and not search_settings.adverse_lead(candidate, subject):
-                    continue
-                publisher_en = article["publisher"]
-                seen_before = conn.execute(
-                    "SELECT EXISTS (SELECT 1 FROM search_results WHERE subject_key = %s AND url = %s "
-                    "AND run_id <> %s)", (subject_key, article["url"], run_id)
-                ).fetchone()["exists"]
-                inserted = conn.execute(
-                    "INSERT INTO search_results "
-                    "(run_id, company_id, subject_key, subject_name, title, url, publisher, discovery_service, source_kind, "
-                    "published_at, query, language, title_en, publisher_en, translation_provider, "
-                    "signal_terms, seen_before, exposure_paths, discovery_summary) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                    "ON CONFLICT (run_id, subject_key, url) DO NOTHING",
-                    (run_id, subject.get("id"), subject_key, name, article["title"],
-                     article["url"], article["publisher"], article.get("discovery_service", ""),
-                     article.get("source_kind", "news"), article["published_at"],
-                     article["query"], language, title_en, publisher_en, provider,
-                     article["signal_terms"], seen_before, article.get("exposure_paths", []), article.get("summary", "")),
-                )
-                saved_count += inserted.rowcount
             for message in errors:
                 conn.execute(
                     "INSERT INTO search_errors (run_id, subject_name, message) VALUES (%s, %s, %s)",
@@ -223,8 +247,8 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
                 )
             conn.execute(
                 "UPDATE search_runs SET completed_companies = completed_companies + 1, "
-                "result_count = result_count + %s, candidates_in_window = candidates_in_window + %s, error_count = error_count + %s WHERE id = %s",
-                (saved_count, len(articles), len(errors), run_id),
+                "result_count = result_count + %s, candidates_in_window = candidates_in_window + %s, error_count = error_count + %s, monthly_backfill = %s WHERE id = %s",
+                (saved_count, len(retained), len(errors), db.Jsonb(notes), run_id),
             )
         time.sleep(0.25)
     from .headline_review import review_saved
