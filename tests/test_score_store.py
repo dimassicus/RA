@@ -1166,7 +1166,7 @@ def test_company_events_save_selection_and_keep_original_briefs(database, monkey
                                       ids[0] if r['id'] in ids[:3] else ids[3],
                                       sentiment=1 if r['id'] == ids[-1] else -1, title='Case')
                                     for r in payload['leads']]}
-        return {'title': f"Incident {payload['event']['event']}", 'summary': ' '.join(['Evidence'] * 175)}
+        return {'title': f"Acme Manufacturing incident {payload['event']['event']}", 'summary': 'Acme Manufacturing ' + ' '.join(['Evidence'] * 173)}
     monkeypatch.setattr(event_analysis.keywords, 'model_json', model)
     event_analysis.process(run_id)
     def events():

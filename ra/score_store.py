@@ -130,7 +130,11 @@ def _weekly(conn):
     keys = set(groups) | set(existing)
     coverage = {}
     runs = conn.execute("SELECT id, subjects, created_at, window_end, status FROM search_runs").fetchall()
-    errors = conn.execute("SELECT run_id,subject_name,count(*) AS count FROM search_errors GROUP BY run_id,subject_name").fetchall()
+    errors = conn.execute("""SELECT run_id,subject_name,count(*) AS count FROM (
+        SELECT run_id,subject_name FROM search_errors WHERE NOT rss_imported
+        UNION ALL SELECT DISTINCT j.run_id,subject->>'name' FROM rss_recovery j JOIN search_runs s ON s.id=j.run_id
+        CROSS JOIN LATERAL jsonb_array_elements(s.subjects) subject WHERE j.status<>'recovered' AND
+        j.subject_key=coalesce(subject->>'id','one-off:'||s.id::text)) gaps GROUP BY run_id,subject_name""").fetchall()
     error_counts = {(r["run_id"], r["subject_name"]): r["count"] for r in errors}
     current = week_start(datetime.now(timezone.utc))
     for run in runs:
@@ -227,7 +231,7 @@ def weekly_history(company_id=None):
     with db.connect() as conn:
         return conn.execute(
             "SELECT w.*,c.name,c.short_name,c.active FROM company_weekly_scores w JOIN companies c ON c.id=w.company_id " +
-            ("WHERE c.id=%s " if company_id else "WHERE c.active OR EXISTS (SELECT 1 FROM company_weekly_scores h WHERE h.company_id=c.id AND h.score IS NOT NULL) ") + "ORDER BY c.name,w.week_start",
+            ("WHERE c.id=%s " if company_id else "WHERE c.active OR EXISTS (SELECT 1 FROM company_weekly_scores h WHERE h.company_id=c.id AND h.score IS NOT NULL) ") + "ORDER BY lower(c.name),c.id,w.week_start",
             (company_id,) if company_id else (),
         ).fetchall()
 

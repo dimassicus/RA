@@ -137,7 +137,7 @@ def test_portuguese_no_is_a_preposition_but_english_no_still_negates(monkeypatch
     assert verify(document(body, language='pt'), SUBJECT, ARTICLE)['status'] == 'supported'
     assert verify(document(body.replace('anunciou', 'não anunciou'), language='pt'), SUBJECT, ARTICLE)['status'] != 'supported'
     assert verify(document('Acme Manufacturing has not filed for bankruptcy.', language='pt'), SUBJECT, ARTICLE)['status'] != 'supported'
-    monkeypatch.setattr('ra.article_translation.checked_text', lambda _: 'Acme Manufacturing reports no net losses.')
+    monkeypatch.setattr('ra.article_translation.checked_text', lambda _, subject: 'Acme Manufacturing reports no net losses.')
     assert verify(document('Texto original.', language='es'), SUBJECT, ARTICLE)['status'] != 'supported'
 
 

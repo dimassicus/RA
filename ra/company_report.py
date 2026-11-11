@@ -57,7 +57,7 @@ def load_report(run, subject):
                                         (prior["id"], key)).fetchall()
                     prior_subject = next(s for s in prior["subjects"] if s.get("id") == subject["id"])
                     previous_runs[label] = (prior["report_end"], relevant_sources(prior_subject, rows, prior["report_end"]))
-    errors = [e["message"] for e in db.get_errors(run["id"]) if e["subject_name"] in (subject["name"], "Run")]
+    errors = [e["message"] for e in db.get_errors(run["id"]) if not e.get("resolved") and e["subject_name"] in (subject["name"], "Run")]
     report = build_report(run, subject, articles, history, errors, previous_runs)
     report["rosters"] = governance_roster.observations(run["id"], key)
     return report

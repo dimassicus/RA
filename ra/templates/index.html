@@ -10,7 +10,7 @@
 <p class="callout"><strong>Before searching:</strong> Open LM Studio and start its local server on port 1234. RA loads and switches Gemma and Qwen automatically; you do not need to load models manually. <a href="{{ url_for('setup') }}">Check model readiness in Setup</a>.</p>
 <p class="{{ 'identity-note' if reviewer.ready else 'callout' }}" role="status">{{ reviewer.message }}</p>
 
-<p class="identity-note">News API keys: GNews {{ 'configured' if 'gnews' in news_api_providers else 'not configured' }} · TheNewsAPI {{ 'configured' if 'thenewsapi' in news_api_providers else 'not configured' }}. The page never displays key values.</p>
+<p class="identity-note">News API keys: GNews {{ 'configured' if 'gnews' in news_api_providers else 'not configured' }} · Perplexity {{ 'configured' if 'perplexity' in news_api_providers else 'not configured' }} · TheNewsAPI {{ 'configured' if 'thenewsapi' in news_api_providers else 'not configured' }}. The page never displays key values.</p>
 
 <div class="action-grid">
   <section class="panel action-panel">
@@ -37,7 +37,7 @@
       <label for="company_id">Company</label>
       <select id="company_id" name="company_id" required {% if not companies %}disabled{% endif %}>
         <option value="">Select a company</option>
-        {% for company in companies %}<option value="{{ company.id }}">{{ company.name }} · {{ company.country_registration }}</option>{% endfor %}
+        {% for company in companies|alphabetical_companies %}<option value="{{ company.id }}">{{ company|company_label }} · {{ company.country_registration }}</option>{% endfor %}
       </select>
       {% set range_id = 'selected' %}{% include '_search_range.html' %}
       <button class="button primary" {% if not companies %}disabled{% endif %}>Run selected search <span aria-hidden="true">↗</span></button>
@@ -59,7 +59,7 @@
   <div class="section-heading"><div><span class="step">Identity review</span><h2>Pending company drafts</h2></div><span class="pill">{{ intake|length }} awaiting review</span></div>
   <p>Workbook and manual entries are searched in public identity sources. They enter the watchlist only after you confirm or edit them.</p>
   {% if intake %}<div class="table-scroll"><table><thead><tr><th>Company</th><th>Country</th><th>Source</th><th>Research</th><th>Action</th></tr></thead><tbody>
-  {% for draft in intake %}<tr><td><strong>{{ draft.draft_data.name }}</strong><span class="subtext">Registration: {{ draft.draft_data.registration_number or '—' }} · Tax ID: {{ draft.draft_data.tax_id or '—' }}</span></td><td>{{ draft.draft_data.country_registration }}</td><td>{{ draft.source }}{% if draft.workbook_row %} · row {{ draft.workbook_row }}{% endif %}</td><td><span class="status status-{{ draft.status }}">{{ draft.status }}</span>{% if draft.matched_company_id %}<span class="subtext">Potential saved record #{{ draft.matched_company_id }}</span>{% endif %}</td><td><a href="{{ url_for('review_intake', intake_id=draft.id) }}">Review draft</a></td></tr>{% endfor %}
+  {% for draft in intake|sort(attribute='draft_data.name') %}<tr><td><strong>{{ draft.draft_data.name }}</strong><span class="subtext">Registration: {{ draft.draft_data.registration_number or '—' }} · Tax ID: {{ draft.draft_data.tax_id or '—' }}</span></td><td>{{ draft.draft_data.country_registration }}</td><td>{{ draft.source }}{% if draft.workbook_row %} · row {{ draft.workbook_row }}{% endif %}</td><td><span class="status status-{{ draft.status }}">{{ draft.status }}</span>{% if draft.matched_company_id %}<span class="subtext">Potential saved record #{{ draft.matched_company_id }}</span>{% endif %}</td><td><a href="{{ url_for('review_intake', intake_id=draft.id) }}">Review draft</a></td></tr>{% endfor %}
   </tbody></table></div>{% else %}<p class="empty">No drafts awaiting review.</p>{% endif %}
 </section>
 
@@ -67,8 +67,8 @@
   <div class="section-heading"><div><span class="step">Saved records</span><h2>Active watchlist</h2></div><span class="pill">{{ companies|length }} monitored</span></div>
   {% if companies %}
   <div class="table-scroll"><table><thead><tr><th>Company and identifiers</th><th>Country</th><th>Industries</th><th>Owner / affiliate</th><th>Actions</th></tr></thead><tbody>
-    {% for company in companies %}<tr>
-      <td><strong>{{ company.name }}</strong><span class="subtext">Registration: {{ company.registration_number or '—' }} · Tax ID: {{ company.tax_id or '—' }}</span>
+    {% for company in companies|alphabetical_companies %}<tr>
+      <td><strong>{{ company.short_name or company.name }}</strong>{% if company.short_name and company.short_name != company.name %}<span class="subtext">{{ company.name }}</span>{% endif %}<span class="subtext">Registration: {{ company.registration_number or '—' }} · Tax ID: {{ company.tax_id or '—' }}</span>
         {% set coverage = company.get('disclosure_sources', {}) %}
         <details><summary>Disclosures: {{ 'sources found · coverage partial' if coverage.get('status') == 'partial' else 'no source confirmed' if coverage else 'discovery pending' }}</summary>
           {% for source in coverage.get('sources', []) %}<p><a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.label }}</a> · {{ source.kind }}</p>{% endfor %}
@@ -83,7 +83,7 @@
   </tbody></table></div>
   {% else %}<p class="empty">No active companies yet. Add one above or import the workbook below.</p>{% endif %}
   <details class="import-box"><summary>Stage the Excel workbook</summary><p>Use the saved <code>companies.xlsx</code> or upload a newer .xlsx file. New files should have separate Registration number and Tax ID columns. Older combined columns remain supported. Each changed row is staged for research and your review; existing records are kept until you confirm an update.</p><form method="post" action="{{ url_for('import_companies') }}" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="file" name="workbook" accept=".xlsx"><button class="button secondary">Stage workbook for review</button></form></details>
-  {% if archived %}<details class="archive-box"><summary>{{ archived|length }} removed compan{{ 'y' if archived|length == 1 else 'ies' }}</summary><div class="archived-list">{% for company in archived %}<div><span>{{ company.name }} · {{ company.country_registration }}</span><form method="post" action="{{ url_for('restore_company', company_id=company.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="link-button">Restore</button></form></div>{% endfor %}</div></details>{% endif %}
+  {% if archived %}<details class="archive-box"><summary>{{ archived|length }} removed compan{{ 'y' if archived|length == 1 else 'ies' }}</summary><div class="archived-list">{% for company in archived|alphabetical_companies %}<div><span>{{ company|company_label }} · {{ company.country_registration }}</span><form method="post" action="{{ url_for('restore_company', company_id=company.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="link-button">Restore</button></form></div>{% endfor %}</div></details>{% endif %}
 </section>
 
 {% if model_coverage %}<section class="panel list-panel">
@@ -96,7 +96,7 @@
 
 <section class="panel runs-panel">
   <div class="section-heading"><div><span class="step">Activity</span><h2>Recent searches</h2></div></div>
-  {% if runs %}<div class="table-scroll"><table><thead><tr><th>Run</th><th>Started</th><th>Scope</th><th>Progress</th><th>Leads</th><th>Status</th></tr></thead><tbody>{% for run in runs %}<tr><td><a href="{{ url_for('run_detail', run_id=run.id) }}">#{{ run.id }}</a></td><td>{{ run.created_at.strftime('%d %b %Y %H:%M %Z') }}</td><td>{{ run.scope|replace('_', ' ')|title }}</td><td>{{ run.completed_companies }}/{{ run.total_companies }}</td><td>{{ run.result_count }}</td><td><span class="status status-{{ run.status }}">{{ run.status }}</span></td></tr>{% endfor %}</tbody></table></div><p class="activity-note">Run numbers are permanent database IDs. Gaps can occur when development test records are removed; IDs are never reused.</p>
+  {% if runs %}<div class="table-scroll"><table><thead><tr><th>Run</th><th>Started</th><th>Scope</th><th>Progress</th><th>Leads</th><th>Status</th></tr></thead><tbody>{% for run in runs %}<tr><td><a href="{{ url_for('run_detail', run_id=run.id) }}">#{{ run.id }}</a></td><td>{{ run.created_at.strftime('%d %b %Y %H:%M %Z') }}</td><td>{{ run.scope|replace('_', ' ')|title }}</td><td>{{ run.completed_companies }}/{{ run.total_companies }}</td><td>{{ run.result_count }}</td><td><span class="status status-{{ run.status }}">{{ 'Summary pending' if run.status == 'completed' and run.event_analysis_status in ('pending', 'waiting_sources') else 'Summary needs retry' if run.status == 'completed' and run.event_analysis_status == 'failed' else run.status }}</span></td></tr>{% endfor %}</tbody></table></div><p class="activity-note">Run numbers are permanent database IDs. Gaps can occur when development test records are removed; IDs are never reused.</p>
   {% else %}<p class="empty">No searches yet. Start with one company to check the source feed.</p>{% endif %}
 </section>
 <script src="{{ url_for('static', filename='search-window.js') }}" defer></script>

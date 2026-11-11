@@ -20,7 +20,7 @@ from html.parser import HTMLParser
 from io import BytesIO
 from urllib.parse import urljoin, urlsplit, urlunsplit, parse_qsl, urlencode
 
-READER_VERSION = "public-source-v8"
+READER_VERSION = "public-source-v9"
 MAX_BYTES = 2_000_000
 MAX_TEXT = 100_000
 
@@ -231,6 +231,7 @@ def source_document(body, method, url):
     from .language import detect_language
     return {'status': 'available', 'body': body, 'final_url': canonical_url(url),
             'language': detect_language(body[:4000]), 'method': method,
+            **({'review_only': True} if method == 'Selected original PDF decision pages' else {}),
             'sha256': hashlib.sha256(body.encode()).hexdigest(), 'reason': ''}
 
 
@@ -281,8 +282,20 @@ def extract(raw, content_type, parsed=None):
             reader = PdfReader(BytesIO(raw))
         except PdfReadError as exc:
             raise ValueError('Unreadable PDF document') from exc
-        if reader.is_encrypted or len(reader.pages) > 30:
-            raise ValueError('Encrypted PDF or document over 30 pages; analyst reading required')
+        if reader.is_encrypted or len(reader.pages) > 150:
+            raise ValueError('Encrypted or oversized PDF; analyst reading required')
+        if len(reader.pages) > 30:
+            from .decision_review import OPERATIVE
+            selected = []
+            for number, page in enumerate(reader.pages, 1):
+                page_text = page.extract_text() or ''
+                if OPERATIVE.search(' '.join(page_text.split())):
+                    validate_pdf_text(page_text)
+                    selected.append(f'PDF page {number}\n{page_text}')
+            body = '\n\n'.join(selected)
+            if not body or len(body)>MAX_TEXT:
+                raise ValueError('Long PDF without bounded decision passages; analyst reading required')
+            return body, 'Selected original PDF decision pages'
         body = '\n\n'.join(page.extract_text() or '' for page in reader.pages)
         validate_pdf_text(body)
         method = 'PDF text (no OCR)'
@@ -429,7 +442,7 @@ def _retrieve(url, hint=None):
             route = (route + '; ' if route else '') + 'linked evidence'
         else:
             doc = source_document(body, method, final_url)
-        return {**doc, 'review_only': review_only, 'recovery': route, 'linked_documents': children}
+        return {**doc, 'review_only': review_only or bool(doc.get('review_only')), 'recovery': route, 'linked_documents': children}
     except (socket.timeout, TimeoutError):
         reason = 'Publisher or search endpoint timed out'
     except socket.gaierror:

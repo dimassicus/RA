@@ -17,6 +17,7 @@ from urllib.error import URLError
 from xml.etree import ElementTree
 
 from . import keywords, news_apis, risk_factors, company_developments
+from . import rss_gate
 from .news_topics import excluded_query_terms, excluded_story
 from .aliases import parse_aliases, provider_name, discovery_names, ambiguous, company_names, related_names, normalized as identity_normalized
 
@@ -253,7 +254,13 @@ def feed_url(query: str, country: str, *, window=None) -> tuple[str, str]:
     ), language
 
 
-def fetch_feed(url: str) -> bytes:
+def fetch_feed(url: str, *, probe=None) -> bytes:
+    if urlparse(url).hostname == "news.google.com" and urlparse(url).path == "/rss/search":
+        return rss_gate.google.read(_fetch_feed, url, probe or feed_url("news", "")[0])
+    return _fetch_feed(url)
+
+
+def _fetch_feed(url: str) -> bytes:
     request = Request(url, headers={"User-Agent": "RA-Credit-Monitor/0.1 (+local research app)"})
     for attempt in range(3):
         try:
@@ -385,7 +392,23 @@ def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None, 
     return articles
 
 
-def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_json_post, *, progress=None, window=None) -> tuple[list[dict], list[str]]:
+def planned_feeds(subject, window):
+    # Split broad name searches: one capped RSS feed cannot cover months of news.
+    name_queries = set(search_queries(subject))
+    windows = [window]
+    if window and window[1] - window[0] > timedelta(days=28):
+        start, end = window
+        step = max(timedelta(days=28), (end - start) / 24)
+        windows = []
+        while start < end:
+            stop = min(start + step, end)
+            windows.append((start, stop))
+            start = stop
+    return [(query, edition, bounds) for query, edition in company_search_plan(subject)
+               for bounds in (windows if query in name_queries else [window])]
+
+
+def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_json_post, *, progress=None, window=None, on_deferred=None, provider_window=None) -> tuple[list[dict], list[str]]:
     articles, errors = [], []
     seen_urls = set()
     from . import disclosures, idx_filings
@@ -438,28 +461,35 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
             if article["url"] not in seen_urls:
                 seen_urls.add(article["url"])
                 articles.append(article)
-    # Split broad name searches: one capped RSS feed cannot cover months of news.
-    name_queries = set(search_queries(subject))
-    windows = [window]
-    if window and window[1] - window[0] > timedelta(days=28):
-        start, end = window
-        step = max(timedelta(days=28), (end - start) / 24)
-        windows = []
-        while start < end:
-            stop = min(start + step, end)
-            windows.append((start, stop))
-            start = stop
-    queries = [(query, edition, bounds) for query, edition in company_search_plan(subject)
-               for bounds in (windows if query in name_queries else [window])]
+    queries = planned_feeds(subject, window)
     for index, (query, edition, bounds) in enumerate(queries):
         if progress:
             progress(f"Searching company news · query {index + 1} of {len(queries)}", index, len(queries))
         url, language = feed_url(query, edition, window=bounds)
         try:
-            for article in parse_feed(fetcher(url), query, language, limit=100, window=bounds):
+            probe = feed_url('"' + provider_name(subject) + '"', edition, window=bounds)[0]
+            raw = fetcher(url, probe=probe) if fetcher is fetch_feed else fetcher(url)
+            for article in parse_feed(raw, query, language, limit=100, window=bounds):
                 if article["url"] not in seen_urls:
                     seen_urls.add(article["url"])
                     articles.append(article)
+        except rss_gate.Deferred as exc:
+            if on_deferred:
+                on_deferred(query, edition, bounds)
+            elif str(exc) not in errors:
+                errors.append(str(exc))
         except Exception as exc:
             errors.append(f"{query}: {type(exc).__name__}: {exc}")
+    from . import perplexity
+    from .article_content import canonical_url
+    extra, gaps = perplexity.collect(subject, provider_window or window, articles, progress)
+    known = {canonical_url(a['url']): a for a in articles}
+    for hit in extra:
+        original = known.get(hit['url'])
+        if original is None:
+            articles.append(hit)
+        elif hit.get('decision_followup_urls'):
+            original['decision_followup_urls'] = list(dict.fromkeys([
+                *original.get('decision_followup_urls', []), *hit['decision_followup_urls']]))
+    errors.extend(gaps)
     return articles, errors

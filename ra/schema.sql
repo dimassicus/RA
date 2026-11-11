@@ -126,6 +126,7 @@ ALTER TABLE search_results ADD COLUMN IF NOT EXISTS discovery_service TEXT NOT N
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS seen_before BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS title_en TEXT NOT NULL DEFAULT '';
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS publisher_en TEXT NOT NULL DEFAULT '';
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS decision_followup_urls TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS translation_provider TEXT NOT NULL DEFAULT '';
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS report_selected BOOLEAN NOT NULL DEFAULT FALSE;
 
@@ -288,3 +289,32 @@ ALTER TABLE search_results ADD COLUMN IF NOT EXISTS risk_factor_review jsonb NOT
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS event_draft JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS event_analysis_status TEXT NOT NULL DEFAULT 'pending';
 ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS selection_saved BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Every failed search keeps its original company, edition and publication window.
+CREATE TABLE IF NOT EXISTS rss_recovery (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    run_id BIGINT NOT NULL REFERENCES search_runs ON DELETE CASCADE,
+    subject_key TEXT NOT NULL,
+    request JSONB NOT NULL,
+    fingerprint TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','recovered','unknown_edition')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt TIMESTAMPTZ NOT NULL DEFAULT now(),
+    detail TEXT NOT NULL DEFAULT '',
+    UNIQUE (run_id,subject_key,fingerprint)
+);
+ALTER TABLE rss_recovery ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+CREATE INDEX IF NOT EXISTS rss_recovery_pending ON rss_recovery(next_attempt,id) WHERE status='pending';
+CREATE TABLE IF NOT EXISTS rss_brave_attempts (
+    run_id BIGINT NOT NULL REFERENCES search_runs ON DELETE CASCADE,
+    subject_key TEXT NOT NULL,
+    outcome TEXT NOT NULL DEFAULT 'requested',
+    PRIMARY KEY(run_id,subject_key)
+);
+ALTER TABLE rss_brave_attempts ADD COLUMN IF NOT EXISTS staged JSONB;
+ALTER TABLE search_errors ADD COLUMN IF NOT EXISTS rss_imported BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE TABLE IF NOT EXISTS rss_cooldown (
+    id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK(id),
+    until_time TIMESTAMPTZ NOT NULL,
+    delay_seconds INTEGER NOT NULL
+);

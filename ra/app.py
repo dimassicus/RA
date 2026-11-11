@@ -18,7 +18,7 @@ from .importer import stage_workbook
 from .exposure import topic_links
 from .company_report import load_report
 from .company_exports import company_pdf, company_xlsx
-from .aliases import provider_name, validate_aliases
+from .aliases import normalized, provider_name, validate_aliases
 from .publisher_lookup import original_title
 from .search import company_search_plan
 from .reports import make_pdf, make_xlsx
@@ -45,10 +45,22 @@ def form_company(form) -> dict:
     return data
 
 
+def company_label(company):
+    legal = company["name"]
+    short = (company.get("short_name") or "").strip()
+    return f"{short} · {legal}" if short and short != legal else legal
+
+
+def alphabetical_companies(companies):
+    return sorted(companies, key=lambda c: (normalized((c.get("short_name") or "").strip() or c["name"]),
+                                            normalized(c["name"]), c.get("id") or 0))
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.jinja_env.globals["country_names"] = sorted(country.name for country in pycountry.countries)
     app.jinja_env.filters["week_cutoff"] = lambda start: start + timedelta(days=7)
+    app.jinja_env.filters.update(company_label=company_label, alphabetical_companies=alphabetical_companies)
     app.secret_key = os.environ.get("RA_SECRET_KEY") or secrets.token_hex(32)
     app.config["MAX_CONTENT_LENGTH"] = 3 * 1024 * 1024
 
@@ -74,7 +86,7 @@ def create_app() -> Flask:
             "index.html", companies=companies, topics=topics,
             archived=db.list_companies(False), runs=db.list_runs(), intake=db.list_intake(),
             model_coverage=model_store.coverage([company["country_registration"] for company in companies]),
-            news_api_providers=news_apis.configured_providers(),
+            news_api_providers=news_apis.configured_providers() + (["perplexity"] if os.environ.get("RA_PERPLEXITY_API_KEY") else []),
             search_today=datetime.now(WEEK_TIMEZONE).date().isoformat(),
             reviewer=headline_review.readiness(),
         )
@@ -452,10 +464,12 @@ def create_app() -> Flask:
                    or (view == "developments" and item["credit_developments"])
                    or (view == "factors" and item.get("risk_factor_review", {}).get("matches"))
                    or (view == "governance" and item["governance"])]
+        results.sort(key=lambda item: (item.get("published_at") is None, item.get("published_at"), item["id"]))
         visible_ids = {item["id"] for item in results}
         return render_template(
             "run.html", run=run, results=results, errors=db.get_errors(run_id), view=view,
             events=event_analysis.run_events(run, all_results),
+            company_labels={s["name"]: company_label(s) for s in run["subjects"]},
             country_leads=[item for item in ordinary if any(p.startswith("Country ·") for p in item.get("exposure_paths", []))],
             counts={"events": sum(event_analysis.candidate(item) for item in ordinary), **{key: sum(item["relevance"] == key for item in ordinary)
                     for key in ("risk", "review", "older", "background")},
@@ -641,6 +655,8 @@ def main():
     keywords.schedule()
     score_store.refresh_scores()
     intake_worker.start()
+    from . import rss_recovery
+    rss_recovery.start()
     worker.start_worker()
     verification_store.start()
     event_analysis.start()

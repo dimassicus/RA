@@ -11,6 +11,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+from . import translation_names
 from .model_store import ensure_model
 from .language import detect_language
 
@@ -57,7 +58,7 @@ def installed_keyword_translations(terms, target_code):
             for term, result in zip(terms, outputs)}
 
 
-def argos_translate(text: str, language: str, company_name: str = "", publisher: str = "", *, complete=False) -> tuple[str, str]:
+def argos_translate(text: str, language: str, company_name: dict | str = "", publisher: str = "", *, complete=False) -> tuple[str, str]:
     """Return English text and provenance, or empty strings when unavailable."""
     text = (text or "").strip()
     source_code = language.split("-", 1)[0].lower()
@@ -90,11 +91,8 @@ def argos_translate(text: str, language: str, company_name: str = "", publisher:
         if model is None:
             return "", f"offline model unreadable ({source_code})"
         tokenizer, translator, prefix = model
-        protected = text[:1000]
-        marker = "ZXQENTITYZXQ"
+        protected, names = translation_names.mask(text[:1000], company_name)
         publisher_marker = "ZXQPUBLISHERZXQ"
-        if company_name:
-            protected = re.sub(re.escape(company_name), marker, protected, flags=re.IGNORECASE)
         if publisher:
             protected = re.sub(re.escape(publisher), publisher_marker, protected, flags=re.IGNORECASE)
         terms = []
@@ -115,11 +113,10 @@ def argos_translate(text: str, language: str, company_name: str = "", publisher:
         translated = tokenizer.decode_pieces(result.hypotheses[0]).replace("▁", " ").strip()
         if prefix and translated.startswith(prefix):
             translated = translated[len(prefix):].strip()
-        for protected_marker in (marker, publisher_marker, *(term[0] for term in terms)):
+        for protected_marker in (publisher_marker, *(term[0] for term in terms)):
             if translated.count(protected_marker) != protected.count(protected_marker):
                 return "", "Argos changed protected names or terms; fallback required"
-        if company_name:
-            translated = translated.replace(marker, company_name)
+        translated = translation_names.restore(translated, names)
         if publisher:
             translated = translated.replace(publisher_marker, publisher)
         for term_marker, english_term in terms:
@@ -129,12 +126,12 @@ def argos_translate(text: str, language: str, company_name: str = "", publisher:
         return "", f"translation failed: {type(exc).__name__}"
 
 
-def translate_text(text: str, language: str, company_name: str = "", publisher: str = "") -> tuple[str, str]:
+def translate_text(text: str, language: str, company_name: dict | str = "", publisher: str = "") -> tuple[str, str]:
     candidate, provider = argos_translate(text, language, company_name, publisher)
-    if candidate or not (text or "").strip():
+    if (candidate and translation_names.preserved(text, candidate, company_name)) or not (text or "").strip():
         return candidate, provider
     from .headline_review import fallback
-    return fallback(text, language, publisher, provider)
+    return fallback(text, language, publisher, provider, company_name)
 
 
 def backfill(force: bool = False, run_id: int | None = None) -> tuple[int, int]:
@@ -146,14 +143,14 @@ def backfill(force: bool = False, run_id: int | None = None) -> tuple[int, int]:
     db.init_schema()
     with db.connect() as conn:
         rows = conn.execute(
-            "SELECT id, title, publisher, language, subject_name FROM search_results "
-            "WHERE (%s::bigint IS NULL OR run_id=%s) AND (title_en = '' OR (%s AND translation_provider = 'Argos offline model')) ORDER BY id",
+            "SELECT r.id,title,publisher,language,subject_name,company_id,s.subjects FROM search_results r JOIN search_runs s ON s.id=r.run_id "
+            "WHERE (%s::bigint IS NULL OR run_id=%s) AND (title_en = '' OR (%s AND translation_provider = 'Argos offline model')) ORDER BY r.id",
             (run_id, run_id, force),
         ).fetchall()
     updated = 0
     for row in rows:
         language = detect_language(row["title"], row["language"])
-        title_en, provider = translate_text(row["title"], language, row["subject_name"], row["publisher"])
+        title_en, provider = translate_text(row["title"], language, db.subject_for(row, row["subjects"]), row["publisher"])
         result = audit(row["title"], language, title_en)
         publisher_en = row["publisher"]  # Publisher names are brands, not prose.
         with db.connect() as conn:

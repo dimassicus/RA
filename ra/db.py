@@ -400,7 +400,7 @@ def list_runs(limit: int = 12):
     with connect() as conn:
         return conn.execute(
             "SELECT id, scope, status, total_companies, completed_companies, "
-            "result_count, error_count, created_at FROM search_runs "
+            "result_count, error_count, created_at, event_analysis_status FROM search_runs "
             "ORDER BY id DESC LIMIT %s", (limit,)
         ).fetchall()
 
@@ -508,10 +508,34 @@ def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, 
 
 
 def get_errors(run_id: int):
+    from .rss_recovery import coverage
     with connect() as conn:
-        return conn.execute(
-            "SELECT * FROM search_errors WHERE run_id = %s ORDER BY id", (run_id,)
-        ).fetchall()
+        errors = conn.execute("SELECT * FROM search_errors WHERE run_id=%s AND NOT rss_imported ORDER BY id",
+                              (run_id,)).fetchall()
+        gaps = coverage(conn,run_id)
+        if gaps:
+            from . import recovery_providers
+            waiting_for_budget = recovery_providers.configured('Brave') and not remaining_news_api_requests(
+                {'brave': recovery_providers.daily_limit('Brave')})['brave']
+            run = conn.execute("SELECT subjects FROM search_runs WHERE id=%s",(run_id,)).fetchone()
+            names = {str(s.get("id") or f"one-off:{run_id}"): s["name"] for s in run["subjects"]}
+            for gap in gaps:
+                message = (f"Google News RSS · {gap['total']} deferred searches, {gap['recovered']} recovered, "
+                           f"{gap['total']-gap['recovered']-gap['uncertain']} awaiting retry.")
+                if gap['uncertain']:
+                    message += f" Original edition could not be confirmed for {gap['uncertain']} legacy searches."
+                if gap['brave']:
+                    message += f" Brave Search: {gap['brave']}."
+                elif waiting_for_budget and gap['recovered'] < gap['total']:
+                    message += " Brave Search is waiting for daily quota."
+                errors.append(dict(subject_name=names[gap['subject_key']], message=message, created_at=gap['first_seen'],
+                                   resolved=gap['recovered'] == gap['total']))
+        return errors
+
+
+def subject_for(article, subjects):
+    return next((s for s in subjects if s.get('id') == article['company_id'] and article['company_id']), None) or next(
+        (s for s in subjects if s['name'] == article['subject_name']), {'name': article['subject_name']})
 
 
 def company_snapshot(company: dict):

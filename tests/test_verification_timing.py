@@ -173,9 +173,9 @@ def test_refetch_carries_review_only_for_identical_source(database, monkeypatch,
     for module, name in [(headline_review, 'audit'), (headline_review, 'fallback'), (translation, 'argos_translate')]:
         monkeypatch.setattr(module, name, lambda *args, **kwargs: pytest.fail("Unexpected model call"))
     prepare = article_translation.prepare
-    def checked_prepare(source):
+    def checked_prepare(source, subject):
         assert ('translation' in source) == (changed is None)
-        return prepare(source)
+        return prepare(source, subject)
     monkeypatch.setattr(article_translation, 'prepare', checked_prepare)
     verification_store.verify_article(article['id'], fetcher=lambda url: fetches.append(url) or fresh)
     saved = database.execute("SELECT document,fetched_at FROM article_documents").fetchone()
@@ -193,3 +193,31 @@ def test_kap_v6_navigation_cache_is_refetched(database, monkeypatch):
     verification_store.verify_article(article['id'], fetcher=lambda url: calls.append(url) or {
         'status': 'unavailable', 'reason': 'Test filing unavailable'})
     assert calls == [article['url']]
+
+
+def test_long_source_shares_budget_and_drafts_from_recorded_excerpt(database, monkeypatch):
+    from ra import article_translation, event_analysis
+    company, run_id, article = seed(database)
+    title = company['name']
+    body = 'External market news. ' * 500 + title + ' has defaulted on bond payments. ' + 'Further detail. ' * 200
+    url = article['url']
+    parent = {'status': 'available', 'language': 'en', 'body': 'Short cover.', 'sha256': 'wrapper',
+              'final_url': url, 'linked_documents': [dict(status='available', language='en', body=body,
+                                                          sha256='full-pdf', final_url=url + '/pdf')]}
+    lengths = []
+    def prepare(doc, subject):
+        lengths.append(len(doc['body']))
+        return doc
+    monkeypatch.setattr(article_translation, 'prepare', prepare)
+    monkeypatch.setattr(verification_store.risk_factors, 'records', lambda: [])
+    check = verification_store.verify_article(article['id'], fetcher=lambda _: parent)
+    assert sum(lengths) == 5000
+    assert check['review_scope'] == dict(selected_length=5000, original_length=len(body) + len('Short cover.'))
+    selected = check['review_document']['linked_documents'][0]
+    assert title in selected['body'] and selected['excerpt']['start'] > 0
+    assert selected['body'] == body[selected['excerpt']['start']:][:len(selected['body'])]
+    assert database.execute("SELECT length(document->'linked_documents'->0->>'body') AS n FROM article_documents WHERE url=%s",
+                            (url,)).fetchone()['n'] == len(body)
+    evidence = event_analysis.source_texts(parent, check, company)
+    assert sum(len(s['text']) for s in evidence) == 5000
+    assert 'excerpt' in evidence[1]['kind']

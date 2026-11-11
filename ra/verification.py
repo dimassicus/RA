@@ -75,7 +75,7 @@ def _verify(document, subject, article):
     if translated:
         result['translation'] = article_translation.summary(document)
         try:
-            body = article_translation.checked_text(document)
+            body = article_translation.checked_text(document, subject)
         except ValueError as exc:
             return {**result, 'reason': str(exc)}
     # PDF lines wrap sentences; S.A. is part of a company name, not a sentence ending.
@@ -161,6 +161,8 @@ def _verify(document, subject, article):
         result['case_context'] = sorted(reported_context)
     if not identity_seen and related_seen:
         return {**result, 'reason': 'Named owner or manager mentioned; confirm identity, company relationship and impact'}
+    if not identity_seen and document.get('excerpt'):
+        return {**result, 'reason': 'Selected excerpt does not establish the company identity; check the original source'}
     if not identity_seen:
         return {**result, 'status': 'unmatched', 'reason': 'Extracted source text does not establish this company identity'}
     if ambiguous:
@@ -173,7 +175,8 @@ def _verify(document, subject, article):
     result.update(status='supported', score=dominant['score'],
                   reason='Source explicitly attributes an event to the named company: ' + dominant['rule'])
     if translated:
-        result['reason'] += '; full-article translation independently approved by Qwen (reasoning off)'
+        scope = 'excerpt' if document.get('excerpt') else 'full-article'
+        result['reason'] += f'; {scope} translation independently approved by Qwen (reasoning off)'
     # Used for narrow near-copy grouping; never group on event category alone.
     result['signature'] = normalized(' '.join(e['sentence'] for e in result['evidence']))
     return result

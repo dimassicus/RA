@@ -158,9 +158,10 @@ def load_local_env(environment: dict[str, str]) -> None:
     allowed = {"RA_GNEWS_API_KEY", "RA_THENEWSAPI_API_KEY",
                "RA_GNEWS_DAILY_LIMIT", "RA_THENEWSAPI_DAILY_LIMIT"}
     aliases = {"BRAVE API": "RA_BRAVE_API_KEY", "JINA API": "RA_JINA_API_KEY",
-               "Firecrawler API": "RA_FIRECRAWL_API_KEY"}
+               "Firecrawler API": "RA_FIRECRAWL_API_KEY",
+               "KIMI API": "RA_KIMI_API_KEY", "Perplexity API": "RA_PERPLEXITY_API_KEY"}
     allowed.update(aliases.values())
-    allowed.add("RA_BRAVE_DAILY_LIMIT")
+    allowed.update(("RA_BRAVE_DAILY_LIMIT", "RA_PERPLEXITY_DAILY_LIMIT"))
     allowed.add("RA_ALLOW_MODEL_DOWNLOADS")
     for line in ENV_FILE.read_text().splitlines():
         stripped = line.strip()

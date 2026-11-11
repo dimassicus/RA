@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 from psycopg.types.json import Jsonb
 
-from . import article_translation, db, risk_factors, score_store, search_settings
+from . import article_translation, company_developments, db, risk_factors, score_store, search_settings
 from .article_content import READER_VERSION, canonical_url, retrieve, validate_pdf_text
 from .language import detect_language
 from .verification import verify
@@ -20,11 +20,6 @@ logger = logging.getLogger(__name__)
 _thread = None
 _wake = threading.Event()
 _start_lock = threading.Lock()
-
-
-def subject_for(article, run):
-    return next((s for s in run['subjects'] if s.get('id') == article['company_id'] and article['company_id']), None) or next(
-        (s for s in run['subjects'] if s['name'] == article['subject_name']), {'name': article['subject_name']})
 
 
 def verify_article(result_id, fetcher=retrieve, source_url=None):
@@ -50,10 +45,10 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
         hint = {"title": article["title"], "publisher": article["publisher"],
                 "published_at": article["published_at"].isoformat() if article["published_at"] else ""}
         upgrade = (cached
-                   and cached['document'].get('reader_version') in ('public-source-v4', 'public-source-v5', 'public-source-v6')
+                   and cached['document'].get('reader_version') in ('public-source-v4', 'public-source-v5', 'public-source-v6', 'public-source-v8')
                    and cached['document']['status'] == 'available'
                    and urlsplit(url).hostname not in ('kap.org.tr', 'www.kap.org.tr')
-                   and (cached['document'].get('reader_version') == 'public-source-v6'
+                   and (cached['document'].get('reader_version') in ('public-source-v6', 'public-source-v8')
                         or not url.startswith(('https://dpm.vn/cong-bo-thong-tin/',
                                                'https://dpm.vn/bao-cao-tai-chinh/'))))
         if (cached and cached['document'].get('source_hint') == hint
@@ -90,17 +85,27 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
                 conn.execute('INSERT INTO article_documents (url,document) VALUES (%s,%s) ON CONFLICT (url) '
                              'DO UPDATE SET document=EXCLUDED.document,fetched_at=now()', (url, Jsonb(document)))
         next_stage("translation_review")
-        prepared = article_translation.prepare(document)
+        subject = db.subject_for(article, run["subjects"])
+        original = document
+        document = article_translation.bounded_source(original, subject, company_developments.decision_notice(article))
+        bounded = document is not original
+        if bounded:
+            prior = (article.get('verification') or {}).get('review_document') or {}
+            previous = {d.get('final_url'): d for d in [prior, *prior.get('linked_documents', [])]}
+            for doc in [document, *document['linked_documents']]:
+                saved = previous.get(doc.get('final_url'), {})
+                if saved.get('translation') and saved.get('body') == doc.get('body') and saved.get('language') == doc.get('language'):
+                    doc['translation'] = saved['translation']
+        prepared = article_translation.prepare(document, subject)
         if document.get('linked_documents'):
-            prepared = {**prepared, 'linked_documents': [article_translation.prepare(child)
+            prepared = {**prepared, 'linked_documents': [article_translation.prepare(child, subject)
                                                          for child in document['linked_documents']]}
-        if prepared != document:
+        if not bounded and prepared != document:
             with db.connect() as conn:
                 conn.execute('UPDATE article_documents SET document=%s WHERE url=%s AND document=%s',
                              (Jsonb(prepared), url, Jsonb(document)))
         document = prepared
         next_stage("attribution")
-        subject = subject_for(article, run)
         checked_docs = [(doc, verify(doc, subject, article)) for doc in
                         [document, *document.get('linked_documents', [])]]
         supported = [(doc, check) for doc, check in checked_docs if check['status'] == 'supported']
@@ -110,6 +115,9 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
                                       'reason': check['reason'], 'hash': check['document_hash']} for _, check in checked_docs]
             if len({check['score'] for _, check in supported}) > 1:
                 assessment.update(status='needs_review', reason='Publisher and linked evidence disagree on direction')
+        if bounded:
+            assessment['review_scope'] = prepared['review_scope']
+            assessment['review_document'] = prepared
         next_stage("themes")
         settings = search_settings.for_run(run)
         themes = risk_factors.cached_assess(article, document, subject, [r for r in risk_factors.records()
@@ -221,6 +229,9 @@ def job_summary(run_id):
                                 AND r.headline_review->>'status' IN ('material_error','uncertain')) AS review_attention
             FROM search_results r LEFT JOIN verification_jobs j ON j.result_id=r.id
             WHERE r.run_id=%s""", (run_id,)).fetchone()
+        counts.update(conn.execute("""SELECT count(*) AS rss_total,count(*) FILTER(WHERE status='recovered') AS rss_recovered,
+            (SELECT count(*) FROM rss_brave_attempts WHERE run_id=%s AND outcome<>'requested') AS brave_finished
+            FROM rss_recovery WHERE run_id=%s""", (run_id,run_id)).fetchone())
     counts['translation_total'] = counts['translations'] + counts['missing']
     for done, total, percent in ((counts['completed'] + counts['failed'], 'total', 'percent'),
                                  (counts['reviewed'], 'translation_total', 'translation_percent')):
@@ -238,7 +249,7 @@ def details(result_id):
             "SELECT document FROM article_documents WHERE url=%s",
             (checked.get('requested_url'),)
         ).fetchone() if checked.get('document_hash') else None
-        document = source['document'] if source else {}
+        document = checked.get('review_document') or (source['document'] if source else {})
         document = next((d for d in [document, *document.get('linked_documents', [])]
                          if d.get('sha256') == checked.get('document_hash')), {})
         return {'recovered_body': document.get('body', '') if document.get('review_only') else '',

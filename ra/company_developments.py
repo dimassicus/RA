@@ -58,6 +58,32 @@ _CONTINUATION = re.compile(r"(?:(?:but|however|yet|namun|tetapi|sementara) )?(?:
                            r"(?: (?:investment )?" + _ASSET + r")? " + _STILL + r"\b")
 
 
+# An announced disposition is different from an application awaiting a decision.
+_DECISION = re.compile(r"\b(?:court (?:order|ruling|judgment|decree|decision)|court (?:ruled|ordered)|"
+                       r"(?:appeal|objection|petition) (?:granted|upheld|dismissed|denied)|"
+                       r"penetapan pengadilan|penetapan permohonan|isi penetapan|putusan pengadilan|"
+                       r"decisao judicial|sentenca judicial|resolucion judicial|decision judiciaire|"
+                       r"dikabulkan sebagian|(?:aset|properti) tetap disita|assets? (?:ordered returned|remain under seizure)|"
+                       r"court (?:grants|dismisses|upholds)|final (?:order|decision)|regulatory order|consent order|"
+                       r"mahkeme karari|судебное решение|решение суда|δικαστικη αποφαση|phan quyet|ban an)\b", re.I)
+
+
+def petition_notice(article):
+    return any(re.search(r"\b(?:files? (?:an? )?(?:appeal|objection|petition)|objection petition|"
+                         r"permohonan keberatan|ajukan keberatan|interpos recurso)\b", normalized(article.get(k) or ''))
+               for k in ('title', 'title_en'))
+
+
+def decision_notice(article):
+    for field in ('title', 'title_en'):
+        title = normalized(article.get(field) or '')
+        if re.search(r'\b(?:awaits?|awaiting|seeks?|expected|pending|requests?)\b.{0,35}\b(?:ruling|order|decision)\b', title):
+            continue
+        if _DECISION.search(title) or ('partial' in title and 'ruling' in title):
+            return True
+    return False
+
+
 def legal_signals(text):
     """Describe the reported relief and continuing exposure independently of the credit score."""
     if _QUALIFIED.search(text):

@@ -10,10 +10,11 @@
 </section>
 <section class="panel form-panel"><h2>Full-article company and event check</h2>
 <p><strong>{{ article.verification.get('status', 'pending')|replace('_',' ') }}</strong> · {{ article.verification.get('reason', 'Source text has not been checked yet.') }}</p>
+{% if article.verification.review_scope %}<p>Excerpt review · {{ article.verification.review_scope.selected_length }} of {{ article.verification.review_scope.original_length }} source characters selected across the article and its linked documents.</p>{% endif %}
 {% if article.verification.get('case_context') %}<p>Reported case context: {{ article.verification.case_context|join('; ') }}. These are source cues, not findings of guilt.</p>{% endif %}
-<p class="subtext">RA checks publisher evidence automatically. “Supported” means an explicit statement in the extracted source, not independent confirmation. English and Portuguese use source-text rules directly. Other languages use complete article translations, independently checked by Qwen before the same company-impact rules run. Missing passages, translation uncertainty, unclear timing and ambiguous attribution require analyst review. A faithful translation alone cannot change a score.</p>
+<p class="subtext">RA checks publisher evidence automatically. “Supported” means an explicit statement in the extracted source, not independent confirmation. English and Portuguese use source-text rules directly. Other languages use translations of the selected source text, independently checked by Qwen before the same company-impact rules run. Missing passages, translation uncertainty, unclear timing and ambiguous attribution require analyst review. A faithful translation alone cannot change a score.</p>
 {% set translation = article.verification.get('translation') %}
-{% if translation %}<p><strong>Full-article translation:</strong> {{ translation.get('reviewed', 0) }}/{{ translation.get('total', 0) }} passages approved · {{ translation.get('status', 'pending')|replace('_',' ') }}. {{ translation.get('reason', '') }}</p>
+{% if translation %}<p><strong>Source translation:</strong> {{ translation.get('reviewed', 0) }}/{{ translation.get('total', 0) }} passages approved · {{ translation.get('status', 'pending')|replace('_',' ') }}. {{ translation.get('reason', '') }}</p>
 <p class="subtext">{{ translation.get('providers', [])|join(' · ') }}</p>{% endif %}
 {% if body_translation %}<details><summary>Read article translations and checks</summary>
 {% for part in body_translation.get('parts', []) %}<h3>Passage {{ loop.index }}</h3>

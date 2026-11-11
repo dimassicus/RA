@@ -77,9 +77,13 @@ def publisher_date(url):
         return None
 
 
-def brave_search(query, bounds, subject, dates, seen, stats):
+def brave_search(query, bounds, subject, dates, seen, stats, *, language=None):
     days = "to".join(stamp.astimezone(timezone.utc).strftime("%Y-%m-%d") for stamp in bounds)
-    params = urlencode(dict(q=query, freshness=days, count=20, country="ALL", spellcheck="false"))
+    params = dict(q=query, freshness=days, count=20, country="ALL", spellcheck="false")
+    # Unsupported editions still search the reviewed native company names.
+    if language in {"ar","de","el","en","es","fr","id","pt","ru","tr","vi"}:
+        params["search_lang"] = language
+    params = urlencode(params)
     data = recovery_providers.request("Brave", "/res/v1/web/search?" + params)
     rows = []
     web = data.get("web", {})

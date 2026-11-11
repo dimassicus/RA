@@ -4,14 +4,44 @@ import re
 
 from scripts.translation_review.simple import review_content
 
-from . import headline_review, translation
+from . import decision_review, headline_review, translation, translation_names
 
 VERSION = "article-translation-v1"
+SOURCE_REVIEW_LIMIT = 5000
 
 
-def passages(body, *, limit=900):
+def bounded_source(document, subject, decision=False):
+    """Share one original-text budget between the publisher and its attachments."""
+    docs = [document, *document.get('linked_documents', [])]
+    sizes = [len(d.get('body') or '') for d in docs]
+    total = sum(sizes)
+    if total <= SOURCE_REVIEW_LIMIT:
+        return document
+    matcher = translation_names.pattern(translation_names.names(subject))
+    remaining = SOURCE_REVIEW_LIMIT
+    # A short cover page leaves its unused share to the longer filing.
+    for position, i in enumerate(sorted(range(len(docs)), key=sizes.__getitem__)):
+        size = min(sizes[i], remaining // (len(docs) - position))
+        remaining -= size
+        if size == sizes[i]:
+            continue
+        body = docs[i]['body']
+        anchor = decision_review.OPERATIVE.search(body) if decision else None
+        if not anchor and matcher:
+            anchor = matcher.search(body)
+        start = max(0, min(len(body) - size, anchor.start() - size // 4)) if anchor else 0
+        doc = dict(docs[i], body=body[start:start + size],
+                   excerpt={'start': start, 'length': size, 'original_length': sizes[i]})
+        doc.pop('translation', None)
+        docs[i] = doc
+    return dict(docs[0], linked_documents=docs[1:], review_scope={
+        'original_length': total, 'selected_length': SOURCE_REVIEW_LIMIT})
+
+
+def passages(body, *, limit=900, subject=None):
     """Keep every character, with bounded passages for Argos and Qwen's context budget."""
     parts = []
+    matcher = translation_names.pattern(translation_names.names(subject))
     while body:
         end = len(body)
         if end > limit:
@@ -22,6 +52,11 @@ def passages(body, *, limit=900):
             if not breaks:
                 raise ValueError('Source contains an overlong unbroken passage; analyst review required')
             end = breaks[-1].end()
+            if matcher:
+                for match in matcher.finditer(body, 0, min(len(body), limit + max(len(n) for n in translation_names.names(subject)) + 1)):
+                    if match.start() < end < match.end():
+                        end = match.start() or match.end()
+                        break
         parts.append(body[:end])
         body = body[end:]
     return parts
@@ -74,7 +109,7 @@ def group_replacements(parts, replacements, language):
     return grouped, review
 
 
-def prepare(document):
+def prepare(document, subject=None):
     """Reuse reviewed passages on retry; translate first, then review to limit model switching."""
     language = document.get('language', '').lower().split('-')[0]
     if document.get('status') != 'available' or document.get('review_only') or language in ('en', 'pt'):
@@ -94,10 +129,16 @@ def prepare(document):
                 and ''.join(p['source'] for p in old_parts) == body)
     try:
         parts = result['parts'] = ([dict(p) for p in old_parts] if reusable
-                                    else [{'source': source} for source in passages(body)])
+                                    else [{'source': source} for source in passages(body, subject=subject)])
     except ValueError as exc:
         result['reason'] = str(exc)
         return document
+    # A previous review can be shared only when it preserved this issuer's names.
+    for part in parts:
+        if part.get('english') and not translation_names.preserved(part['source'], part['english'], subject):
+            part.pop('english')
+            part.pop('review', None)
+    identity = {'company_name': subject} if subject else {}
     if not all(faithful(p) for p in parts):
         readiness = headline_review.readiness()
         if not readiness['ready']:
@@ -107,9 +148,9 @@ def prepare(document):
         if faithful(part):
             continue
         if not part.get('english') or part.get('review', {}).get('status') == 'material_error':
-            english, provider = translation.argos_translate(part['source'], language, complete=True)
+            english, provider = translation.argos_translate(part['source'], language, complete=True, **identity)
             if not english:
-                english, provider = headline_review.fallback(part['source'], language, '', provider, article=True)
+                english, provider = headline_review.fallback(part['source'], language, '', provider, article=True, **identity)
             part.update(english=english, provider=provider, review={})
     for part in parts:
         if faithful(part) or not part.get('english'):
@@ -124,7 +165,7 @@ def prepare(document):
         if (part.get('provider', '').startswith('Argos')
                 and part.get('review', {}).get('status') in ('material_error', 'uncertain')):
             english, provider = headline_review.fallback(part['source'], language, '',
-                                                         'Argos translation rejected by Qwen', article=True)
+                                                         'Argos translation rejected by Qwen', article=True, **identity)
             if english:
                 part['rejected_translation'] = {k: part[k] for k in ('english', 'provider', 'review')}
                 part.update(english=english, provider=provider, review={})
@@ -134,15 +175,18 @@ def prepare(document):
     for part in replacements:
         part['review'] = headline_review.audit(part['source'], language, part['english'])
     checked = sum(faithful(p) for p in parts)
+    scope = 'Source excerpt' if document.get('excerpt') else 'Full-article'
     result.update(status='faithful' if checked == len(parts) else 'needs_review',
-                  reason=f'Full-article translation: {checked}/{len(parts)} passages approved by Qwen (reasoning off)')
+                  reason=f'{scope} translation: {checked}/{len(parts)} passages approved by Qwen (reasoning off)')
     return document
 
 
-def checked_text(document):
+def checked_text(document, subject=None):
     """Reject partial, stale or unreviewed translations even if their top-level status says faithful."""
     data = document.get('translation', {})
     parts = data.get('parts', [])
+    if any(not translation_names.preserved(p.get('source', ''), p.get('english', ''), subject) for p in parts):
+        raise ValueError('Company name changed in the translated source; a fresh translation is required')
     if (data.get('status') != 'faithful' or data.get('version') != VERSION
             or data.get('source_hash') != fingerprint(document.get('body', ''))
             or data.get('language') != document.get('language', '').lower().split('-')[0]

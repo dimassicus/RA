@@ -3,7 +3,7 @@ import re
 import unicodedata
 from functools import lru_cache
 
-from . import risk_factors
+from . import risk_factors, rss_gate
 from .aliases import contains, normalized
 from .relevance import headline
 from .exposure_terms import CHANNEL_TERMS, MARKET_ALIASES, REGION_MARKETS, NAMES, TRADE, FUNDING, CURRENCY, OPERATIONS, SUPPLY, PRICES
@@ -110,7 +110,7 @@ def _native_text(value):
     return value.translate(str.maketrans({"’": "'", "‘": "'", "ʻ": "'", "ʼ": "'"}))
 
 
-def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None, factor=None, window=None):
+def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None, factor=None, window=None, on_deferred=None, probe=None):
     names = [topic] + [alias for alias, canonical in TOPIC_NAMES[branch].items() if canonical == topic]
     channels = CHANNELS[branch]
     if edition:
@@ -143,7 +143,14 @@ def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None,
     url, language = feed_url(query, edition, window=window)
     hits = []
     fold = _native_text if edition else normalized
-    for item in parse_feed(fetcher(url), query, language):
+    try:
+        raw = fetcher(url, probe=probe) if fetcher is fetch_feed else fetcher(url)
+    except rss_gate.Deferred:
+        if on_deferred is None:
+            raise
+        on_deferred(query, edition, window)
+        return []
+    for item in parse_feed(raw, query, language):
         title = fold(headline(item, "title"))
         def matches(term):
             phrase = fold(term)

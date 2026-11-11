@@ -61,7 +61,7 @@ def make_xlsx(run: dict, results: list[dict], errors: list[dict], selected: bool
         ("Run ID", run["id"]), ("Created (UTC)", _utc_timestamp(run["created_at"])),
         ("Scope", run["scope"]), ("Status", run["status"]),
         ("Companies searched", run["completed_companies"]),
-        (("Analyst-selected leads" if selected else "News/disclosure leads"), len(results)), ("Source errors", len(errors)),
+        (("Analyst-selected leads" if selected else "News/disclosure leads"), len(results)), ("Source errors", sum(not e.get("resolved") for e in errors)),
         ("New to system", sum(not item["seen_before"] for item in results)),
         ("Official notices", sum(item["source_kind"] == "official" for item in results)),
     ]
@@ -173,7 +173,7 @@ def make_pdf(run: dict, results: list[dict], errors: list[dict], selected: bool 
         ), Spacer(1, 5),
         Paragraph(
             f"{run['completed_companies']} {'company' if run['completed_companies'] == 1 else 'companies'} searched  |  {len(results)} total leads  |  "
-            f"{len(new_results)} new to system  |  {len(errors)} source errors", meta_style,
+            f"{len(new_results)} new to system  |  {sum(not e.get('resolved') for e in errors)} source errors", meta_style,
         ), Spacer(1, 12), Paragraph(escape(WARNING), note_style), Spacer(1, 12),
         Paragraph(
             ("These leads were selected by an analyst. Selection does not establish that an event is verified."

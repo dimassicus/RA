@@ -11,11 +11,20 @@ from . import db
 from .article_content import MAX_BYTES, MAX_TEXT, canonical_url, public_target
 from .publisher_lookup import normalized, original_title
 
-HOSTS = {'Brave': 'api.search.brave.com', 'Jina': 'r.jina.ai', 'Firecrawl': 'api.firecrawl.dev'}
+HOSTS = {'Perplexity': 'api.perplexity.ai', 'Brave': 'api.search.brave.com', 'Jina': 'r.jina.ai', 'Firecrawl': 'api.firecrawl.dev'}
 
 
 def configured(provider):
     return bool(os.environ.get(f'RA_{provider.upper()}_API_KEY', '').strip())
+
+
+def daily_limit(provider):
+    if provider == 'Perplexity' and not os.environ.get('RA_PERPLEXITY_DAILY_LIMIT', '').strip():
+        return None
+    try:
+        return max(0, int(os.environ.get(f'RA_{provider.upper()}_DAILY_LIMIT', '20')))
+    except ValueError:
+        return 0
 
 
 def request(provider, path, *, headers=None, body=None):
@@ -29,11 +38,7 @@ def request(provider, path, *, headers=None, body=None):
     elif provider == 'Jina':
         db.reserve_news_api_request('jina', None)
     else:
-        try:
-            limit = int(os.environ.get(prefix + '_DAILY_LIMIT', '20'))
-        except ValueError:
-            limit = 0
-        if not db.reserve_news_api_request(provider.lower(), limit):
+        if not db.reserve_news_api_request(provider.lower(), daily_limit(provider)):
             raise ValueError(f'{provider} daily request limit reached')
     auth = {'X-Subscription-Token': key} if provider == 'Brave' else {'Authorization': 'Bearer ' + key}
     connection = http.client.HTTPSConnection(HOSTS[provider], timeout=22)

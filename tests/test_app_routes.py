@@ -28,6 +28,39 @@ def test_saved_run_page_accepts_trailing_slash(monkeypatch):
         assert client.get("/runs/5/").status_code == 200
 
 
+def test_ai_summary_orders_events_across_companies_and_their_sources(monkeypatch):
+    def lead(identifier, company, day, group, decision=None, event_day=None):
+        draft = dict(event=group, title=f"Brief {group}", summary="Summary")
+        if decision:
+            draft['decision'] = dict(status='documented', decision_day=decision)
+        if event_day:
+            draft['event_day'] = event_day
+        return dict(id=identifier, subject_name=company, subject_key=company, title=f"Source {identifier}",
+                    event_draft=draft, event_group=str(group), url=f"https://example.test/{identifier}",
+                    published_at=datetime(2026, 7, day, tzinfo=timezone.utc) if day else None,
+                    score=0, score_included=True, score_status='provisional', report_selected=False,
+                    publisher='News', language='en', verification={}, source_kind='news')
+    rows = [lead(4, 'Alpha', None, 4), lead(3, 'Zulu', 6, 2), lead(1, 'Alpha', 5, 1, '2026-07-01'),
+            lead(2, 'Zulu', 2, 2), lead(5, 'Alpha', 9, 5, event_day='2026-06-30')]
+    run = dict(id=5, scope='selected', status='completed', total_companies=2, completed_companies=2,
+               result_count=len(rows), error_count=0, created_at=rows[2]['published_at'], event_analysis_status='complete',
+               subjects=[dict(name='Alpha', country_registration='Brazil'), dict(name='Zulu', country_registration='Japan')])
+    monkeypatch.setattr(db, 'get_run', lambda _: run)
+    monkeypatch.setattr(db, 'get_results', lambda _: rows)
+    monkeypatch.setattr(db, 'get_errors', lambda _: [])
+    monkeypatch.setattr(verification_store, 'job_summary', lambda _: {})
+    with create_app().test_client() as client:
+        page = client.get('/runs/5')
+        assert page.status_code == 200
+        summary = page.get_data(as_text=True).split('AI summary for search results', 1)[1].split('Company risk leads', 1)[0]
+        labels = ['Brief 5', 'Brief 1', 'Brief 2', 'Source 2', 'Source 3', 'Date unknown', 'Brief 4']
+        assert [summary.index(label) for label in labels] == sorted(summary.index(label) for label in labels)
+        leads = page.get_data(as_text=True).split('id="lead-table"', 1)[1].split('</tbody>', 1)[0]
+        expected = [2, 1, 3, 5, 4]
+        positions = [leads.index(f'aria-label="Include lead {i} in report"') for i in expected]
+        assert positions == sorted(positions)
+
+
 def test_risk_view_hides_noise_and_preserves_other_view_selections(monkeypatch):
     now = datetime(2026, 11, 4, tzinfo=timezone.utc)
     run = {"id": 5, "scope": "selected", "status": "completed", "total_companies": 1,
@@ -208,3 +241,18 @@ def test_single_company_custom_inclusive_range(monkeypatch, path):
                     {'end_date': '2026-11-11'}, {'cutoff_date': '2026-11-10'}, {'window_start': now.isoformat()}):
         assert client.post(path, data=form | invalid).status_code == 400
     assert len(calls) == 2
+
+
+def test_weekly_scores_sort_by_visible_name_including_archived_history(monkeypatch):
+    from ra import score_store
+    names = [dict(id=1, name="AAA Holdings", short_name="Zulu", active=True),
+             dict(id=2, name="Beta", active=True),
+             dict(id=3, name="Public corporation", short_name="Álpha", active=False)]
+    monkeypatch.setattr(db, "list_companies", lambda _: names)
+    monkeypatch.setattr(score_store, "weekly_history", lambda: [
+        dict(company_id=3, week_start=datetime(2025, 1, 6).date(), score=-1)])
+    with create_app().test_client() as client:
+        page = client.get("/scores")
+        assert page.status_code == 200
+        table = page.get_data(as_text=True).split('class="heatmap"', 1)[1]
+        assert table.index(">Álpha<") < table.index(">Beta<") < table.index(">Zulu<")

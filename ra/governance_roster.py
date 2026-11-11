@@ -160,7 +160,7 @@ def observations(run_id, subject_key=None):
                   AND coverage_note='' AND cur.coverage_note=''
                 ORDER BY observed_at DESC LIMIT 1
             ) prev ON true WHERE cur.run_id=%s AND (%s::text IS NULL OR cur.subject_key=%s)
-            ORDER BY cur.company_name,(cur.coverage_note<>''),cur.source_url
+            ORDER BY lower(cur.company_name),(cur.coverage_note<>''),cur.source_url
         """, (run_id, subject_key, subject_key)).fetchall()
     for row in rows:
         row['source_url'] = row['evidence_url'] or row['source_url']

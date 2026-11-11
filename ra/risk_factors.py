@@ -15,7 +15,7 @@ MAX_DESCRIPTION = 200
 MANAGEMENT = "Changes in top management"
 OWNERSHIP = "Significant changes in major shareholdings or control"
 # Bump when the thematic prompt, schema or evidence validation changes.
-ASSESSMENT_VERSION = "thematic-assessment-v3"
+ASSESSMENT_VERSION = "thematic-assessment-v4"
 SEEDS = {
     **dict.fromkeys(company_developments.TERMS, "company"),
     MANAGEMENT: "company",
@@ -212,7 +212,7 @@ def cached_assess(article, document, subject, factors):
         "source_available": available, "source_hash": hashlib.sha256(body.encode()).hexdigest(),
         "language": document.get("language", ""), "review_only": bool(document.get("review_only")),
         "target": {key: subject.get(key) for key in
-                   ("name", "aliases", "country_registration", "primary_countries", "primary_industries")},
+                   ("name", "short_name", "aliases", "country_registration", "primary_countries", "primary_industries")},
         "factors": [{key: row[key] for key in ("id", "english", "scope")} for row in factors],
     }
     fingerprint = hashlib.sha256(json.dumps(inputs, ensure_ascii=False, sort_keys=True,
@@ -238,7 +238,7 @@ def assess(article, document, subject, factors):
     title = headline(article, "title")
     body = document.get("body", "") if document.get("status") == "available" else ""
     result = {"status": "checked", "coverage": "headline and source text" if body else "headline only", "matches": []}
-    target = {key: subject.get(key) for key in ("name", "aliases", "country_registration", "primary_countries", "primary_industries")}
+    target = {key: subject.get(key) for key in ("name", "short_name", "aliases", "country_registration", "primary_countries", "primary_industries")}
     entry = keywords.object_schema({"id": {"type": "integer"}, "kind": {"type": "string", "enum": ["direct", "partial"]},
                                     "quote": {"type": "string"}, "connection": {"type": "string"}})
     schema = keywords.object_schema({"matches": {"type": "array", "items": entry}})
@@ -255,6 +255,7 @@ def assess(article, document, subject, factors):
               "unrelated events and explicit denials do not match. Match company themes to the watched entity, country "
               "themes to a listed market, sector themes to its industry in a listed market. For each match give its "
               "ID, kind, a short continuous verbatim quote, and a short English explanation grounded in that quote. "
+              "Use original company names and tickers verbatim in explanations. Never translate a proper name. "
               "Return an empty array for unrelated news.")
     seen = {}
     try:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from functools import partial
 from datetime import datetime, timedelta, timezone
 import json
@@ -10,10 +11,12 @@ import threading
 import time
 import logging
 
-from . import db, governance_roster, search_settings, company_developments, monthly_backfill
+from . import db, governance_roster, search_settings, company_developments, monthly_backfill, rss_recovery
 from .article_content import canonical_url
 from .scoring import WEEK_TIMEZONE
-from .search import search_company
+from . import exposure
+from .aliases import provider_name
+from .search import feed_url, search_company
 from .governance_sources import notice_source
 from .exposure import add_exposure_leads, search_topic, sector_markets, topic_editions
 from .news_apis import plan_subjects
@@ -100,14 +103,15 @@ def _work_loop():
             _queue.task_done()
 
 
-def _save_leads(run_id, subject, subject_key, articles, settings, company_progress, saved, covered):
+def _save_leads(run_id, subject, subject_key, articles, settings, company_progress, saved, covered,
+                *, connection=None, queue_checks=False):
     count = 0
-    with db.connect() as conn:
+    with (nullcontext(connection) if connection is not None else db.connect()) as conn:
         for index, article in enumerate(articles):
             company_progress(f"Processing lead {index + 1} of {len(articles)}", index, len(articles))
             language = detect_language(article["title"], article["language"])
             title_en, provider = translate_text(
-                article["title"], language, subject["name"], article["publisher"]
+                article["title"], language, subject, article["publisher"]
             )
             candidate = {**article, "language": language, "title_en": title_en, "publisher_en": article["publisher"]}
             if (not settings["include_country"] and not settings["include_industry"]
@@ -123,17 +127,20 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
                 "INSERT INTO search_results "
                 "(run_id, company_id, subject_key, subject_name, title, url, publisher, discovery_service, source_kind, "
                 "published_at, query, language, title_en, publisher_en, translation_provider, "
-                "signal_terms, seen_before, exposure_paths, discovery_summary) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT (run_id, subject_key, url) DO NOTHING",
+                "signal_terms, seen_before, exposure_paths, discovery_summary, decision_followup_urls) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (run_id, subject_key, url) DO NOTHING RETURNING id",
                 (run_id, subject.get("id"), subject_key, subject["name"], article["title"],
                  article["url"], article["publisher"], article.get("discovery_service", ""),
                  article.get("source_kind", "news"), article["published_at"],
                  article["query"], language, title_en, publisher_en, provider,
-                 article["signal_terms"], seen_before, article.get("exposure_paths", []), article.get("summary", "")),
+                 article["signal_terms"], seen_before, article.get("exposure_paths", []), article.get("summary", ""),
+                 article.get("decision_followup_urls", [])),
             )
             count += inserted.rowcount
             if inserted.rowcount:
+                if queue_checks:
+                    conn.execute("INSERT INTO verification_jobs(result_id) VALUES (%s)", (inserted.fetchone()['id'],))
                 saved.add(canonical_url(article["url"]))
                 if article.get("source_kind") != "context" and search_settings.company_lead(candidate, subject):
                     month = article["published_at"].astimezone(WEEK_TIMEZONE).strftime("%Y-%m")
@@ -167,7 +174,12 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
         def topic_searcher(branch, topic, *, edition="", factor=None):
             detail = f" · {factor[0]}" if factor else ""
             report(f"Searching {branch} news: {topic} ({edition or 'English edition'}){detail}")
-            return search_topic(branch, topic, edition=edition, markets=markets, factor=factor, window=historical_window)
+            affected = [s for s in run["subjects"] if (branch, topic) in exposure.topic_links(s)]
+            def defer(query, edition, span):
+                rss_recovery.defer(run, affected, query, edition, span, dict(branch=branch, topic=topic, factor=factor))
+            probe = feed_url('"' + provider_name(affected[0]) + '"', edition, window=(window_start, window_end))[0]
+            return search_topic(branch, topic, edition=edition, markets=markets, factor=factor,
+                                window=(window_start,window_end), on_deferred=defer, probe=probe)
     def check(branch, topic):
         if not search_settings.scope_enabled(branch, settings):
             return [], ""
@@ -182,7 +194,8 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
         company_progress("Checking company news and official sources")
         search_failure = ""
         try:
-            articles, errors = (search_company(subject, progress=company_progress, window=historical_window) if searcher is search_company
+            articles, errors = (search_company(subject, progress=company_progress, window=historical_window,
+                                       provider_window=(window_start, window_end), on_deferred=partial(rss_recovery.defer, run, [subject])) if searcher is search_company
                                 else searcher(subject))
         except Exception as exc:
             search_failure = f"{type(exc).__name__}: {exc}"
@@ -248,6 +261,11 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
                 "result_count = result_count + %s, candidates_in_window = candidates_in_window + %s, error_count = error_count + %s, monthly_backfill = %s WHERE id = %s",
                 (saved_count, len(retained), len(errors), db.Jsonb(notes), run_id),
             )
+            if conn.execute("SELECT 1 FROM rss_recovery WHERE run_id=%s LIMIT 1",(run_id,)).fetchone():
+                # Include one outstanding coverage gap per company in live progress.
+                conn.execute("""UPDATE search_runs SET error_count=(SELECT count(*) FROM search_errors WHERE run_id=%s)
+                    + (SELECT count(DISTINCT subject_key) FROM rss_recovery WHERE run_id=%s AND status<>'recovered')
+                    WHERE id=%s""",(run_id,run_id,run_id))
         time.sleep(0.25)
     from .headline_review import review_saved
     report("Checking headline translations with Qwen")
@@ -261,6 +279,9 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
             "UPDATE search_runs SET status = %s, finished_at = now() WHERE id = %s",
             (status, run_id),
         )
+    with db.connect() as conn:
+        if conn.execute("SELECT 1 FROM rss_recovery WHERE run_id=%s LIMIT 1",(run_id,)).fetchone():
+            rss_recovery.sync_run(conn,run_id)
     refresh_scores(run_id)
     from .verification_store import enqueue_run
     enqueue_run(run_id, limit_per_company=None)
