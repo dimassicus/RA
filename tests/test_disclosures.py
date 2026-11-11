@@ -26,7 +26,7 @@ def test_discovers_new_company_without_a_company_specific_adapter():
     result = disclosures.discover(SUBJECT, lookup=catalog, fetch=fetch)
     assert {item["url"] for item in result["sources"]} == {"https://example.test/investors/disclosures", "https://example.test/feed/"}
     assert result["identity"] == disclosures.identity(SUBJECT)
-    assert result["status"] == "partial" and result["gaps"]
+    assert result["status"] == "partial" and not result["gaps"]
 
 
 def test_wrong_country_or_unconfirmed_page_does_not_become_a_source():

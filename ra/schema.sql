@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS search_runs (
     finished_at TIMESTAMPTZ
 );
 
+ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS candidates_in_window INTEGER;
 ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS retry_translations BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS window_start TIMESTAMPTZ;
 ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS window_end TIMESTAMPTZ;
@@ -112,6 +113,7 @@ CREATE TABLE IF NOT EXISTS search_results (
     UNIQUE (run_id, subject_key, url)
 );
 
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS discovery_summary TEXT NOT NULL DEFAULT '';
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS exposure_paths TEXT[] NOT NULL DEFAULT '{}';
 
 CREATE INDEX IF NOT EXISTS search_results_run_date_idx

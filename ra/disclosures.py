@@ -15,6 +15,7 @@ from .article_content import fetch_bytes
 from .news_apis import fetch_json
 from .preliminary import country_code, name_key
 
+COVERAGE_NOTE = "Discovery is not exhaustive; exchange filings, unlinked documents and restricted pages may be missing."
 IDENTITY = ("name", "short_name", "aliases", "country_registration", "registration_number", "tax_id")
 TOPIC = re.compile(r"investor|disclos|financial|annual.report|press.release|news|rela[cç][oõ]es|comunicad|раскрыт|инвестор|отчет|отчёт|новост|keterbukaan", re.I)
 _lock = threading.Lock()
@@ -174,7 +175,7 @@ def discover(subject, lookup=wikidata, fetch=fetch_bytes):
     if not result["sources"]:
         result["gaps"].append("No usable company disclosure source found. General news search remains available.")
     result["status"] = "partial" if any(item["kind"] != "candidate" for item in result["sources"]) else "missing"
-    result["gaps"].append("Discovery is not exhaustive; exchange filings, unlinked documents and restricted pages may be missing.")
+
     return result
 
 
@@ -197,7 +198,7 @@ def collect(subject, *, window=None, fetch=fetch_bytes):
     state = subject.get("disclosure_sources", {})
     if state.get("identity") != identity(subject):
         return [], ["Disclosure sources are pending discovery or company identity has changed."]
-    results, gaps = [], list(state.get("gaps", []))
+    results, gaps = [], [gap for gap in state.get("gaps", []) if gap != COVERAGE_NOTE]
     language = LOCALES.get(country_name(subject.get("country_registration", "")), ("en",))[0]
     for source in state.get("sources", []):
         if source["kind"] in ("adapter", "candidate"):

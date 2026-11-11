@@ -178,6 +178,7 @@ def parse_articles(provider: str, payload: dict, query: str) -> list[dict]:
         articles.append({
             "title": title, "url": url, "publisher": publisher,
             "published_at": _published(published), "query": query,
+            "summary": str(record.get("description") or record.get("snippet") or "")[:1500],
             "language": record.get("lang" if provider == "gnews" else "language") or "",
             "signal_terms": signal_terms(title), "source_kind": "news",
             "discovery_service": "GNews" if provider == "gnews" else "TheNewsAPI",
@@ -222,6 +223,8 @@ def search(provider: str, subject: dict, fetcher=fetch_json,
     pending = deque((query, 1) for query in queries)
     articles, urls, pages = [], set(), set()
     requests = 0
+    gaps = []
+    empty_pages = set()
     while pending:
         query, page = pending.popleft()
         try:
@@ -254,7 +257,20 @@ def search(provider: str, subject: dict, fetcher=fetch_json,
                 run_id=subject.get("_news_run_id"), provider=provider, subject=subject.get("name"),
                 query=query, page=page, total=total, returned=len(raw), accepted=len(found), added=added,
                 in_window=sum(bool(a["published_at"] and start <= a["published_at"] <= end) for a in found))))
-            more = bool(raw) and len(raw) >= size and (total is None or page * size < total)
+            removed = payload.get("articlesRemovedFromResponse")
+            historical = provider == "gnews" and isinstance(removed, dict) and "historicalArticles" in removed
+            if historical:
+                gaps.append("GNews excluded historical articles under the free plan's 30-day archive limit; coverage is incomplete")
+                if not raw:
+                    # This query is newest first; older pages cannot restore the excluded history.
+                    continue
+            if total is not None and not raw and (page - 1) * size < total:
+                gaps.append(f"provider reported {total} matches but returned no articles on page {page}; coverage is incomplete")
+                if query not in empty_pages and page * size < min(total, provider_cap):
+                    pending.append((query, page + 1))
+                    empty_pages.add(query)
+                continue
+            more = bool(raw) and (page * size < total if total is not None else len(raw) >= size)
             if more:
                 if page * size >= provider_cap:
                     raise ProviderError("provider pagination ceiling reached; narrow the date range for remaining articles")
@@ -263,5 +279,7 @@ def search(provider: str, subject: dict, fetcher=fetch_json,
             logging.getLogger(__name__).warning("news_api_incomplete %s", json.dumps(dict(
                 run_id=subject.get("_news_run_id"), provider=provider, subject=subject.get("name"),
                 page=page, requests=requests, retained=len(articles), reason=str(exc))))
-            raise ProviderError(str(exc), articles) from None
+            raise ProviderError("; ".join(dict.fromkeys([*gaps, str(exc)])), articles) from None
+    if gaps:
+        raise ProviderError("; ".join(dict.fromkeys(gaps)), articles)
     return articles

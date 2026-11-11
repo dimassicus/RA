@@ -8,15 +8,16 @@ import unicodedata
 
 from psycopg.types.json import Jsonb
 
-from . import db, keywords
+from . import db, keywords, company_developments
 
 SCOPES = ("company", "sector", "country")
 MAX_DESCRIPTION = 200
 MANAGEMENT = "Changes in top management"
 OWNERSHIP = "Significant changes in major shareholdings or control"
 # Bump when the thematic prompt, schema or evidence validation changes.
-ASSESSMENT_VERSION = "thematic-assessment-v2"
+ASSESSMENT_VERSION = "thematic-assessment-v3"
 SEEDS = {
+    **dict.fromkeys(company_developments.TERMS, "company"),
     MANAGEMENT: "company",
     OWNERSHIP: "company",
     "Central bank tightens capital controls": "country",
@@ -248,6 +249,7 @@ def assess(article, document, subject, factors):
               "IS a partial match for a >5% stock market decline. Say explicitly that 4% is below 5%. Importers "
               "needing permission to pay foreign suppliers can indicate tighter capital controls and external payment "
               "restrictions. If the source omits who ordered it, mark partial and say the authority is unspecified. "
+              "For asset proceedings distinguish relief granted from ongoing adverse exposure. When the source reports assets still seized or litigation still pending, state each separately. Prefer a quote covering the residual restriction. Do not infer pending litigation solely from a remaining freeze. "
               "Return all applicable themes even when they overlap. Mark direct only if the text reports all conditions. "
               "Do not invent who ordered a measure, causes, financial impact, figures or facts. Generic shared words, "
               "unrelated events and explicit denials do not match. Match company themes to the watched entity, country "

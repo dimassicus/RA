@@ -444,11 +444,12 @@ def create_app() -> Flask:
             abort(404)
         all_results = classify_results(run, db.get_results(run_id))
         view = request.args.get("view", "risk")
-        if view not in ("risk", "review", "older", "background", "scored", "exposure", "governance", "factors", "all"):
+        if view not in ("developments", "risk", "review", "older", "background", "scored", "exposure", "governance", "factors", "all"):
             abort(400, "Unknown lead view")
         results = [item for item in all_results if view == "all" or item["relevance"] == view
                    or (view == "scored" and item.get("score_included"))
                    or (view == "exposure" and item.get("exposure_paths"))
+                   or (view == "developments" and item["credit_developments"])
                    or (view == "factors" and item.get("risk_factor_review", {}).get("matches"))
                    or (view == "governance" and item["governance"])]
         if view in ("risk", "older", "scored"):
@@ -466,6 +467,7 @@ def create_app() -> Flask:
             "run.html", run=run, results=results, errors=db.get_errors(run_id), view=view,
             counts={**{key: sum(item["relevance"] == key for item in all_results)
                     for key in ("risk", "review", "older", "background")},
+                    "developments": sum(bool(item["credit_developments"]) for item in all_results),
                     "governance": sum(bool(item["governance"]) for item in all_results),
                     "factors": sum(bool(item.get("risk_factor_review", {}).get("matches")) for item in all_results),
                     "exposure": sum(bool(item.get("exposure_paths")) for item in all_results),

@@ -15,7 +15,7 @@
     {% for key, label, help in [
       ('include_country', 'Include country-related news and risk factors', 'Search country exposure news and assess country risk factors. Country information still identifies companies and selects search languages.'),
       ('include_industry', 'Include industry-related news and risk factors', 'Search industry exposure news and assess industry risk factors.'),
-      ('adverse_only', 'Search only for negative/adverse newsflow', 'Keep leads with adverse signals in the original or translated headline. Positive and neutral headlines are omitted. Source checks still determine actual impact; headline screening can miss relevant news.')
+      ('adverse_only', 'Search only for negative/adverse newsflow', 'Keep company or named owner/manager leads with adverse headline evidence, or a source summary that names the subject and describes a risk. Company asset restrictions and appeals, capital spending and market entry are flagged for credit review even when the financial impact is uncertain. Enabled country and industry searches also keep adverse exposure leads. Source checks determine actual impact.')
     ] %}
     <div class="search-setting">
       <label class="search-switch">

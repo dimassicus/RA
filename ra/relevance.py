@@ -113,7 +113,8 @@ def classify(article: dict, subject: dict, as_of=None) -> dict:
             category, reason = "review", "Missing or unexpected publication date; " + reason
         elif published < as_of - timedelta(days=30):
             category, reason = "older", "Older than 30 days at search time; " + reason
-    return {**article, "governance": governance_cues(article, subject), "relevance": category, "relevance_reason": reason, "signal_terms": signals,
+    from .company_developments import review_topics
+    return {**article, "credit_developments": review_topics(article, subject), "governance": governance_cues(article, subject), "relevance": category, "relevance_reason": reason, "signal_terms": signals,
             "case_context": context,
             "keyword_hits": [{"term": term, "direction": direction} for term, _, direction in hits]}
 

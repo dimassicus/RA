@@ -16,7 +16,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError
 from xml.etree import ElementTree
 
-from . import keywords, news_apis, risk_factors
+from . import keywords, news_apis, risk_factors, company_developments
 from .news_topics import excluded_query_terms, excluded_story
 from .aliases import parse_aliases, provider_name, discovery_names, ambiguous, company_names, related_names, normalized as identity_normalized
 
@@ -134,6 +134,14 @@ def governance_searches(subject):
         if code == lang:
             local_anchor = anchor
         for factor in factors:
+            if factor["english"] in company_developments.TERMS:
+                terms = company_developments.cues(factor, code)
+                # Shorter issuer names cover headlines that omit the legal prefix or suffix.
+                issuer = next((n for n in (subject.get("short_name"), anchor) if n and not ambiguous(n)), anchor)
+                for expression in query_groups([f'"{term}"' for term in terms], limit=4):
+                    plans.append((f'"{issuer}" {expression}', edition))
+                if terms:
+                    continue
             groups = risk_factors.GOVERNANCE_GROUPS.get(factor["english"])
             if groups is None:
                 phrase = risk_factors.search_phrase(factor, code)
@@ -151,7 +159,7 @@ def governance_searches(subject):
     # Official notices often name the issuer without using a governance keyword.
     region = LOCALES.get(normalized(country), ("", ""))[1]
     domains = {
-        "AZ": ("vergiler.az", "taxes.gov.az"), "BR": ("gov.br/cvm", "b3.com.br"),
+        "ID": ("idx.co.id", "ksei.co.id"), "AZ": ("vergiler.az", "taxes.gov.az"), "BR": ("gov.br/cvm", "b3.com.br"),
         "EG": ("egx.com.eg", "fra.gov.eg"), "GR": ("businessportal.gr", "athexgroup.gr", "athens.euronext.com"),
         "VN": ("hsx.vn", "hnx.vn"), "UZ": ("openinfo.uz", "uzse.uz"), "TR": ("kap.org.tr", "ticaretsicil.gov.tr"),
     }
@@ -258,7 +266,7 @@ def fetch_feed(url: str) -> bytes:
             time.sleep(2 ** attempt)
 
 
-def parse_feed(content: bytes, query: str, language: str, limit: int = 30) -> list[dict]:
+def parse_feed(content: bytes, query: str, language: str, limit: int = 30, *, window=None) -> list[dict]:
     if len(content) > 2_000_000:
         raise ValueError("News feed exceeded size limit")
     root = ElementTree.fromstring(content)
@@ -281,7 +289,11 @@ def parse_feed(content: bytes, query: str, language: str, limit: int = 30) -> li
             published_at = parsedate_to_datetime(date_text).astimezone(timezone.utc) if date_text else None
         except (TypeError, ValueError, OverflowError):
             published_at = None
+        if window and (not published_at or not window[0] <= published_at <= window[1]):
+            continue
+        description = item.findtext("description") or ""
         articles.append({
+            "summary": description[:1500] if "<" not in description else "",
             "title": title,
             "url": url,
             "publisher": publisher,
@@ -376,9 +388,11 @@ def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None, 
 def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_json_post, *, progress=None, window=None) -> tuple[list[dict], list[str]]:
     articles, errors = [], []
     seen_urls = set()
-    from . import disclosures
+    from . import disclosures, idx_filings
     discovered, gaps = disclosures.collect(subject, window=window)
-    for article in discovered:
+    filings, filing_gaps = idx_filings.collect(subject, fetcher, window)
+    gaps = [*gaps, *filing_gaps]
+    for article in [*discovered, *filings]:
         if article["url"] not in seen_urls:
             articles.append(article)
             seen_urls.add(article["url"])
@@ -424,13 +438,25 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
             if article["url"] not in seen_urls:
                 seen_urls.add(article["url"])
                 articles.append(article)
-    queries = company_search_plan(subject)
-    for index, (query, edition) in enumerate(queries):
+    # Split broad name searches: one capped RSS feed cannot cover months of news.
+    name_queries = set(search_queries(subject))
+    windows = [window]
+    if window and window[1] - window[0] > timedelta(days=28):
+        start, end = window
+        step = max(timedelta(days=28), (end - start) / 24)
+        windows = []
+        while start < end:
+            stop = min(start + step, end)
+            windows.append((start, stop))
+            start = stop
+    queries = [(query, edition, bounds) for query, edition in company_search_plan(subject)
+               for bounds in (windows if query in name_queries else [window])]
+    for index, (query, edition, bounds) in enumerate(queries):
         if progress:
             progress(f"Searching company news · query {index + 1} of {len(queries)}", index, len(queries))
-        url, language = feed_url(query, edition, window=window)
+        url, language = feed_url(query, edition, window=bounds)
         try:
-            for article in parse_feed(fetcher(url), query, language):
+            for article in parse_feed(fetcher(url), query, language, limit=100, window=bounds):
                 if article["url"] not in seen_urls:
                     seen_urls.add(article["url"])
                     articles.append(article)

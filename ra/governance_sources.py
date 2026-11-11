@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from html import unescape
 from html.parser import HTMLParser
+from urllib.error import HTTPError
 from urllib.parse import quote, urlencode, urlparse
 from zoneinfo import ZoneInfo
 
@@ -284,7 +285,13 @@ def read_page(url, identity, reader):
         raise ValueError(f'Could not validate disclosure: {exc}') from exc
 
 
+KSEI_MINUTES = 'https://web.ksei.co.id/publications/corporate-action-schedules/minutes-of-meeting'
+
+
 def notice_source(subject):
+    if (country_code(subject.get('country_registration', '')) == 'ID'
+            and re.fullmatch(r'pt .+ tbk', normalized(subject['name']))):
+        return 'KSEI shareholder meeting minutes', KSEI_MINUTES
     if issuer_matches(subject, 'TR', 'Tiryaki Agro', 'TR8450302285'):
         return 'KAP issuer disclosures', 'https://www.kap.org.tr/tr/api/company-detail/sgbf-data/1DE05DAA8408073AE0530A4A622A2EBD/ALL'
     if issuer_matches(subject, 'TR', 'CMS Jant ve Makina', '2060074145'):
@@ -399,6 +406,65 @@ def notice_rows(subject, publisher, page):
         yield lines[0] + ' · ' + ' '.join(lines[2:-1])[:450], 'https://vergiler.az' + link[1], published, 'az'
 
 
+def ksei_month(issuer, fetch, month, zone, start, end):
+    months = 'januari februari maret april mei juni juli agustus september oktober november desember'.split()
+    raw = fetch(KSEI_MINUTES + '?' + urlencode({'Month': f'{month.month:02}', 'Year': month.year}))
+    if len(raw) > 2_000_000:
+        raise ValueError('KSEI index exceeded the size limit')
+    html = raw.decode('utf-8')
+    if not all(re.search(r'<th[^>]*>\s*' + term + r'\s*</th>', html, re.I)
+               for term in ('Download', 'Perihal', 'Tanggal')):
+        raise ValueError('Unrecognised KSEI minutes index')
+    for row in re.findall(r'<tr\b[^>]*>(.*?)</tr>', html, re.S | re.I):
+        cells = re.findall(r'<td\b[^>]*>(.*?)</td>', row, re.S | re.I)
+        if len(cells) != 3:
+            continue
+        title = unescape(cells[1]).strip()
+        listed = re.fullmatch(r'(?:ringkasan )?risalah (?:rapat umum pemegang saham (?:tahunan|luar biasa) )?'
+                              r'(?:rupst|rupslb|rupslbt|rups) (.+)', normalized(title))
+        if not listed or listed[1] != issuer:
+            continue
+        link = re.search(r'href="([^"]+)"', cells[0])
+        day = re.fullmatch(r'(\d{1,2}) (\w+) (\d{4})', cells[2].strip().lower())
+        if not link or not day:
+            raise ValueError('Incomplete issuer row in KSEI index')
+        target = urlparse(unescape(link[1]))
+        if target.netloc or target.scheme or target.path != urlparse(KSEI_MINUTES).path:
+            raise ValueError('Unexpected KSEI document link')
+        file_id = re.search(r'(?:^|&)file=(\d+)(?:&|$)', target.query)
+        if not file_id:
+            raise ValueError('Missing KSEI document ID')
+        date = datetime(int(day[3]), months.index(day[2]) + 1, int(day[1]), tzinfo=zone)
+        if date.date().replace(day=1) != month:
+            raise ValueError('KSEI returned a different month')
+        # Only a listing day is supplied. Do not infer it was available before an intraday cutoff.
+        if start <= date and date + timedelta(days=1, microseconds=-1) <= end:
+            yield title, KSEI_MINUTES + '?file=' + file_id[1], date, 'id'
+
+
+def ksei_minutes(subject, fetch, start, end, errors=None):
+    """Match the full Indonesian listed issuer name on KSEI's dated monthly index."""
+    zone = ZoneInfo('Asia/Jakarta')
+    month = end.astimezone(zone).date().replace(day=1)
+    first = start.astimezone(zone).date().replace(day=1)
+    issuer = normalized(subject['name']).removeprefix('pt ') + ' pt'
+    for _ in range(24):
+        try:
+            yield from ksei_month(issuer, fetch, month, zone, start, end)
+        except (ValueError, OSError) as exc:
+            if errors is None:
+                raise
+            errors.append(f'KSEI shareholder meeting minutes ({month:%Y-%m}): {exc}')
+            if isinstance(exc, HTTPError) and exc.code in (401, 403, 429):
+                if month > first:
+                    errors.append('KSEI access restricted; earlier months in the selected window were not checked.')
+                return
+        if month <= first:
+            return
+        month = (month - timedelta(days=1)).replace(day=1)
+    raise ValueError('KSEI minutes coverage limited to the latest 24 months of the selected window')
+
+
 def recent_notices(subject, publisher, url, fetch, now=None, errors=None, *, window=None):
     from .relevance import risk_signals
     gazette = publisher == 'Vergilər official notices'
@@ -409,10 +475,12 @@ def recent_notices(subject, publisher, url, fetch, now=None, errors=None, *, win
         start, today = (instant.astimezone(zone).date() for instant in window)
     results = []
     try:
-        if publisher in ('KAP issuer disclosures', 'Atatürk University notices'):
+        if publisher in ('KAP issuer disclosures', 'Atatürk University notices', 'KSEI shareholder meeting minutes'):
             end = now or datetime.now(timezone.utc)
             bounds = window or (end - timedelta(days=7), end)
-            for title, dest, date, lang in turkish_notice_rows(publisher, url, fetch, *bounds):
+            rows = (ksei_minutes(subject, fetch, *bounds, errors=errors) if url == KSEI_MINUTES else
+                    turkish_notice_rows(publisher, url, fetch, *bounds))
+            for title, dest, date, lang in rows:
                 if not excluded_story(title, dest):
                     results.append(dict(title=title, url=dest, publisher=publisher, published_at=date,
                                         query=url, language=lang, source_kind='official', discovery_service=publisher,

@@ -10,7 +10,7 @@ import threading
 import time
 import logging
 
-from . import db, governance_roster, search_settings
+from . import db, governance_roster, search_settings, company_developments
 from .search import search_company
 from .governance_sources import notice_source
 from .exposure import add_exposure_leads, search_topic, sector_markets, topic_editions
@@ -106,7 +106,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
     with db.connect() as conn:
         conn.execute(
             "UPDATE search_runs SET status = 'running', started_at = COALESCE(started_at, now()), "
-            "completed_companies = 0, result_count = 0, error_count = 0, retry_translations = TRUE WHERE id = %s", (run_id,)
+            "completed_companies = 0, result_count = 0, candidates_in_window = 0, error_count = 0, retry_translations = TRUE WHERE id = %s", (run_id,)
         )
         conn.execute("DELETE FROM search_results WHERE run_id = %s", (run_id,))
         conn.execute("DELETE FROM search_errors WHERE run_id = %s", (run_id,))
@@ -190,8 +190,12 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
                 title_en, provider = translate_text(
                     article["title"], language, name, article["publisher"]
                 )
-                if settings["adverse_only"] and not search_settings.adverse_lead(
-                        {**article, "language": language, "title_en": title_en}, subject):
+                candidate = {**article, "language": language, "title_en": title_en, "publisher_en": article["publisher"]}
+                if (not settings["adverse_only"] and not settings["include_country"] and not settings["include_industry"]
+                        and not search_settings.company_lead(candidate, subject)
+                        and not company_developments.review_topics(candidate, subject)):
+                    continue
+                if settings["adverse_only"] and not search_settings.adverse_lead(candidate, subject):
                     continue
                 publisher_en = article["publisher"]
                 seen_before = conn.execute(
@@ -202,14 +206,14 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
                     "INSERT INTO search_results "
                     "(run_id, company_id, subject_key, subject_name, title, url, publisher, discovery_service, source_kind, "
                     "published_at, query, language, title_en, publisher_en, translation_provider, "
-                    "signal_terms, seen_before, exposure_paths) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                    "signal_terms, seen_before, exposure_paths, discovery_summary) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT (run_id, subject_key, url) DO NOTHING",
                     (run_id, subject.get("id"), subject_key, name, article["title"],
                      article["url"], article["publisher"], article.get("discovery_service", ""),
                      article.get("source_kind", "news"), article["published_at"],
                      article["query"], language, title_en, publisher_en, provider,
-                     article["signal_terms"], seen_before, article.get("exposure_paths", [])),
+                     article["signal_terms"], seen_before, article.get("exposure_paths", []), article.get("summary", "")),
                 )
                 saved_count += inserted.rowcount
             for message in errors:
@@ -219,8 +223,8 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
                 )
             conn.execute(
                 "UPDATE search_runs SET completed_companies = completed_companies + 1, "
-                "result_count = result_count + %s, error_count = error_count + %s WHERE id = %s",
-                (saved_count, len(errors), run_id),
+                "result_count = result_count + %s, candidates_in_window = candidates_in_window + %s, error_count = error_count + %s WHERE id = %s",
+                (saved_count, len(articles), len(errors), run_id),
             )
         time.sleep(0.25)
     from .headline_review import review_saved
