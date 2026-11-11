@@ -10,7 +10,7 @@
 <p class="callout"><strong>Before searching:</strong> Open LM Studio and start its local server on port 1234. RA loads and switches Gemma and Qwen automatically; you do not need to load models manually. <a href="{{ url_for('setup') }}">Check model readiness in Setup</a>.</p>
 <p class="{{ 'identity-note' if reviewer.ready else 'callout' }}" role="status">{{ reviewer.message }}</p>
 
-<p class="identity-note">News API keys: GNews {{ 'configured' if 'gnews' in news_api_providers else 'not configured' }} · Perplexity {{ 'configured' if 'perplexity' in news_api_providers else 'not configured' }} · TheNewsAPI {{ 'configured' if 'thenewsapi' in news_api_providers else 'not configured' }}. The page never displays key values.</p>
+<p class="identity-note">News API keys: GNews {{ 'configured' if 'gnews' in news_api_providers else 'not configured' }} · Perplexity {{ 'configured' if 'perplexity' in news_api_providers else 'not configured' }} · Google {{ 'configured' if 'google' in news_api_providers else 'not configured' }} · TheNewsAPI {{ 'configured' if 'thenewsapi' in news_api_providers else 'not configured' }}. The page never displays key values.</p>
 
 <div class="action-grid">
   <section class="panel action-panel">

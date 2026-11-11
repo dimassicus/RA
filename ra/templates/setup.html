@@ -9,12 +9,14 @@
 </div>
 <section class="panel form-panel">
   <h2>Search settings</h2>
-  <p>Saved settings apply across the app to new watchlist, individual company and one-off searches. They remain saved until you change them here.</p>
+  <p>Saved settings apply across the app to new watchlist, individual company searches. They remain saved until you change them here.</p>
   <form method="post" action="{{ url_for('setup') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     {% for key, label, help in [
       ('include_country', 'Include country-related news and risk factors', 'Search country exposure news and assess country risk factors. Country information still identifies companies and selects search languages.'),
       ('include_industry', 'Include industry-related news and risk factors', 'Search industry exposure news and assess industry risk factors.'),
+      ('use_perplexity', 'Use Perplexity API', 'Search for company news, filings and court decisions using Perplexity.'),
+      ('use_google', 'Use Google API', 'Use Gemini with Google Search for evidence gaps after Perplexity, or for company discovery when Perplexity is off.'),
       ('adverse_only', 'Open searches on recent adverse leads', 'Prioritise recent, supported negative leads in the review table. Neutral and positive leads remain archived, and the event summary includes negative and neutral company developments.')
     ] %}
     <div class="search-setting">

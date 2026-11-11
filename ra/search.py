@@ -408,12 +408,14 @@ def planned_feeds(subject, window):
                for bounds in (windows if query in name_queries else [window])]
 
 
-def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_json_post, *, progress=None, window=None, on_deferred=None, provider_window=None) -> tuple[list[dict], list[str]]:
+def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_json_post, *, progress=None, window=None, on_deferred=None, provider_window=None, filing_coverage=None, settings=None) -> tuple[list[dict], list[str]]:
     articles, errors = [], []
     seen_urls = set()
     from . import disclosures, idx_filings
-    discovered, gaps = disclosures.collect(subject, window=window)
-    filings, filing_gaps = idx_filings.collect(subject, fetcher, window)
+    coverage = filing_coverage if filing_coverage is not None else []
+    span = provider_window or window
+    discovered, gaps = disclosures.collect(subject, window=span, coverage=coverage)
+    filings, filing_gaps = idx_filings.collect(subject, fetcher, span, coverage=coverage)
     gaps = [*gaps, *filing_gaps]
     for article in [*discovered, *filings]:
         if article["url"] not in seen_urls:
@@ -423,7 +425,13 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
     from .governance_sources import notice_source, recent_notices
     source = notice_source(subject)
     if source:
-        for article in recent_notices(subject, *source, fetcher, errors=errors, window=window):
+        notices = recent_notices(subject, *source, fetcher, errors=errors, window=window)
+        if span:
+            failures = [e for e in errors if e.startswith(source[0] + ":")]
+            coverage.append(dict(source=source[0], url=source[1], start=span[0].date().isoformat(),
+                                 end=span[1].date().isoformat(), count=len(notices),
+                                 status="Incomplete" if failures else "Dated notices checked", detail=" ".join(failures)))
+        for article in notices:
             if article["url"] not in seen_urls:
                 seen_urls.add(article["url"])
                 articles.append(article)
@@ -480,14 +488,23 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
                 errors.append(str(exc))
         except Exception as exc:
             errors.append(f"{query}: {type(exc).__name__}: {exc}")
-    from . import perplexity
+    from . import google_discovery, perplexity, search_settings
     from .article_content import canonical_url
-    extra, gaps = perplexity.collect(subject, provider_window or window, articles, progress)
+    settings = settings or search_settings.for_run({})
+    extra, gaps = (perplexity.collect(subject, span, articles, progress)
+                   if settings["use_perplexity"] else ([], []))
+    if settings["use_google"]:
+        google_hits, google_gaps = google_discovery.collect(subject, span, [*articles, *extra], coverage,
+            primary=not settings["use_perplexity"] or not perplexity.recovery_providers.configured("Perplexity"),
+            provider_gaps=gaps, progress=progress)
+        extra.extend(google_hits)
+        gaps.extend(google_gaps)
     known = {canonical_url(a['url']): a for a in articles}
     for hit in extra:
         original = known.get(hit['url'])
         if original is None:
             articles.append(hit)
+            known[hit['url']] = hit
         elif hit.get('decision_followup_urls'):
             original['decision_followup_urls'] = list(dict.fromkeys([
                 *original.get('decision_followup_urls', []), *hit['decision_followup_urls']]))

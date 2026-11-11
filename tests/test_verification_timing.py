@@ -195,9 +195,12 @@ def test_kap_v6_navigation_cache_is_refetched(database, monkeypatch):
     assert calls == [article['url']]
 
 
-def test_long_source_shares_budget_and_drafts_from_recorded_excerpt(database, monkeypatch):
+@pytest.mark.parametrize("per_document", [True, False])
+def test_source_budget_and_drafts_use_run_policy(database, monkeypatch, per_document):
     from ra import article_translation, event_analysis
     company, run_id, article = seed(database)
+    if not per_document:
+        database.execute("UPDATE search_runs SET per_document_limit=false WHERE id=%s",(run_id,))
     title = company['name']
     body = 'External market news. ' * 500 + title + ' has defaulted on bond payments. ' + 'Further detail. ' * 200
     url = article['url']
@@ -211,13 +214,16 @@ def test_long_source_shares_budget_and_drafts_from_recorded_excerpt(database, mo
     monkeypatch.setattr(article_translation, 'prepare', prepare)
     monkeypatch.setattr(verification_store.risk_factors, 'records', lambda: [])
     check = verification_store.verify_article(article['id'], fetcher=lambda _: parent)
-    assert sum(lengths) == 5000
-    assert check['review_scope'] == dict(selected_length=5000, original_length=len(body) + len('Short cover.'))
+    expected = 5000 + (len('Short cover.') if per_document else 0)
+    assert sum(lengths) == expected
+    assert check['review_scope']['selected_length'] == expected
+    assert check['review_scope']['original_length'] == len(body) + len('Short cover.')
+    assert check['review_scope'].get('per_document_limit') == (5000 if per_document else None)
     selected = check['review_document']['linked_documents'][0]
     assert title in selected['body'] and selected['excerpt']['start'] > 0
     assert selected['body'] == body[selected['excerpt']['start']:][:len(selected['body'])]
     assert database.execute("SELECT length(document->'linked_documents'->0->>'body') AS n FROM article_documents WHERE url=%s",
                             (url,)).fetchone()['n'] == len(body)
     evidence = event_analysis.source_texts(parent, check, company)
-    assert sum(len(s['text']) for s in evidence) == 5000
+    assert sum(len(s['text']) for s in evidence) == expected
     assert 'excerpt' in evidence[1]['kind']

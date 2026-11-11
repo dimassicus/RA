@@ -84,7 +84,7 @@ from test_score_store import database
 
 def test_company_only_run_saves_summary_evidence_and_filter_counts(database, monkeypatch):
     from ra import db, worker
-    search_settings.save(dict(include_country=False, include_industry=False, adverse_only=True))
+    search_settings.save(search_settings.DEFAULTS | dict(include_country=False, include_industry=False, adverse_only=True))
     run = db.create_run('one_off', [LAUTAN])
     date = db.get_run(run)['created_at'] - timedelta(hours=1)
     article = dict(title='Quarterly update', language='en', publisher='Trade paper', query='Lautan Luas',

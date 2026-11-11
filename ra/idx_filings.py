@@ -1,8 +1,9 @@
 """Read issuer-matched IDX document links from JejakSaham's public announcement index."""
+import json
 import re
 from datetime import datetime, timedelta, timezone
 from html import unescape
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 from zoneinfo import ZoneInfo
 
 from .aliases import headline_identity, normalized, parse_aliases
@@ -59,7 +60,89 @@ def historical_asset_notices(subject, start, end):
     return rows
 
 
-def collect(subject, fetch, window=None):
+IDX = "https://block.idx.id/primary/ListedCompany/GetAnnouncement"
+
+
+def exchange_archive(subject, ticker, start, end, fetch, coverage):
+    """Count every index row before deduplicating repeated submissions."""
+    offset, periods, rows, seen = 0, set(), [], set()
+    note = dict(source="IDX issuer announcements", url=IDX, count=0, status="Incomplete",
+                start=start.astimezone(ZONE).date().isoformat(), end=end.astimezone(ZONE).date().isoformat())
+    coverage.append(note)
+    try:
+        profile, = json.loads(fetch(IDX.replace("GetAnnouncement", "GetCompanyProfilesDetail") + "?KodeEmiten=" + ticker))["Profiles"]
+        if profile["KodeEmiten"].strip() != ticker or normalized(profile["NamaEmiten"]) != normalized(subject["name"]):
+            raise ValueError("IDX profile identity mismatch")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        note["detail"] = str(exc)[:240]
+        return rows, False
+    letters = set()
+    total = None
+    while total is None or offset < total:
+        query = urlencode(dict(lang="id", kodeEmiten=ticker, emitenType="s", indexFrom=offset, pageSize=100,
+                               dateFrom=note["start"].replace("-", ""), dateTo=note["end"].replace("-", "")))
+        url = IDX + "?" + query
+        try:
+            raw = fetch(url)
+            if len(raw) > 2_000_000:
+                raise ValueError("IDX index page exceeded size limit")
+            data = json.loads(raw)
+            note["url"] = url
+            params = data["SearchParams"]
+            if (datetime.strptime(params["DateFrom"], "%m/%d/%Y %I:%M:%S %p").date().isoformat() != note["start"]
+                    or datetime.strptime(params["DateTo"], "%m/%d/%Y %I:%M:%S %p").date().isoformat() != note["end"]
+                    or params["KodeEmiten"] != ticker or int(params["indexfrom"]) != offset
+                    or type(data["ResultCount"]) is not int or data["ResultCount"] < 0
+                    or (total is not None and total != data["ResultCount"])):
+                raise ValueError("IDX query or count changed")
+            total = data["ResultCount"]
+            page = data["Replies"]
+            if not isinstance(page, list) or (not page and offset < total) or offset + len(page) > total:
+                raise ValueError("Incomplete IDX pagination")
+            for item in page:
+                entry = item["pengumuman"]
+                if entry["Kode_Emiten"].strip() != ticker or entry["JenisPengumuman"] != "STOCK":
+                    raise ValueError("IDX issuer or market mismatch")
+                if entry["Id2"] in seen:
+                    raise ValueError("Repeated IDX page or record")
+                seen.add(entry["Id2"])
+                day = datetime.fromisoformat(entry["TglPengumuman"]).replace(tzinfo=ZONE)
+                if not start <= day <= end:
+                    continue
+                files = []
+                for attachment in item["attachments"]:
+                    path = quote(attachment["FullSavePath"], safe=":/%.-_")
+                    if LINK.fullmatch(path):
+                        files.append((attachment["OriginalFilename"], path.replace("://www.idx.co.id/", "://block.idx.id/", 1)))
+                if not files:
+                    note["without_pdf"] = note.get("without_pdf", 0) + 1
+                    continue
+                # The exchange-standard statement is the comparative table; the other PDFs are enclosures.
+                files.sort(key=lambda f: not f[0].lower().startswith("financialstatement-"))
+                filename, pdf = files[0]
+                period = re.fullmatch(r"FinancialStatement-(\d{4})-(I{1,3}|IV|Tahunan)-" + ticker + r"\.pdf", filename, re.I)
+                label = ""
+                if period:
+                    label = {"I":"Q1","II":"H1","III":"9M","IV":"Q4","TAHUNAN":"FY"}[period[2].upper()] + " " + period[1]
+                    periods.add(label)
+                letter = (entry["NoPengumuman"], entry["JudulPengumuman"], day.date(), tuple(name for name,_ in files))
+                if letter in letters:
+                    continue
+                letters.add(letter)
+                rows.append(dict(title=subject["name"] + " — " + entry["JudulPengumuman"] + (" · " + label if label else ""),
+                                 url=pdf, published_at=day, query=url, publisher="IDX", discovery_service="IDX issuer announcements",
+                                 filing_attachments=[link for _, link in files[1:4]], language="id", source_kind="news", signal_terms=[]))
+            offset += len(page)
+            note.update(count=len(rows), periods=sorted(periods, key=lambda p: (p.split()[1], ("Q1","H1","9M","Q4","FY").index(p.split()[0]))),
+                        entries_read=offset)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            note["detail"] = str(exc)[:240]
+            return rows, False
+    note["status"] = "Index checked"
+    return rows, True
+
+
+def collect(subject, fetch, window=None, *, coverage=None):
     legal = normalized(subject["name"])
     if country_code(subject.get("country_registration", "")) != "ID" or not re.fullmatch("pt .+ tbk", legal):
         return [], []
@@ -71,6 +154,11 @@ def collect(subject, fetch, window=None):
     records, gaps = [], []
     now = datetime.now(timezone.utc)
     start, end = window or (now - timedelta(days=7), now)
+    if coverage is not None:
+        records, complete = exchange_archive(subject, ticker, start, end, fetch, coverage)
+        if complete:
+            return records, []
+        gaps.append("IDX dated archive incomplete. " + coverage[-1]["detail"])
     try:
         raw = fetch(url)
         if len(raw) > 2_000_000:
@@ -96,6 +184,12 @@ def collect(subject, fetch, window=None):
             records.append(dict(title=subject["name"] + " — " + text(link[2]), url=href, published_at=day,
                                 query=url, publisher="IDX", discovery_service="IDX filings via JejakSaham",
                                 language="id", source_kind="news", signal_terms=[]))
+        if coverage is not None:
+            note = dict(source="IDX via JejakSaham", url=url, status="Visible records only",
+                        start=start.date().isoformat(), end=end.date().isoformat(), count=sum(r["query"] == url for r in records))
+            if dates:
+                note.update(first=min(dates).date().isoformat(), last=max(dates).date().isoformat())
+            coverage.append(note)
         if not dates:
             gaps.append("The IDX filing index listed no dated announcements. Coverage of the selected window is unknown.")
         elif min(dates).date() > start.astimezone(ZONE).date():

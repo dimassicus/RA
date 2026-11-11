@@ -127,15 +127,15 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
                 "INSERT INTO search_results "
                 "(run_id, company_id, subject_key, subject_name, title, url, publisher, discovery_service, source_kind, "
                 "published_at, query, language, title_en, publisher_en, translation_provider, "
-                "signal_terms, seen_before, exposure_paths, discovery_summary, decision_followup_urls) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "signal_terms, seen_before, exposure_paths, discovery_summary, decision_followup_urls, filing_attachments) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT (run_id, subject_key, url) DO NOTHING RETURNING id",
                 (run_id, subject.get("id"), subject_key, subject["name"], article["title"],
                  article["url"], article["publisher"], article.get("discovery_service", ""),
                  article.get("source_kind", "news"), article["published_at"],
                  article["query"], language, title_en, publisher_en, provider,
                  article["signal_terms"], seen_before, article.get("exposure_paths", []), article.get("summary", ""),
-                 article.get("decision_followup_urls", [])),
+                 article.get("decision_followup_urls", []), db.Jsonb(article.get("filing_attachments", []))),
             )
             count += inserted.rowcount
             if inserted.rowcount:
@@ -156,7 +156,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
     with db.connect() as conn:
         conn.execute(
             "UPDATE search_runs SET status = 'running', event_analysis_status = 'waiting_sources', started_at = COALESCE(started_at, now()), "
-            "completed_companies = 0, result_count = 0, candidates_in_window = 0, monthly_backfill = '{}', error_count = 0, retry_translations = TRUE WHERE id = %s", (run_id,)
+            "completed_companies = 0, result_count = 0, candidates_in_window = 0, monthly_backfill = '{}', filing_coverage = '{}', error_count = 0, retry_translations = TRUE WHERE id = %s", (run_id,)
         )
         conn.execute("DELETE FROM search_results WHERE run_id = %s", (run_id,))
         conn.execute("DELETE FROM search_errors WHERE run_id = %s", (run_id,))
@@ -192,10 +192,11 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
             report(f"{name} · {message}", done, total)
 
         company_progress("Checking company news and official sources")
+        filing_coverage = []
         search_failure = ""
         try:
             articles, errors = (search_company(subject, progress=company_progress, window=historical_window,
-                                       provider_window=(window_start, window_end), on_deferred=partial(rss_recovery.defer, run, [subject])) if searcher is search_company
+                                       provider_window=(window_start, window_end), filing_coverage=filing_coverage, settings=settings, on_deferred=partial(rss_recovery.defer, run, [subject])) if searcher is search_company
                                 else searcher(subject))
         except Exception as exc:
             search_failure = f"{type(exc).__name__}: {exc}"
@@ -258,8 +259,8 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
                 )
             conn.execute(
                 "UPDATE search_runs SET completed_companies = completed_companies + 1, "
-                "result_count = result_count + %s, candidates_in_window = candidates_in_window + %s, error_count = error_count + %s, monthly_backfill = %s WHERE id = %s",
-                (saved_count, len(retained), len(errors), db.Jsonb(notes), run_id),
+                "result_count = result_count + %s, candidates_in_window = candidates_in_window + %s, error_count = error_count + %s, monthly_backfill = %s, filing_coverage = filing_coverage || %s WHERE id = %s",
+                (saved_count, len(retained), len(errors), db.Jsonb(notes), db.Jsonb({name: filing_coverage}), run_id),
             )
             if conn.execute("SELECT 1 FROM rss_recovery WHERE run_id=%s LIMIT 1",(run_id,)).fetchone():
                 # Include one outstanding coverage gap per company in live progress.

@@ -32,7 +32,7 @@ def test_adverse_screen_uses_native_custom_keywords_and_translation(monkeypatch)
     assert search_settings.adverse_lead(dict(title='Acme: запрет экспорта', language='ru'), subject)
     assert not search_settings.adverse_lead(dict(title='Acme: расширение', language='ru'), subject)
     assert search_settings.adverse_lead(dict(title='Original text', title_en='Acme faces a lawsuit', language='ru'), subject)
-    assert search_settings.for_run({}) == search_settings.DEFAULTS
+    assert search_settings.for_run({}) == search_settings.DEFAULTS | {"use_google": False}
 
 
 def test_setup_persists_all_switches_and_rejects_invalid_forms(database):
@@ -40,14 +40,14 @@ def test_setup_persists_all_switches_and_rejects_invalid_forms(database):
     client = create_app().test_client()
     page = client.get('/setup')
     assert page.status_code == 200
-    assert page.text.count('role="switch"') == 3
-    data = [('include_country', 'off'), ('include_industry', 'off'), ('adverse_only', 'on'), ('adverse_only', 'off')]
+    assert page.text.count('role="switch"') == 5
+    data = [('use_perplexity', 'on'), ('use_google', 'off'), ('include_country', 'off'), ('include_industry', 'off'), ('adverse_only', 'on'), ('adverse_only', 'off')]
     assert client.post('/setup', data=MultiDict(data)).status_code == 400
     with client.session_transaction() as session:
         token = session['csrf_token']
     form = MultiDict([('csrf_token', token), *data])
     assert client.post('/setup', data=form).status_code == 302
-    saved = dict(include_country=False, include_industry=False, adverse_only=True)
+    saved = dict(use_perplexity=True, use_google=False, include_country=False, include_industry=False, adverse_only=True)
     assert search_settings.read() == saved
     # A new app/session reads PostgreSQL, not a session or process-local default.
     fresh = create_app().test_client().get('/setup').text
@@ -69,7 +69,7 @@ def test_every_search_route_snapshots_current_global_settings(database, monkeypa
     company, original, article = seed(database)
     score_store.review_score(article['id'], -1, True, 'Analyst decision preserved')
     before = db.get_results(original)
-    settings = dict(include_country=False, include_industry=False, adverse_only=True)
+    settings = dict(use_perplexity=False, use_google=True, include_country=False, include_industry=False, adverse_only=True)
     search_settings.save(settings)
     queued = []
     monkeypatch.setattr(worker, 'enqueue', queued.append)
@@ -93,7 +93,7 @@ def test_every_search_route_snapshots_current_global_settings(database, monkeypa
 
 @pytest.mark.parametrize('country,industry,adverse', list(product([False, True], repeat=3)))
 def test_worker_settings_cover_branches_sources_and_retained_counts(database, monkeypatch, country, industry, adverse):
-    settings = dict(include_country=country, include_industry=industry, adverse_only=adverse)
+    settings = dict(use_perplexity=False, use_google=True, include_country=country, include_industry=industry, adverse_only=adverse)
     search_settings.save(settings)
     subject = dict(name='Acme Manufacturing', country_registration='Brazil', primary_industries='fertilizer')
     run_id = db.create_run('one_off', [subject])
@@ -143,7 +143,7 @@ def test_intake_news_uses_global_adverse_filter(database, monkeypatch):
 
 @pytest.mark.parametrize('country,industry', list(product([False, True], repeat=2)))
 def test_source_checks_assess_only_enabled_scopes(database, monkeypatch, country, industry):
-    search_settings.save(dict(include_country=country, include_industry=industry, adverse_only=False))
+    search_settings.save(dict(use_perplexity=True, use_google=False, include_country=country, include_industry=industry, adverse_only=False))
     _, _, article = seed(database)
     search_settings.save(search_settings.DEFAULTS)
     factors = [dict(id=i, scope=scope, enabled=True) for i, scope in enumerate(('company', 'country', 'sector'))]

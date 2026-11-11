@@ -44,6 +44,8 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
         lifetime = timedelta(days=7) if cached and cached['document']['status'] == 'available' else timedelta(hours=24)
         hint = {"title": article["title"], "publisher": article["publisher"],
                 "published_at": article["published_at"].isoformat() if article["published_at"] else ""}
+        if article.get("filing_attachments"):
+            hint["filing_attachments"] = article["filing_attachments"]
         upgrade = (cached
                    and cached['document'].get('reader_version') in ('public-source-v4', 'public-source-v5', 'public-source-v6', 'public-source-v8')
                    and cached['document']['status'] == 'available'
@@ -87,7 +89,8 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
         next_stage("translation_review")
         subject = db.subject_for(article, run["subjects"])
         original = document
-        document = article_translation.bounded_source(original, subject, company_developments.decision_notice(article))
+        document = article_translation.bounded_source(original, subject, company_developments.decision_notice(article),
+                                                      per_document=run['per_document_limit'])
         bounded = document is not original
         if bounded:
             prior = (article.get('verification') or {}).get('review_document') or {}

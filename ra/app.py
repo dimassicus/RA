@@ -86,7 +86,7 @@ def create_app() -> Flask:
             "index.html", companies=companies, topics=topics,
             archived=db.list_companies(False), runs=db.list_runs(), intake=db.list_intake(),
             model_coverage=model_store.coverage([company["country_registration"] for company in companies]),
-            news_api_providers=news_apis.configured_providers() + (["perplexity"] if os.environ.get("RA_PERPLEXITY_API_KEY") else []),
+            news_api_providers=news_apis.configured_providers() + [name for name in ("perplexity", "google") if os.environ.get(f"RA_{name.upper()}_API_KEY")],
             search_today=datetime.now(WEEK_TIMEZONE).date().isoformat(),
             reviewer=headline_review.readiness(),
         )

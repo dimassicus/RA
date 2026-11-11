@@ -50,6 +50,13 @@
 </form></section>{% endif %}
 {% if run.status not in ('queued', 'running') %}<div class="report-actions"><a class="button secondary" href="{{ url_for('download_run', run_id=run.id, format='xlsx') }}">All leads · Excel</a><a class="button secondary" href="{{ url_for('download_run', run_id=run.id, format='pdf') }}">Automatic leads · PDF</a>{% if selected_count %}<a class="button primary" href="{{ url_for('download_selected_report', run_id=run.id, format='xlsx') }}">Selected report · Excel ({{ selected_count }})</a><a class="button primary" href="{{ url_for('download_selected_report', run_id=run.id, format='pdf') }}">Selected report · PDF</a>{% endif %}</div>{% endif %}
 {% if run.scope == 'one_off' %}<section class="panel inline-panel"><div><span class="step">One-time subject</span><h2>{{ run.subjects[0].name }} · {{ run.subjects[0].country_registration }}</h2><p>This company is not added to the watchlist by this search. Research and review it before saving.</p></div><form method="post" action="{{ url_for('save_one_off', run_id=run.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary">Research for review &amp; addition</button></form></section>{% endif %}
+{% if run.search_settings and 'use_google' in run.search_settings %}<p class="subtext">Search APIs · Perplexity {{ 'on' if run.search_settings.use_perplexity else 'off' }} · Google {{ 'targeted follow-up' if run.search_settings.use_google and run.search_settings.use_perplexity else 'on' if run.search_settings.use_google else 'off' }}</p>{% endif %}
+{% if run.filing_coverage %}<section class="panel"><details><summary>Filing coverage</summary>
+{% for name, sources in run.filing_coverage|dictsort %}<h3>{{ name }}</h3><ul>{% for s in sources %}<li>
+{% if s.url %}<a href="{{ s.url }}">{{ s.source }}</a>{% else %}{{ s.source }}{% endif %} · {{ s.status }} · {{ s.start }} to {{ s.end }}
+{% if s.count is defined %} · {{ s.count }} dated filing entries{% endif %}{% if s.first %} · Visible dates {{ s.first }} to {{ s.last }}{% endif %}
+{% if s.periods %} · Financial statements {{ s.periods|join(', ') }}{% endif %}{% if s.without_pdf %} · {{ s.without_pdf }} entries lacked a PDF{% endif %} {{ s.detail }}</li>{% endfor %}</ul>{% endfor %}
+</details></section>{% endif %}
 <section class="panel list-panel"><h2>AI summary for search results</h2>
 <p>Oldest first across all companies. Events without a documented event date use their first publication date.</p>
 {% if run.event_analysis_status == 'failed' %}<form method="post" action="{{ url_for('retry_events', run_id=run.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><p>AI drafting did not finish. Available evidence remains below.</p><button class="button secondary">Retry event drafts</button></form>
@@ -64,7 +71,8 @@
 <details><summary>Supporting passage</summary><blockquote>{{ event.decision.outcome_quote }} {{ event.decision.remaining_quote }}</blockquote></details>
 {% else %}Decision reported. Its terms still need verification. <a href="{{ event.decision.notice_url }}">Read the notice</a></p>{% endif %}{% endif %}
 <details><summary>Source evidence ({{ event.sources|length }})</summary><ul>{% for source in event.sources %}<li>
-{{ source.published_at.strftime('%d %b %Y') if source.published_at else 'Publication date unknown' }} · <a href="{{ url_for('article_score', result_id=source.id) }}">{{ source.title }}</a> · {{ source.publisher }}
+{{ source.published_at.strftime('%d %b %Y') if source.published_at else 'Publication date unknown' }} · <a href="{{ url_for('article_score', result_id=source.id) }}#source-evidence">{{ source.title }}</a> · {{ source.publisher }}
+{% set quote = (source.event_draft or {}).get('profit_decline_quote') %}{% if quote %}<blockquote>{{ quote }}</blockquote>{% endif %}
 </li>{% endfor %}</ul></details></article>
 {% else %}<p>{{ 'No negative or neutral company events found.' if run.event_analysis_status == 'complete' else 'No completed event briefs yet.' }}</p>{% endfor %}</section>
 {% if country_leads %}<section class="panel"><details><summary>Country risk leads ({{ country_leads|length }})</summary><ul>{% for item in country_leads %}<li>{{ item.subject_name }} · <a href="{{ url_for('article_score', result_id=item.id) }}">{{ item.title }}</a></li>{% endfor %}</ul></details></section>{% endif %}

@@ -60,6 +60,8 @@ def _verify(document, subject, article):
               'recovery': document.get('recovery',''), 'method': document.get('method', ''), 'language': document.get('language', '')}
     if document.get('status') != 'available':
         return {**result, 'status': 'unavailable', 'reason': document.get('reason', 'Source unavailable')}
+    if (document.get('method') or '').startswith('Selected original PDF'):
+        return {**result, 'reason': 'Selected original filing pages require analyst confirmation of company impact'}
     if document.get('review_only'):
         return {**result, 'reason': 'Recovered publisher text requires analyst confirmation of the event and company impact'}
     body = document['body']

@@ -20,7 +20,7 @@ from html.parser import HTMLParser
 from io import BytesIO
 from urllib.parse import urljoin, urlsplit, urlunsplit, parse_qsl, urlencode
 
-READER_VERSION = "public-source-v9"
+READER_VERSION = "public-source-v10"
 MAX_BYTES = 2_000_000
 MAX_TEXT = 100_000
 
@@ -231,7 +231,7 @@ def source_document(body, method, url):
     from .language import detect_language
     return {'status': 'available', 'body': body, 'final_url': canonical_url(url),
             'language': detect_language(body[:4000]), 'method': method,
-            **({'review_only': True} if method == 'Selected original PDF decision pages' else {}),
+            **({'review_only': True} if method.startswith('Selected original PDF') else {}),
             'sha256': hashlib.sha256(body.encode()).hexdigest(), 'reason': ''}
 
 
@@ -284,19 +284,30 @@ def extract(raw, content_type, parsed=None):
             raise ValueError('Unreadable PDF document') from exc
         if reader.is_encrypted or len(reader.pages) > 150:
             raise ValueError('Encrypted or oversized PDF; analyst reading required')
+        from .filing_evidence import PROFIT, TABLE, UNITS
         if len(reader.pages) > 30:
             from .decision_review import OPERATIVE
-            selected = []
+            candidates = []
             for number, page in enumerate(reader.pages, 1):
                 page_text = page.extract_text() or ''
-                if OPERATIVE.search(' '.join(page_text.split())):
+                flat = ' '.join(page_text.split())
+                priority = next((rank for rank, pattern in enumerate((OPERATIVE, PROFIT, TABLE, UNITS))
+                                 if pattern.search(flat)), None)
+                if number == 1 or priority is not None:
                     validate_pdf_text(page_text)
-                    selected.append(f'PDF page {number}\n{page_text}')
-            body = '\n\n'.join(selected)
-            if not body or len(body)>MAX_TEXT:
-                raise ValueError('Long PDF without bounded decision passages; analyst reading required')
-            return body, 'Selected original PDF decision pages'
-        body = '\n\n'.join(page.extract_text() or '' for page in reader.pages)
+                    candidates.append((4 if priority is None else priority, number, f'PDF page {number}\n{page_text}'))
+            if not any(rank < 4 for rank, _, _ in candidates):
+                raise ValueError('Long PDF without bounded filing passages; analyst reading required')
+            selected, length = [], 0
+            for _, number, passage in sorted(candidates):
+                if length + len(passage) + 2 <= MAX_TEXT:
+                    selected.append((number, passage))
+                    length += len(passage) + 2
+            body = '\n\n'.join(passage for _, passage in sorted(selected))
+            if not body:
+                raise ValueError('Selected filing pages exceed extraction limit')
+            return body, 'Selected original PDF filing pages'
+        body = '\n\n'.join(f'PDF page {n}\n{page.extract_text() or chr(32)}' for n, page in enumerate(reader.pages, 1))
         validate_pdf_text(body)
         method = 'PDF text (no OCR)'
     elif 'html' in content_type:
@@ -419,6 +430,9 @@ def _retrieve(url, hint=None):
                 raise
             parent_error = exc
         links = evidence_links(parsed, final_url) if parsed else []
+        if urlsplit(url).hostname == 'block.idx.id':
+            links = list(dict.fromkeys([*links, *(link for link in hint.get('filing_attachments', [])
+                    if urlsplit(link).hostname == 'block.idx.id' and link != url)]))[:3]
         children = linked_documents(links)
         if parent_error and not any(c['status'] == 'available' for c in children):
             exc = parent_error

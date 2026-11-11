@@ -5,12 +5,13 @@ from . import db, company_developments
 from .aliases import contains, headline_identity, normalized, parse_aliases, related_identity
 from .relevance import headline
 
-DEFAULTS = {"include_country": True, "include_industry": True, "adverse_only": False}
+DEFAULTS = {"include_country": True, "include_industry": True, "adverse_only": False,
+            "use_perplexity": True, "use_google": True}
 
 
 def read():
     with db.connect() as conn:
-        row = conn.execute("SELECT include_country,include_industry,adverse_only FROM search_preferences WHERE id=TRUE").fetchone()
+        row = conn.execute("SELECT include_country,include_industry,adverse_only,use_perplexity,use_google FROM search_preferences WHERE id=TRUE").fetchone()
     return dict(row) if row else dict(DEFAULTS)
 
 
@@ -18,16 +19,16 @@ def save(values):
     if set(values) != set(DEFAULTS) or any(type(value) is not bool for value in values.values()):
         raise ValueError("Choose On or Off for each search setting.")
     with db.connect() as conn:
-        conn.execute("INSERT INTO search_preferences (id,include_country,include_industry,adverse_only) "
-                     "VALUES (TRUE,%s,%s,%s) ON CONFLICT (id) DO UPDATE SET "
+        conn.execute("INSERT INTO search_preferences (id,include_country,include_industry,adverse_only,use_perplexity,use_google) "
+                     "VALUES (TRUE,%s,%s,%s,%s,%s) ON CONFLICT (id) DO UPDATE SET "
                      "include_country=EXCLUDED.include_country,include_industry=EXCLUDED.include_industry,"
-                     "adverse_only=EXCLUDED.adverse_only",
+                     "adverse_only=EXCLUDED.adverse_only,use_perplexity=EXCLUDED.use_perplexity,use_google=EXCLUDED.use_google",
                      tuple(values[key] for key in DEFAULTS))
 
 
 def for_run(run):
     # Old runs retain the behavior in force before these switches existed.
-    return DEFAULTS | (run.get("search_settings") or {})
+    return DEFAULTS | {"use_google": False} | (run.get("search_settings") or {})
 
 
 def scope_enabled(scope, values):

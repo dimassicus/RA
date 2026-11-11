@@ -50,7 +50,7 @@ def test_brave_requires_in_window_publisher_date_and_reuses_lookups(monkeypatch)
 
 
 def test_worker_fills_only_months_without_retained_company_leads(database, monkeypatch):
-    search_settings.save(dict(include_country=False, include_industry=False, adverse_only=True))
+    search_settings.save(search_settings.DEFAULTS | dict(include_country=False, include_industry=False, adverse_only=True))
     rid = db.create_run("one_off", [SUBJECT], window_start=START, window_end=END)
     def article(title, url, stamp):
         return dict(title=title, url="https://test.example/" + url, published_at=stamp, language="en",

@@ -68,6 +68,9 @@ CREATE TABLE IF NOT EXISTS search_preferences (
     adverse_only BOOLEAN NOT NULL DEFAULT FALSE
 );
 
+ALTER TABLE search_preferences ADD COLUMN IF NOT EXISTS use_perplexity BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE search_preferences ADD COLUMN IF NOT EXISTS use_google BOOLEAN NOT NULL DEFAULT TRUE;
+
 CREATE TABLE IF NOT EXISTS search_runs (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     scope TEXT NOT NULL CHECK (scope IN ('all', 'selected', 'one_off')),
@@ -318,3 +321,9 @@ CREATE TABLE IF NOT EXISTS rss_cooldown (
     until_time TIMESTAMPTZ NOT NULL,
     delay_seconds INTEGER NOT NULL
 );
+
+-- Existing runs keep the shared evidence budget, including on retry.
+ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS per_document_limit BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE search_runs ALTER COLUMN per_document_limit SET DEFAULT TRUE;
+ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS filing_coverage JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE search_results ADD COLUMN IF NOT EXISTS filing_attachments JSONB NOT NULL DEFAULT '[]';

@@ -4,38 +4,38 @@ import re
 
 from scripts.translation_review.simple import review_content
 
-from . import decision_review, headline_review, translation, translation_names
+from . import filing_evidence, headline_review, translation, translation_names
 
 VERSION = "article-translation-v1"
 SOURCE_REVIEW_LIMIT = 5000
 
 
-def bounded_source(document, subject, decision=False):
-    """Share one original-text budget between the publisher and its attachments."""
+def bounded_source(document, subject, decision=False, *, per_document=True):
+    """Select source text using the budget policy in effect when the run was created."""
     docs = [document, *document.get('linked_documents', [])]
     sizes = [len(d.get('body') or '') for d in docs]
     total = sum(sizes)
-    if total <= SOURCE_REVIEW_LIMIT:
+    if (max(sizes) if per_document else total) <= SOURCE_REVIEW_LIMIT:
         return document
     matcher = translation_names.pattern(translation_names.names(subject))
     remaining = SOURCE_REVIEW_LIMIT
-    # A short cover page leaves its unused share to the longer filing.
+    # Older runs divide one budget among their documents on every retry.
     for position, i in enumerate(sorted(range(len(docs)), key=sizes.__getitem__)):
-        size = min(sizes[i], remaining // (len(docs) - position))
-        remaining -= size
+        limit = SOURCE_REVIEW_LIMIT if per_document else remaining // (len(docs) - position)
+        size = min(sizes[i], limit)
+        if not per_document:
+            remaining -= size
         if size == sizes[i]:
             continue
         body = docs[i]['body']
-        anchor = decision_review.OPERATIVE.search(body) if decision else None
-        if not anchor and matcher:
-            anchor = matcher.search(body)
-        start = max(0, min(len(body) - size, anchor.start() - size // 4)) if anchor else 0
-        doc = dict(docs[i], body=body[start:start + size],
-                   excerpt={'start': start, 'length': size, 'original_length': sizes[i]})
+        selected, spans = filing_evidence.select(body, size, matcher, decision)
+        doc = dict(docs[i], body=selected,
+                   excerpt={'start': spans[0]['start'], 'length': len(selected), 'original_length': sizes[i], 'ranges': spans})
         doc.pop('translation', None)
         docs[i] = doc
     return dict(docs[0], linked_documents=docs[1:], review_scope={
-        'original_length': total, 'selected_length': SOURCE_REVIEW_LIMIT})
+        **({'per_document_limit': SOURCE_REVIEW_LIMIT} if per_document else {}),
+        'original_length': total, 'selected_length': sum(len(d.get('body') or '') for d in docs)})
 
 
 def passages(body, *, limit=900, subject=None):

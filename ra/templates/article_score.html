@@ -8,9 +8,14 @@
   {% for path in article.exposure_paths %}<p>{{ path }}</p>{% endfor %}<p>{{ article.score_reason }}</p>{% if article.exposure_paths and article.verification.status != "supported" %}<p>Weekly inclusion requires a source check showing an impact on this company.</p>{% endif %}<p class="subtext">Automatic score: {{ article.score_auto if article.score_auto is not none else 'pending' }} · {{ article.score_version }}. Source checks and analyst decisions are shown below.</p>
   {% if article.score_evidence %}<details><summary>Matched evidence</summary><ul>{% for match in article.score_evidence %}<li>{{ match.field }}: “{{ match.phrase }}” → {{ '%+d'|format(match.score) }} ({{ match.rule }})</li>{% endfor %}</ul></details>{% endif %}
 </section>
-<section class="panel form-panel"><h2>Full-article company and event check</h2>
+<section id="source-evidence" class="panel form-panel"><h2>Full-article company and event check</h2>
 <p><strong>{{ article.verification.get('status', 'pending')|replace('_',' ') }}</strong> · {{ article.verification.get('reason', 'Source text has not been checked yet.') }}</p>
-{% if article.verification.review_scope %}<p>Excerpt review · {{ article.verification.review_scope.selected_length }} of {{ article.verification.review_scope.original_length }} source characters selected across the article and its linked documents.</p>{% endif %}
+{% if article.verification.review_scope %}<p>Excerpt review · {{ article.verification.review_scope.selected_length }} of {{ article.verification.review_scope.original_length }} extracted characters selected across the article and its linked documents.{% if article.verification.review_scope.per_document_limit %} Each document has its own {{ "{:,}".format(article.verification.review_scope.per_document_limit) }}-character limit.{% endif %}</p>{% endif %}
+{% set doc = article.verification.get('review_document') or {} %}
+{% for part in [doc] + doc.get('linked_documents', []) if part.get('excerpt') %}
+<details><summary>Selected original passages · <a href="{{ part.final_url }}">Source document</a></summary>
+{% for span in part.excerpt.get('ranges', []) %}<small>Characters {{ span.start + 1 }}–{{ span.end }}{% if span.pages %} · PDF pages {{ span.pages|join(', ') }}{% endif %}</small><br>{% endfor %}
+<blockquote style="white-space: pre-wrap">{{ part.body }}</blockquote></details>{% endfor %}
 {% if article.verification.get('case_context') %}<p>Reported case context: {{ article.verification.case_context|join('; ') }}. These are source cues, not findings of guilt.</p>{% endif %}
 <p class="subtext">RA checks publisher evidence automatically. “Supported” means an explicit statement in the extracted source, not independent confirmation. English and Portuguese use source-text rules directly. Other languages use translations of the selected source text, independently checked by Qwen before the same company-impact rules run. Missing passages, translation uncertainty, unclear timing and ambiguous attribution require analyst review. A faithful translation alone cannot change a score.</p>
 {% set translation = article.verification.get('translation') %}

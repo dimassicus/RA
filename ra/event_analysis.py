@@ -49,7 +49,7 @@ def source_texts(document, verification, subject=None):
             continue
         body = doc["body"]
         kind = "original publisher text"
-        if doc.get("method") == "Selected original PDF decision pages":
+        if (doc.get("method") or "").startswith("Selected original PDF"):
             kind = "selected original filing pages; full report not assessed"
         elif doc.get("review_only"):
             kind = "reader recovery, analyst review required"
@@ -127,7 +127,21 @@ def _day(value):
     return date.fromisoformat(value) if value else date.min
 
 
-def draft_company(company, rows, previous=(), model=None):
+def grouping_batches(records, per_document):
+    # Keep the previous five-lead context budget when one lead carries several filings.
+    batch, slots = [], 0
+    for record in records:
+        cost = max(1, len(record['sources'])) if per_document else 1
+        if batch and slots + cost > 5:
+            yield batch
+            batch, slots = [], 0
+        batch.append(record)
+        slots += cost
+    if batch:
+        yield batch
+
+
+def draft_company(company, rows, previous=(), model=None, *, per_document=True):
     """Yield each finished group so another model failure cannot discard its brief."""
     model = model or keywords.model_json
     subject = company if isinstance(company, dict) else {"name": company}
@@ -141,13 +155,16 @@ def draft_company(company, rows, previous=(), model=None):
     catalog = {e['event']: e for e in previous}
     groups, result = defaultdict(list), {}
     # Include the full current source-review budget without overflowing the local model context.
-    batch_size = 5
-    for offset in range(0, len(records), batch_size):
-        batch = records[offset:offset + batch_size]
+    for batch in grouping_batches(records, per_document):
         # Nearest dated anchors keep long historical searches within the model context.
         anchors = sorted(catalog.values(), key=lambda e: abs((_day(e['date']) - _day(batch[0]['published'])).days))[:60]
         allowed = {r['id'] for r in batch}
-        leads = [dict(r, sources=source_sample(r["sources"], article_translation.SOURCE_REVIEW_LIMIT), corroboration=[]) for r in batch]
+        leads = []
+        for r in batch:
+            limit = article_translation.SOURCE_REVIEW_LIMIT
+            sources = ([dict(s, text=excerpt(s["text"], limit)) for s in r["sources"]] if per_document
+                       else source_sample(r["sources"], limit))
+            leads.append(dict(r, sources=sources, corroboration=[]))
         response = model("Group coverage by concrete company incident, across languages and publishers. "
             "Use the supplied company name verbatim or its original ticker. Never translate a proper name. "
             "Return every input id once. Use an existing event ID for the same incident, otherwise use the first "
@@ -348,7 +365,7 @@ def process(run_id):
                 (members[0]['company_id'], run_id, min((r['published_at'] for r in members if r['published_at']), default=None),
                  max((r['published_at'] for r in members if r['published_at']), default=None))).fetchall()
         try:
-            for drafts in draft_company(subject, members, prior):
+            for drafts in draft_company(subject, members, prior, per_document=run["per_document_limit"]):
                 with db.connect() as conn:
                     score_store._lock(conn)
                     for rid, draft in drafts.items():

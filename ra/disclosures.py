@@ -4,7 +4,7 @@ import json
 import logging
 import re
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from urllib.parse import urlencode, urljoin, urlsplit
 from xml.etree import ElementTree
@@ -84,9 +84,12 @@ class Links(HTMLParser):
         self.script = None
         self.structured = []
         self.hidden = False
+        self.next_url = ""
 
     def handle_starttag(self, tag, attrs):
         fields = dict(attrs)
+        if tag in ("a", "link") and "next" in (fields.get("rel") or "").lower().split():
+            self.next_url = fields.get("href") or ""
         if tag == "a":
             self.anchor = [fields.get("href", ""), []]
         if tag == "link" and fields.get("type") in ("application/rss+xml", "application/atom+xml"):
@@ -191,43 +194,84 @@ def structured_notices(data):
                 yield from structured_notices(data[key])
 
 
-def collect(subject, *, window=None, fetch=fetch_bytes):
+def collect(subject, *, window=None, fetch=fetch_bytes, coverage=None):
     from .search import LOCALES, parse_feed, normalized as country_name
     if not subject.get("id"):
         return [], ["Disclosure discovery requires a saved company; general news search remains available."]
     state = subject.get("disclosure_sources", {})
+    coverage = coverage if coverage is not None else []
+    span = dict(start=window[0].date().isoformat(), end=window[1].date().isoformat()) if window else {}
     if state.get("identity") != identity(subject):
+        coverage.append(dict(source="Issuer disclosures", status="Source discovery pending", **span))
         return [], ["Disclosure sources are pending discovery or company identity has changed."]
     results, gaps = [], [gap for gap in state.get("gaps", []) if gap != COVERAGE_NOTE]
     language = LOCALES.get(country_name(subject.get("country_registration", "")), ("en",))[0]
+    if not any(s["kind"] in ("feed","page") for s in state.get("sources", [])):
+        coverage.append(dict(source="Issuer disclosure archive", status="No confirmed dated index", **span))
     for source in state.get("sources", []):
         if source["kind"] in ("adapter", "candidate"):
             continue  # The existing issuer-specific collector owns these notices.
         url = source["url"]
+        note = dict(source=source.get("label") or "Issuer disclosures", url=url, status="Unavailable", **span)
+        coverage.append(note)
         try:
-            raw, mime, final = fetch(url)
-            if not same_site(final, url):
-                raise ValueError("Source moved to another domain")
-            if source["kind"] == "feed":
-                records = parse_feed(raw, url, language)
-            else:
-                page = Links(); page.feed(raw.decode("utf-8", errors="replace"))
-                records = []
-                for item in structured_notices(page.structured):
-                    date = datetime.fromisoformat(item["datePublished"].replace("Z", "+00:00"))
-                    if date.tzinfo is None:
-                        continue  # An unknown publication timezone cannot establish an exact cutoff.
-                    records.append({"title": item.get("headline") or item["name"], "url": urljoin(final, item["url"]),
-                                    "published_at": date, "query": url, "language": language, "signal_terms": []})
-                if not records:
-                    gaps.append(f"No dated records extracted from {url}; this does not establish that no disclosures exist.")
-            for article in records:
-                if (same_site(article["url"], final) and article.get("published_at")
-                        and (not window or window[0] <= article["published_at"] <= window[1])):
-                    # A discovered website is not sufficient to bypass article-level entity verification.
+            next_url, visited, known, dates = url, set(), set(), []
+            note.update(count=0, pages=0)
+            while next_url:
+                if next_url in visited or len(visited) >= 20:
+                    note["detail"] = "Pagination ended before the archive was exhausted."
+                    break
+                visited.add(next_url)
+                raw, mime, final = fetch(next_url)
+                if not same_site(final, url):
+                    raise ValueError("Source moved to another domain")
+                next_url = ""
+                if source["kind"] == "feed":
+                    records = parse_feed(raw, url, language, limit=1000)
+                else:
+                    page = Links()
+                    page.feed(raw.decode("utf-8", errors="replace"))
+                    if page.next_url and same_site(urljoin(final, page.next_url), url):
+                        next_url = urljoin(final, page.next_url)
+                    records = []
+                    for item in structured_notices(page.structured):
+                        try:
+                            date = datetime.fromisoformat(item["datePublished"].replace("Z", "+00:00"))
+                        except (AttributeError, ValueError):
+                            continue
+                        if date.tzinfo:
+                            records.append({"title": item.get("headline") or item["name"], "url": urljoin(final, item["url"]),
+                                            "published_at": date, "query": final, "language": language, "signal_terms": []})
+                note["pages"] += 1
+                note["status"] = "Visible records only"
+                for article in records:
+                    day = article.get("published_at")
+                    if not day or not same_site(article["url"], final) or article["url"] in known:
+                        continue
+                    known.add(article["url"])
+                    dates.append(day)
+                    if window and not window[0] <= day <= window[1]:
+                        continue
+                    note["count"] += 1
                     results.append(dict(article, source_kind="news", publisher=subject.get("short_name") or subject["name"],
                                         discovery_service="Discovered company disclosures"))
+                if dates:
+                    note.update(first=min(dates).date().isoformat(), last=max(dates).date().isoformat())
+                if window and dates and min(dates) <= window[0]:
+                    break
+            if not dates:
+                note["detail"] = "No dated records extracted."
+                gaps.append(f"No dated records extracted from {url}; this does not establish that no disclosures exist.")
+            elif window:
+                missing = []
+                if min(dates).date() > window[0].date():
+                    missing.append(f"{span['start']} to {(min(dates).date() - timedelta(days=1)).isoformat()}")
+                if max(dates).date() < window[1].date():
+                    missing.append(f"{(max(dates).date() + timedelta(days=1)).isoformat()} to {span['end']}")
+                if missing:
+                    note["detail"] = (note.get("detail","") + " Coverage unconfirmed: " + ", ".join(missing)).strip()
         except (OSError, ValueError, TypeError, KeyError, ElementTree.ParseError) as exc:
+            note.update(status="Incomplete", detail=str(exc)[:240])
             gaps.append(f"{url}: {type(exc).__name__}: {exc}")
     return list({item["url"]: item for item in results}.values()), gaps
 
