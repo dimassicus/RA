@@ -73,6 +73,8 @@ def week_start(value: datetime) -> object:
 def input_hash(article: dict, subject: dict, now: datetime | None = None) -> str:
     values = {key: article.get(key) for key in
               ("title", "title_en", "publisher", "publisher_en", "language", "published_at", "source_kind", "discovery_service", "verification")}
+    if quote := (article.get("event_draft") or {}).get("profit_decline_quote"):
+        values["profit_decline_quote"] = quote
     values["draft_sentiment"] = (article.get("event_draft") or {}).get("sentiment")
     values["subject"] = subject
     published = article.get("published_at")
@@ -135,6 +137,9 @@ def score_article(article: dict, subject: dict, now: datetime | None = None) -> 
             result.update(score=direction, score_auto=direction, score_reason="AI source triage; not verified")
         result.update(score_included=False, score_status="needs_review",
                       score_reason=result["score_reason"] + "; " + verification.get("reason", "Full-article verification pending"))
+    if (article.get("event_draft") or {}).get("profit_decline_quote") and verification.get("status") == "supported" and verification["score"] >= 0:
+        result.update(score=-1, score_auto=-1, score_included=False, score_status="needs_review",
+                      score_reason="Reported profit decline in mixed results; confirm adverse evidence before weekly inclusion")
     published = article.get("published_at")
     if published and published.tzinfo is None:
         published = published.replace(tzinfo=timezone.utc)

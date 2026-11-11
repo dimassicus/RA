@@ -1,5 +1,6 @@
 """Draft event groups once from a finished run's evidence using RA's local model."""
 import logging
+import re
 import threading
 from collections import defaultdict
 
@@ -14,7 +15,7 @@ _worker = None
 _STRING = {"type": "string"}
 _INT = {"type": "integer"}
 _GROUPS = keywords.object_schema({"assignments": {"type": "array", "items": keywords.object_schema({
-    "id": _INT, "event": _INT, "title": _STRING, "sentiment": {"type": "integer", "enum": [-1, 0, 1]}})}})
+    "id": _INT, "event": _INT, "title": _STRING, "profit_decline_quote": _STRING, "sentiment": {"type": "integer", "enum": [-1, 0, 1]}})}})
 _DRAFT = keywords.object_schema({"title": _STRING, "summary": _STRING, "event_day": _STRING})
 
 
@@ -22,6 +23,13 @@ def candidate(row):
     return (row.get('score') in (-1, 0) and (row.get('score_included') or
             (row.get('source_kind') != 'context' and not row.get('exposure_paths') and
              (row.get('verification') or {}).get('status') != 'unmatched' and row.get('score_status') != 'reviewed')))
+
+
+def triage_candidate(row):
+    # A favourable headline can still introduce mixed results in the underlying report.
+    return candidate(row) or (row.get('score') == 1 and row.get('score_status') != 'reviewed'
+                              and row.get('source_kind') != 'context' and not row.get('exposure_paths')
+                              and (row.get('verification') or {}).get('status') != 'unmatched')
 
 
 def excerpt(text, limit):
@@ -76,10 +84,42 @@ def evidence(row, subject=None):
             "publisher": row.get("publisher", ""), "title": row["title"][:500],
             "english": (row.get("title_en", "")[:500] if (row.get("headline_review") or {}).get("status") == "faithful" and
                         translation_names.preserved(row["title"], row.get("title_en", ""), subject) else ""),
-            "summary": row.get("discovery_summary", "")[:600], "status": check.get("status", "pending"),
+            "summary": row.get("discovery_summary", "")[:2500], "status": check.get("status", "pending"),
             "quotes": [e["sentence"][:650] for e in check.get("evidence", [])[:3] if e.get("sentence")],
             "sources": row.get("event_sources", []), "corroboration": row.get("decision_sources", []),
             "score": row["score"], "reviewed": row.get("score_status") == "reviewed"}
+
+
+_EARNINGS = re.compile(r"\b(?:profits?|earnings|net income|laba|lucro|utilidad|bénéfice|net kâr|прибыл\w*)\b|净利润|純利益", re.I)
+
+
+def reported_profit_declines(leads, assignments, company, model):
+    """Select original evidence independently of headline sentiment and the grouping vote."""
+    reports = {}
+    for lead in leads:
+        if lead['reviewed']:
+            continue
+        fields = [lead['title'], lead['english'], lead['summary'], *lead['quotes'], *(s['text'] for s in lead['sources'])]
+        lines = list(dict.fromkeys(line.strip() for field in fields
+                                   for line in re.split(r'(?<=[.!?。！？])\s+|\n+', field) if line.strip()))
+        flagged = assignments[lead['id']].get('profit_decline_quote')
+        if flagged or any(_EARNINGS.search(line) for line in lines):
+            reports[lead['id']] = lines
+    if not reports:
+        return {}
+    response = model("For each record independently, did the named issuer report lower realised profit or earnings "
+        "for the reporting period covered by this article? Include an explicitly stated fall or comparable amounts "
+        "demonstrating one, even if revenue rose. Exclude forecasts, peers, a slower increase, isolated amounts and "
+        "incidental historical periods. Select the numbered passage that actually shows the downward comparison. "
+        "An original-language headline is valid evidence. Omit records with no such passage.",
+        {"issuer": company, "earnings_reports": {rid: dict(enumerate(lines, 1)) for rid, lines in reports.items()}},
+        keywords.object_schema({"findings": {"type": "array", "items": keywords.object_schema({"id": _INT, "passage": _INT})}}))
+    quotes = {}
+    for finding in response['findings']:
+        rid, index = finding['id'], finding['passage']
+        if rid in reports and type(index) is int and 1 <= index <= len(reports[rid]):
+            quotes[rid] = reports[rid][index - 1]
+    return quotes
 
 
 def _day(value):
@@ -94,31 +134,41 @@ def draft_company(company, rows, previous=(), model=None):
     company = subject["name"]
     labels = translation_names.names(subject)
     matcher = translation_names.pattern(labels)
-    records = [evidence(r, subject) for r in sorted(rows, key=lambda a: (str(a.get('published_at') or ''), a['id'])) if candidate(r)]
+    records = [evidence(r, subject) for r in sorted(rows, key=lambda a: (str(a.get('published_at') or ''), a['id'])) if triage_candidate(r)]
     for record in records:
         if record['decision_notice']:
             record['decision'] = decision_review.disposition([record], company, model)
     catalog = {e['event']: e for e in previous}
     groups, result = defaultdict(list), {}
-    for offset in range(0, len(records), 12):
-        batch = records[offset:offset + 12]
+    # Include the full current source-review budget without overflowing the local model context.
+    batch_size = 5
+    for offset in range(0, len(records), batch_size):
+        batch = records[offset:offset + batch_size]
         # Nearest dated anchors keep long historical searches within the model context.
         anchors = sorted(catalog.values(), key=lambda e: abs((_day(e['date']) - _day(batch[0]['published'])).days))[:60]
         allowed = {r['id'] for r in batch}
+        leads = [dict(r, sources=source_sample(r["sources"], article_translation.SOURCE_REVIEW_LIMIT), corroboration=[]) for r in batch]
         response = model("Group coverage by concrete company incident, across languages and publishers. "
             "Use the supplied company name verbatim or its original ticker. Never translate a proper name. "
             "Return every input id once. Use an existing event ID for the same incident, otherwise use the first "
             "article ID of the incident in this batch. Score each standalone story -1 negative, 0 neutral, +1 positive. Distinguish different sites, cases, periods and subsequent "
             "decisions. Group reports of a ruling and its implementation separately from an earlier petition. "
             "Do not discard a material partial release while restrictions remain. Use event 0 for unrelated, purely favourable or background stories without an event. "
+            "Assess each issuer's realised profit separately from its revenue, operating cash flow and outlook. "
+            "If the issuer reported falling profit or earnings for the period covered, copy a contiguous verbatim passage "
+            "including the profit measure and its decrease into profit_decline_quote, otherwise use an empty string. "
+            "Read the native headline, summary and source passages. Exclude forecasts, peers, incidental older comparisons "
+            "and changes in profit growth rates alone. Keep reported profit declines as adverse events even when revenue "
+            "rose. Group by issuer and reporting period; annual and quarterly earnings releases are distinct events. "
             "Never infer corporate wrongdoing from an owner's case. Give each event a specific English title.",
-            {"company": company, "company_names": labels, "existing": anchors, "leads": [dict(r, sources=source_sample(r["sources"], 1800), corroboration=[]) for r in batch]},
+            {"company": company, "company_names": labels, "existing": anchors, "leads": leads},
             _GROUPS)["assignments"]
         if (len(response) != len(batch) or {a['id'] for a in response} != allowed or
                 any(type(a["sentiment"]) is not int or a["sentiment"] not in (-1, 0, 1) or type(a['event']) is not int or a['event'] not in allowed | {e['event'] for e in anchors} | {0}
                     or not isinstance(a['title'], str) for a in response)):
             raise ValueError("Incomplete event grouping")
         by_id = {a['id']: a for a in response}
+        profit_quotes = reported_profit_declines(leads, by_id, company, model)
         for r in batch:
             assignment = by_id[r['id']]
             key = assignment['event']
@@ -131,6 +181,11 @@ def draft_company(company, rows, previous=(), model=None):
                 key = r['id']
             protected = r["status"] == "supported" or r["reviewed"]
             direction = r['score'] if protected else assignment['sentiment']
+            quote = profit_quotes.get(r['id'], '').strip()
+            if quote:
+                r['profit_decline_quote'] = quote
+                direction = -1
+                key = key or r['id']
             decision = r.get('decision') or {}
             if not protected and decision.get('status') == 'documented' and decision.get('residual_adverse'):
                 direction = -1
@@ -161,7 +216,7 @@ def draft_company(company, rows, previous=(), model=None):
             yield {r['id']:dict(event=key, sentiment=r['score'], title=title[:250], summary=summary,
                                 decision=ruling) for r in members}
             continue
-        sample = sorted(members, key=lambda r: (not r['decision_notice'], r['status'] != 'supported', r['score'], r['id']))
+        sample = sorted(members, key=lambda r: (not r['decision_notice'], not r.get('profit_decline_quote'), r['status'] != 'supported', r['score'], r['id']))
         sample = sample[:5]
         facts = [dict(r, sources=source_sample(r['sources'], 22000 // len(sample)), corroboration=[]) for r in sample]
         instruction = ("Write an English analyst brief of 150–250 words about this one company event. "
@@ -177,6 +232,16 @@ def draft_company(company, rows, previous=(), model=None):
             "Describe uncertainty where needed. Return title and summary.")
         payload = {"company": company, "company_names": labels, "event": catalog[key], "coverage": len(members),
                    "publication_dates": sorted({r['published'] for r in members}), "evidence": facts}
+        earnings = any(r.get('profit_decline_quote') for r in members)
+        if earnings:
+            instruction += (" State the reported profit decline in the title and summary. Give its reporting period, "
+                            "magnitude and comparison when supplied. Keep revenue changes separate. Attribute figures "
+                            "from a search excerpt to the publisher and disclose when its full text was unavailable. "
+                            "A publisher date alone does not establish when the issuer released its results. "
+                            "Call it the article date unless the source separately identifies a release date. "
+                            "Write for a credit analyst. Omit commentary on drafting instructions, word choice, "
+                            "issuer naming, unrelated allegations and when management learned its own figures. "
+                            "Distinguish cost drivers from balance-sheet movements; do not infer causation.")
         if ruling:
             payload["decision"] = ruling
             instruction += (" Describe the latest dated disposition and any residual exposure, attributing it to the document. "
@@ -186,6 +251,9 @@ def draft_company(company, rows, previous=(), model=None):
         def valid(draft):
             title, summary = draft.get("title"), draft.get("summary")
             return (isinstance(title, str) and isinstance(summary, str) and
+                    (not earnings or all(re.search(r'profit|earnings|income|loss', field, re.I) and
+                                         re.search(r'declin|fall|fell|drop|decreas|slid|slip|down|lower|shrank|shrink|plung|dip|contract|widen|reduc', field, re.I)
+                                         for field in (title, summary))) and
                     150 <= len(summary.split()) <= 250 and matcher and
                     matcher.search(title[:250]) and matcher.search(summary) and
                     (not ruling or (not decision_review.PENDING.search(summary) and
@@ -214,6 +282,7 @@ def draft_company(company, rows, previous=(), model=None):
                 for fact in facts for s in fact['sources'])):
             day = None
         yield {r['id']: {"event": key, "sentiment": r["score"], "title": draft['title'][:250],
+                         **({"profit_decline_quote": r["profit_decline_quote"]} if r.get("profit_decline_quote") else {}),
                          **({"event_day": day} if day else {}),
                          "summary": draft['summary'].strip(), **({"decision":ruling} if ruling else {})} for r in members}
 
@@ -253,7 +322,7 @@ def process(run_id):
     for row in rows:
         companies[row['subject_key']].append(row)
     for members in companies.values():
-        pending = [r for r in members if not r.get('event_draft') and candidate(r)]
+        pending = [r for r in members if not r.get('event_draft') and triage_candidate(r)]
         if not pending:
             continue
         with db.connect() as conn:
