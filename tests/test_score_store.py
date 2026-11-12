@@ -1383,14 +1383,23 @@ def test_russian_archive_shows_saved_translations_in_results_and_excel(database)
 
     company, _, lead = seed(database, title='Company filing')
     save_event_fixture(database, lead)
-    database.execute("UPDATE search_results SET score=0, event_group='event:one' WHERE id=%s", (lead['id'],))
-    for source, russian in [('Company filing', 'Отчёт компании'), ('Test event brief', 'Описание события')]:
+    database.execute("""UPDATE search_results SET score=0, event_group='event:one',
+        event_draft=event_draft || '{"title":"Annual disclosure"}' WHERE id=%s""", (lead['id'],))
+    for source, russian in [('Company filing', 'Отчёт компании'), ('Annual disclosure', 'Годовое раскрытие'),
+                            ('Test event brief', 'Описание события')]:
         bilingual.enqueue(database, source, 'en')
         database.execute("UPDATE result_translations SET russian=%s WHERE key=%s",
                          (russian, bilingual.key(source, 'en')))
     client = create_app().test_client()
     client.set_cookie('ra_language', 'ru')
-    params = dict(company_id=company['id'], view='events')
+    seed(database, title='An unrelated filing', url='https://example.test/unrelated')
+    params = dict(company_id=company['id'], q='ОТЧЁТ КОМПАНИИ')
+    leads = client.get('/archive', query_string=params)
+    assert f"/articles/{lead['id']}/score#source-evidence" in leads.text
+    lead_book = load_workbook(BytesIO(client.get('/archive', query_string={**params, 'download': 'xlsx'}).data))
+    assert lead_book.active.max_row == 2
+    assert lead_book.active['A2'].value == lead['id']
+    params['view'] = 'events'
     response = client.get('/archive', query_string=params)
     assert response.status_code == 200
     for label in ('Поиск по архиву', 'Скачать все результаты в Excel', 'Отчёт компании', 'Описание события'):
@@ -1398,8 +1407,11 @@ def test_russian_archive_shows_saved_translations_in_results_and_excel(database)
     download = client.get('/archive', query_string={**params, 'download': 'xlsx'})
     book = load_workbook(BytesIO(download.data))
     assert book.sheetnames == ['События компании', 'Публикации']
-    assert [book.active[cell].value for cell in ('E2', 'F2', 'G2')] == ['Отчёт компании', 'Описание события', 1]
+    assert [book.active[cell].value for cell in ('E2', 'F2', 'G2')] == ['Годовое раскрытие', 'Описание события', 1]
     assert book.worksheets[1]['E2'].value == 'Отчёт компании'
+    for query in ('раскрытие', 'описание'):
+        event_page = client.get('/archive', query_string={**params, 'q': query})
+        assert f"/articles/{lead['id']}/score#source-evidence" in event_page.text
 
 
 def test_watchlist_removal_requires_confirmation_for_this_company(database):

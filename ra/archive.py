@@ -1,7 +1,7 @@
 """Browse stored company leads and event briefs across search runs."""
 from datetime import date
 
-from . import db, event_analysis
+from . import bilingual, db, event_analysis
 
 PAGE_SIZE = 25
 LEAD_FIELDS = """id, company_id, run_id, subject_name, title, title_en, language, publisher,
@@ -9,9 +9,29 @@ LEAD_FIELDS = """id, company_id, run_id, subject_name, title, title_en, language
                  url, score, report_selected, discovery_summary"""
 
 
+def matching_translations(conn, query):
+    """Index matching saved translations by the exact text and language used for display."""
+    found = {}
+    for row in conn.execute("""SELECT source,language FROM result_translations
+            WHERE (russian <> source AND strpos(lower(russian),lower(%s)) > 0)
+               OR (english <> source AND strpos(lower(english),lower(%s)) > 0)""", (query, query)):
+        found.setdefault(row['source'], set()).add(row['language'])
+    return found
+
+
+def translated_lead_matches(row, found):
+    if row['title'] in found or row['title_en'] in found:
+        text, language = bilingual.lead_text(row)
+        if language in found.get(text, ()):
+            return True
+    summary = row['discovery_summary']
+    return summary in found and bilingual.summary_language(summary, row['language']) in found[summary]
+
+
 def search(company, view, start, end, query, accepted, page):
     offset = (page - 1) * PAGE_SIZE if page is not None else 0
     with db.connect() as conn:
+        translated = matching_translations(conn, query) if query else {}
         if view == 'leads':
             clauses = ['company_id=%s']
             params = [company['id']]
@@ -22,8 +42,17 @@ def search(company, view, start, end, query, accepted, page):
             if accepted:
                 clauses.append('report_selected')
             if query:
-                clauses.append("strpos(lower(concat_ws(' ',title,title_en,publisher,discovery_summary)),lower(%s))>0")
+                text_filter = "strpos(lower(concat_ws(' ',title,title_en,publisher,discovery_summary)),lower(%s))>0"
                 params.append(query)
+                if translated:
+                    sources = list(translated)
+                    candidates = conn.execute("""SELECT id,title,title_en,language,discovery_summary
+                        FROM search_results WHERE company_id=%s
+                        AND (title=ANY(%s) OR title_en=ANY(%s) OR discovery_summary=ANY(%s))""",
+                        (company['id'], sources, sources, sources))
+                    text_filter += " OR id=ANY(%s)"
+                    params.append([r['id'] for r in candidates if translated_lead_matches(r, translated)])
+                clauses.append('(' + text_filter + ')')
             where = ' FROM search_results WHERE ' + ' AND '.join(clauses)
             total = conn.execute('SELECT count(*) AS n' + where, params).fetchone()['n']
             rows = conn.execute('SELECT ' + LEAD_FIELDS + where +
@@ -49,7 +78,11 @@ def search(company, view, start, end, query, accepted, page):
             if accepted and not any(r['report_selected'] for r in leads):
                 continue
             if needle and not (needle in event['title'].casefold() or needle in (event['summary'] or '').casefold()
-                               or any(needle in (r[k] or '').casefold() for r in leads for k in ('title','title_en','publisher'))):
+                               or 'en' in translated.get(event['title'], ())
+                               or 'en' in translated.get(event['summary'], ())
+                               or any(translated_lead_matches(r, translated) for r in leads)
+                               or any(needle in (r[k] or '').casefold() for r in leads
+                                      for k in ('title','title_en','publisher','discovery_summary'))):
                 continue
             matches.append(event)
         matches.sort(key=lambda e: e['day'] or date.min, reverse=True)
