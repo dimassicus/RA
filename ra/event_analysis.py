@@ -42,7 +42,7 @@ def material_notice(row, subject=None):
 def candidate(row):
     return (row.get('score') in (-1, 0) and (row.get('score_included') or
             (row.get('source_kind') != 'context' and not row.get('exposure_paths') and
-             (row.get('source_kind') != 'identity_review' or (row.get('verification') or {}).get('source_company_match')) and
+             (row.get('source_kind') != 'identity_review' or (row.get('verification') or {}).get('source_company_match') is True) and
              (row.get('verification') or {}).get('status') != 'unmatched' and row.get('score_status') != 'reviewed')))
 
 

@@ -189,6 +189,7 @@ def test_role_only_enforcement_hits_reach_source_review(database, monkeypatch):
     assert database.execute("SELECT status FROM verification_jobs WHERE result_id=%s", (row["id"],)).fetchone()
     row.update(event_draft=dict(event=1, sentiment=-1), report_selected=True)
     row.update(scoring.score_article(row, company))
+    assert event_analysis.candidate(row) is False
     assert not row["score_included"] and not event_analysis.triage_candidate(row)
     doc = dict(status="available", language="en", body=f"The chairman of {company['name']} was arrested.")
     row["verification"] = verification.verify(doc, company, row)
