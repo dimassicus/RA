@@ -119,11 +119,13 @@ def batch(label):
                 fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
-def run_phases(tasks, label):
+def run_phases(tasks, label, *, before_step=None):
     """Each task yields the model it needs next. Drain all ready work before switching."""
     waiting = {GEMMA: deque(), QWEN: deque()}
     results = []
     def advance(index, task):
+        if before_step:
+            before_step()
         try:
             model = next(task)
         except StopIteration as done:

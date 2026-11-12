@@ -16,7 +16,7 @@ from .article_content import canonical_url
 from .scoring import WEEK_TIMEZONE
 from . import bilingual, exposure
 from .aliases import provider_name
-from .search import feed_url, search_company
+from .search import feed_url, search_company, search_company_steps
 from .governance_sources import notice_source
 from .exposure import add_exposure_leads, search_topic, sector_markets, topic_editions
 from .news_apis import plan_subjects
@@ -30,6 +30,7 @@ _thread: threading.Thread | None = None
 
 # The local app and its single search worker share one immutable activity snapshot.
 _activity = None
+_suspended = {}
 
 
 def _report(run_id, message, done=None, total=None):
@@ -40,9 +41,11 @@ def _report(run_id, message, done=None, total=None):
 
 
 def search_progress(run):
+    if run.get("paused"):
+        return {"message": "Pause requested. Current work stops at the next checkpoint.", "done": None, "total": None}
     if run["status"] == "queued":
         with db.connect() as conn:
-            ahead = conn.execute("SELECT id FROM search_runs WHERE id<>%s AND "
+            ahead = conn.execute("SELECT id FROM search_runs WHERE id<>%s AND NOT paused AND "
                                  "(status='running' OR (status='queued' AND id<%s)) "
                                  "ORDER BY (status='running') DESC,id", (run["id"], run["id"])).fetchall()
         message = "Waiting for the search worker."
@@ -69,7 +72,7 @@ def start_worker():
         return
     with db.connect() as conn:
         conn.execute("UPDATE search_runs SET status = 'queued' WHERE status = 'running'")
-        pending = conn.execute("SELECT id FROM search_runs WHERE status = 'queued' ORDER BY id").fetchall()
+        pending = conn.execute("SELECT id FROM search_runs WHERE status = 'queued' AND NOT paused ORDER BY id").fetchall()
     _thread = threading.Thread(target=_work_loop, daemon=True, name="ra-search-worker")
     _thread.start()
     for run in pending:
@@ -88,6 +91,8 @@ def _work_loop():
                 logging.exception("Saved translation retry failed; will retry next minute")
             continue
         try:
+            if db.run_paused(run_id):
+                continue
             from . import verification_store, event_analysis
             # Finish older reviews before a new run starts using the same two models.
             while (prior := verification_store.next_run()) is not None:
@@ -167,6 +172,20 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
 
 
 def process_run(run_id: int, searcher=search_company, topic_searcher=None, roster_check=governance_roster.check):
+    # A paused iterator keeps the current company's collected leads and exact next query.
+    # The database company checkpoints also support recovery after a server restart.
+    if db.run_paused(run_id):
+        return
+    steps = _suspended.pop(run_id, None)
+    if steps is None:
+        steps = _discover(run_id, searcher, topic_searcher, roster_check)
+    for _ in steps:
+        if db.run_paused(run_id):
+            _suspended[run_id] = steps
+            return
+
+
+def _discover(run_id, searcher, topic_searcher, roster_check):
     run = db.get_run(run_id)
     if run is None or run["status"] not in ("queued", "running"):
         return
@@ -214,6 +233,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
         name = subject["name"]
         if subject_key in finished:
             continue
+        yield
         if finished:
             # Results may have committed immediately before an interrupted company's checkpoint.
             with db.connect() as conn:
@@ -226,9 +246,13 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
         filing_coverage = []
         search_failure = ""
         try:
-            articles, errors = (search_company(subject, progress=company_progress, window=historical_window,
-                                       provider_window=(window_start, window_end), filing_coverage=filing_coverage, settings=settings, on_deferred=partial(rss_recovery.defer, run, [subject])) if searcher is search_company
-                                else searcher(subject))
+            if searcher is search_company:
+                articles, errors = yield from search_company_steps(
+                    subject, progress=company_progress, window=historical_window,
+                    provider_window=(window_start, window_end), filing_coverage=filing_coverage,
+                    settings=settings, on_deferred=partial(rss_recovery.defer, run, [subject]))
+            else:
+                articles, errors = searcher(subject)
         except Exception as exc:
             search_failure = f"{type(exc).__name__}: {exc}"
             articles, errors = [], [search_failure]
@@ -243,6 +267,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
             elif search_failure:
                 summary = 'Disclosure check incomplete. ' + search_failure
             governance_roster.save_note(run_id, subject_key, subject, index_url, publisher, summary)
+        yield
         company_progress("Checking leadership and ownership records")
         try:
             if historical_window:
@@ -252,6 +277,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
                 roster_check(run_id, subject_key, subject)
         except (ValueError, OSError) as exc:
             errors.append(f"Registry roster: {exc}")
+        yield
         articles = add_exposure_leads(subject, articles, errors, topic_cache, check)
         # Feeds can ignore their date query; enforce one fixed window across all branches.
         retained = []
@@ -269,6 +295,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
         logging.getLogger(__name__).info("run_window %s", json.dumps(dict(
             run_id=run_id, subject=name, start=window_start.isoformat(), end=window_end.isoformat(),
             collected=len(articles), retained=len(retained), excluded=len(articles) - len(retained))))
+        yield
         saved, covered = set(), {}
         saved_count = _save_leads(run_id, subject, subject_key, retained, settings, company_progress, saved, covered)
         notes = {}
@@ -298,6 +325,7 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
                 conn.execute("""UPDATE search_runs SET error_count=(SELECT count(*) FROM search_errors WHERE run_id=%s)
                     + (SELECT count(DISTINCT subject_key) FROM rss_recovery WHERE run_id=%s AND status<>'recovered')
                     WHERE id=%s""",(run_id,run_id,run_id))
+        yield
         time.sleep(0.25)
     with db.connect() as conn:
         counts = conn.execute(

@@ -461,9 +461,10 @@ def _work(after_runs=False):
             import time
             while True:
                 with db.connect() as conn:
-                    busy = conn.execute("""SELECT EXISTS(SELECT FROM search_runs WHERE status IN ('queued','running'))
-                        OR EXISTS(SELECT FROM search_runs WHERE status IN ('partial','completed') AND event_analysis_status='pending')
-                        OR EXISTS(SELECT FROM verification_jobs WHERE status IN ('queued','running')) AS busy""").fetchone()['busy']
+                    busy = conn.execute("""SELECT EXISTS(SELECT FROM search_runs WHERE NOT paused AND status IN ('queued','running'))
+                        OR EXISTS(SELECT FROM search_runs WHERE NOT paused AND status IN ('partial','completed') AND event_analysis_status='pending')
+                        OR EXISTS(SELECT FROM verification_jobs j JOIN search_results r ON r.id=j.result_id
+                                  JOIN search_runs s ON s.id=r.run_id WHERE NOT s.paused AND j.status IN ('queued','running')) AS busy""").fetchone()['busy']
                 if not busy:
                     break
                 time.sleep(5)

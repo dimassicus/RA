@@ -430,6 +430,8 @@ def process(run_id):
     for row in rows:
         companies[row['subject_key']].append(row)
     for members in companies.values():
+        if db.run_paused(run_id):
+            return
         pending = [r for r in members if not r.get('event_draft') and triage_candidate(r)]
         if not pending:
             continue
@@ -465,6 +467,8 @@ def process(run_id):
                     for rid, draft in drafts.items():
                         conn.execute("UPDATE search_results SET event_draft=%s WHERE id=%s AND event_draft='{}'",
                                      (db.Jsonb(draft), rid))
+                if db.run_paused(run_id):
+                    return
         finally:
             with db.connect() as conn:
                 score_store._lock(conn)
@@ -480,7 +484,7 @@ def process(run_id):
 def finish_pending(run_id):
     with local_models.batch(f"run {run_id}"):
         with db.connect() as conn:
-            ready = conn.execute("""SELECT 1 FROM search_runs s WHERE id=%s AND event_analysis_status='pending'
+            ready = conn.execute("""SELECT 1 FROM search_runs s WHERE id=%s AND NOT paused AND event_analysis_status='pending'
                 AND status IN ('completed','partial') AND NOT EXISTS (SELECT 1 FROM search_results r
                 JOIN verification_jobs j ON j.result_id=r.id WHERE r.run_id=s.id AND j.status IN ('queued','running'))""",
                 (run_id,)).fetchone()
@@ -498,7 +502,7 @@ def _loop():
         run_id = None
         try:
             with db.connect() as conn:
-                row = conn.execute("""SELECT id FROM search_runs s WHERE event_analysis_status='pending'
+                row = conn.execute("""SELECT id FROM search_runs s WHERE NOT paused AND event_analysis_status='pending'
                     AND status IN ('completed','partial') AND NOT EXISTS (SELECT 1 FROM search_results r
                     JOIN verification_jobs j ON j.result_id=r.id WHERE r.run_id=s.id AND j.status IN ('queued','running'))
                     ORDER BY id DESC LIMIT 1""").fetchone()

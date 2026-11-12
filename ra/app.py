@@ -224,6 +224,8 @@ def create_app() -> Flask:
             abort(404)
         if run["status"] in ("queued", "running"):
             abort(409, "Wait for the search to finish.")
+        if run.get("paused"):
+            abort(409, "Resume this run first.")
         if run["search_settings"].get("processing_stopped_at"):
             abort(409, "This run was closed by the operator.")
         stage = request.form.get("stage")
@@ -575,6 +577,7 @@ def create_app() -> Flask:
                    or (view == "developments" and item["credit_developments"])
                    or (view == "factors" and item.get("risk_factor_review", {}).get("matches"))
                    or (view == "governance" and item["governance"])]
+        checks = verification_store.job_summary(run_id)
         return render_template(
             "run.html", run=run, results=results, errors=db.get_errors(run_id), view=view,
             events=events, summary_leads=summary_leads, other_count=len(other_leads),
@@ -593,11 +596,29 @@ def create_app() -> Flask:
                     "scored": sum(bool(item.get("score_included")) for item in ordinary)},
             rosters=governance_roster.observations(run_id) if view == "governance" else [],
             exposure_checks=db.exposure_coverage(run_id) if view == "exposure" else [],
-            score_labels=LABELS, verification_jobs=verification_store.job_summary(run_id),
+            score_labels=LABELS, verification_jobs=checks,
+            can_pause=db.can_pause_run(run, checks.get("queued") or checks.get("running")),
             reviewer=headline_review.readiness(),
             search_progress=worker.search_progress(run), all_count=len(all_results),
             selected_count=sum(bool(item["report_selected"]) for item in all_results),
         )
+
+    @app.post("/runs/<int:run_id>/control")
+    def control_run(run_id):
+        action = request.form.get("action")
+        if action not in ("pause", "resume"):
+            abort(400)
+        try:
+            requeue = db.set_run_paused(run_id, action == "pause")
+        except KeyError:
+            abort(404)
+        except ValueError as exc:
+            abort(409, str(exc))
+        if requeue:
+            worker.enqueue(run_id)
+        if request.accept_mimetypes.best == "application/json":
+            return jsonify(paused=action == "pause")
+        return redirect(url_for("run_detail", run_id=run_id, view=request.args.get("view")), code=303)
 
     @app.post("/runs/<int:run_id>/retry-events")
     def retry_events(run_id):
@@ -615,8 +636,11 @@ def create_app() -> Flask:
         progress, reviewer = worker.search_progress(run), headline_review.readiness()
         if progress:
             progress = dict(progress, message=i18n.message(progress['message']))
-        return jsonify(**payload, event_analysis_status=run.get("event_analysis_status", "pending"),
-                       discovery=progress, verification=verification_store.job_summary(run_id),
+        checks = verification_store.job_summary(run_id)
+        return jsonify(**payload, paused=bool(run.get("paused")),
+                       can_pause=db.can_pause_run(run, checks.get("queued") or checks.get("running")),
+                       event_analysis_status=run.get("event_analysis_status", "pending"),
+                       discovery=progress, verification=checks,
                        reviewer=dict(reviewer, message=i18n.message(reviewer['message'])))
 
     @app.get("/runs/<int:run_id>/company-report")

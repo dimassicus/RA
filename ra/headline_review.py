@@ -137,6 +137,8 @@ def review_saved(run_id, *, progress=None):
             "AND lower(split_part(language,'-',1)) NOT IN ('en','zxx') AND COALESCE(headline_review->>'status','unavailable')='unavailable' "
             "ORDER BY id", (run_id,)).fetchall()
     for index, row in enumerate(rows):
+        if db.run_paused(run_id):
+            return
         if progress:
             progress(f"Qwen · Checking headline translation {index + 1} of {len(rows)}", index, len(rows))
         result = audit(row["title"], row["language"], row["title_en"])
@@ -152,7 +154,7 @@ def retry_pending():
     with db.connect() as conn:
         rows = conn.execute("""
             SELECT r.*,s.subjects FROM search_results r JOIN search_runs s ON s.id=r.run_id
-            WHERE s.retry_translations AND s.status IN ('completed','partial','failed')
+            WHERE s.retry_translations AND NOT s.paused AND s.status IN ('completed','partial','failed')
               AND lower(split_part(r.language,'-',1)) NOT IN ('en','zxx')
               AND (r.title_en='' OR COALESCE(r.headline_review->>'status','pending')
                    IN ('pending','unavailable','inconclusive'))
@@ -165,12 +167,16 @@ def retry_pending():
     from .translation import translate_text
     def retry(row):
         yield GEMMA
+        if db.run_paused(row["run_id"]):
+            return
         english, provider = row["title_en"], row["translation_provider"]
         language = row["language"] or detect_language(row["title"])
         subject = db.subject_for(row, row["subjects"])
         if not english or (provider != "analyst edited" and not translation_names.preserved(row["title"], english, subject)):
             english, provider = translate_text(row["title"], language, subject, row["publisher"])
         yield QWEN
+        if db.run_paused(row["run_id"]):
+            return
         result = dict(audit(row["title"], language, english,
                             retry_reason=row["headline_review"].get("reason", ""))) if english else {
             "status": "inconclusive", "reason": "English translation unavailable", "reasoning": "off"}

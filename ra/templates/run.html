@@ -4,8 +4,15 @@
 {% block title %}{{ _('Search #') }}{{ run.id }} {{ _('· RA') }}{% endblock %}
 {% block content %}
 <p class="back"><a href="{{ url_for('dashboard') }}">{{ _('← Back to watchlist') }}</a></p>
-<section class="hero run-hero"><p class="eyebrow">{{ _('Search run #') }}{{ run.id }}</p><h1>{{ _('Watchlist search' if run.scope == 'all' else 'One-off company search' if run.scope == 'one_off' else 'Company search' if run.total_companies == 1 else 'Selected companies search') }}</h1><p>{{ _('Companies') }}: {{ run.total_companies }} · {{ run.created_at|localdate('%d %b %Y %H:%M %Z') }}</p>
-  <div class="hero-stats"><span>{{ _('Companies searched') }}: <strong>{{ run.completed_companies }}/{{ run.total_companies }}</strong></span><span>{{ _('Collected leads') }}: <strong>{{ run.result_count }}</strong></span><span>{{ _('Source errors') }}: <strong>{{ run.error_count }}</strong></span><span class="status status-{{ run.status }}">{{ _('Summary pending' if run.status == 'completed' and run.event_analysis_status in ('pending', 'waiting_sources') else 'Summary needs retry' if run.status == 'completed' and run.event_analysis_status == 'failed' else run.status) }}</span></div>
+<section class="hero run-hero">
+  <div class="run-heading"><div><p class="eyebrow">{{ _('Search run #') }}{{ run.id }}</p><h1>{{ _('Watchlist search' if run.scope == 'all' else 'One-off company search' if run.scope == 'one_off' else 'Company search' if run.total_companies == 1 else 'Selected companies search') }}</h1><p>{{ _('Companies') }}: {{ run.total_companies }} · {{ run.created_at|localdate('%d %b %Y %H:%M %Z') }}</p></div>
+  {% if can_pause or run.paused %}
+    <form id="run-control" class="run-control" method="post" action="{{ url_for('control_run', run_id=run.id, view=view) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="button secondary" name="action" value="{{ 'resume' if run.paused else 'pause' }}">{{ _('Resume') if run.paused else _('Pause') }}</button>
+    </form>
+  {% endif %}</div>
+  <div class="hero-stats"><span>{{ _('Companies searched') }}: <strong>{{ run.completed_companies }}/{{ run.total_companies }}</strong></span><span>{{ _('Collected leads') }}: <strong>{{ run.result_count }}</strong></span><span>{{ _('Source errors') }}: <strong>{{ run.error_count }}</strong></span><span id="run-state" class="status status-{{ run.status }}">{{ _('Paused' if run.paused else 'Summary pending' if run.status == 'completed' and run.event_analysis_status in ('pending', 'waiting_sources') else 'Summary needs retry' if run.status == 'completed' and run.event_analysis_status == 'failed' else run.status) }}</span></div>
   {% if run.window_start %}<p>{{ _('Publication window:') }} {{ run.window_start|localdate('%d %b %Y %H:%M %Z') }} – {{ run.window_end|localdate('%d %b %Y %H:%M %Z') }}{{ _('. Historical retrieval performed now; source availability may differ from that week.') }}</p>{% endif %}
   {% if run.candidates_in_window is number %}<p>{{ _('{0} candidates inside the publication window · {1} kept after search filters.').format(run.candidates_in_window, run.result_count) }}</p>{% endif %}
   {% if run.monthly_backfill %}
@@ -164,6 +171,32 @@
   const initialFormValues = new Map(Array.from(document.querySelectorAll('form input, form textarea, form select'),
     field => [field, controlValue(field)]));
   const hasUnsavedChanges = () => Array.from(initialFormValues).some(([field, value]) => controlValue(field) !== value);
+  {% if can_pause or run.paused %}
+  const pauseForm = document.getElementById('run-control');
+  const pauseButton = pauseForm.elements.action;
+  function showPauseState(paused) {
+    if ((pauseButton.value === 'resume') === Boolean(paused)) return;
+    pauseButton.value = paused ? 'resume' : 'pause';
+    pauseButton.textContent = paused ? {{ _('Resume')|tojson }} : {{ _('Pause')|tojson }};
+    document.getElementById('run-state').textContent = paused ? {{ _('Paused')|tojson }} : {{ _(run.status)|tojson }};
+  }
+  pauseForm.addEventListener('submit', async event => {
+    if (!hasUnsavedChanges()) return;
+    event.preventDefault();
+    const data = new FormData(pauseForm);
+    data.set('action', pauseButton.value);
+    pauseButton.disabled = true;
+    try {
+      const response = await fetch(pauseForm.getAttribute('action'), {method:'POST', body:data, headers:{Accept:'application/json'}});
+      if (!response.ok) throw Error();
+      showPauseState((await response.json()).paused);
+    } catch (_) {
+      document.getElementById('check-live').textContent = {{ _('Could not update the run. Refresh to check its status.')|tojson }};
+    } finally {
+      pauseButton.disabled = false;
+    }
+  });
+  {% endif %}
   async function updateChecks() {
     try {
       if (document.hidden) return;
@@ -171,7 +204,11 @@
       if (!response.ok) throw Error();
       const data = await response.json();
       const v = data.verification;
-      if (data.event_analysis_status !== {{ run.get('event_analysis_status', 'pending')|tojson }} || data.status !== {{ run.status|tojson }} || data.completed_companies !== {{ run.completed_companies }} ||
+      {% if can_pause or run.paused %}
+      pauseForm.hidden = !data.can_pause && !data.paused;
+      if (!pauseForm.hidden && !pauseButton.disabled) showPauseState(data.paused);
+      {% endif %}
+      if (Boolean(data.paused) !== {{ (run.paused|default(false))|tojson }} || data.event_analysis_status !== {{ run.get('event_analysis_status', 'pending')|tojson }} || data.status !== {{ run.status|tojson }} || data.completed_companies !== {{ run.completed_companies }} ||
           resultState(v) !== resultState(initialChecks)) {
         if (!hasUnsavedChanges()) { window.location.reload(); return; }
         document.getElementById('results-refresh').hidden = false;

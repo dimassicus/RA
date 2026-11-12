@@ -422,13 +422,24 @@ def planned_feeds(subject, window, adverse_focus=False):
                for bounds in (windows if query in name_queries else [window])]
 
 
-def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_json_post, *, progress=None, window=None, on_deferred=None, provider_window=None, filing_coverage=None, settings=None) -> tuple[list[dict], list[str]]:
+def search_company(subject, fetcher=fetch_feed, official_fetcher=fetch_json_post, **options):
+    steps = search_company_steps(subject, fetcher, official_fetcher, **options)
+    while True:
+        try:
+            next(steps)
+        except StopIteration as finished:
+            return finished.value
+
+
+def search_company_steps(subject, fetcher=fetch_feed, official_fetcher=fetch_json_post, *, progress=None,
+                         window=None, on_deferred=None, provider_window=None, filing_coverage=None, settings=None):
     articles, errors = [], []
     seen_urls = set()
     from . import disclosures, idx_filings
     coverage = filing_coverage if filing_coverage is not None else []
     span = provider_window or window
     discovered, gaps = disclosures.collect(subject, window=span, coverage=coverage)
+    yield
     filings, filing_gaps = idx_filings.collect(subject, fetcher, span, coverage=coverage)
     gaps = [*gaps, *filing_gaps]
     for article in [*discovered, *filings]:
@@ -439,6 +450,7 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
     from .governance_sources import notice_source, recent_notices
     source = notice_source(subject)
     if source:
+        yield
         notices = recent_notices(subject, *source, fetcher, errors=errors, window=window)
         if span:
             failures = [e for e in errors if e.startswith(source[0] + ":")]
@@ -471,6 +483,7 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
     for provider in selected:
         if provider not in configured:
             continue
+        yield
         try:
             provider_articles = news_apis.search(provider, subject, window=window)
         except news_apis.ProviderError as exc:
@@ -488,6 +501,7 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
     adverse_focus = settings.get("adverse_only", False)
     queries = planned_feeds(subject, window, adverse_focus)
     for index, (query, edition, bounds) in enumerate(queries):
+        yield
         if progress:
             progress(f"Searching company news · query {index + 1} of {len(queries)}", index, len(queries))
         url, language = feed_url(query, edition, window=bounds)
@@ -506,9 +520,11 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
         except Exception as exc:
             errors.append(f"{query}: {type(exc).__name__}: {exc}")
     from .article_content import canonical_url
+    yield
     extra, gaps = (perplexity.collect(subject, span, articles, progress, adverse_focus=adverse_focus)
                    if settings["use_perplexity"] else ([], []))
     if settings["use_google"]:
+        yield
         google_hits, google_gaps = google_discovery.collect(subject, span, [*articles, *extra], coverage,
             primary=not settings["use_perplexity"] or not perplexity.recovery_providers.configured("Perplexity"),
             provider_gaps=gaps, progress=progress, adverse_focus=adverse_focus)

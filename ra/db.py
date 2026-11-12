@@ -396,10 +396,42 @@ def get_run(run_id: int):
         return conn.execute("SELECT * FROM search_runs WHERE id = %s", (run_id,)).fetchone()
 
 
+def run_paused(run_id):
+    with connect() as conn:
+        row = conn.execute("SELECT paused FROM search_runs WHERE id=%s", (run_id,)).fetchone()
+    return bool(row and row["paused"])
+
+
+def can_pause_run(run, source_checks=False):
+    if (run.get("search_settings") or {}).get("processing_stopped_at"):
+        return False
+    if run["status"] in ("queued", "running"):
+        return True
+    return run["status"] in ("completed", "partial") and (
+        run.get("event_analysis_status") in ("pending", "waiting_sources") or bool(source_checks))
+
+
+def set_run_paused(run_id, paused):
+    """Serialize repeated or stale button submissions against the current run."""
+    with connect() as conn:
+        run = conn.execute("""SELECT status,paused,event_analysis_status,search_settings,
+            EXISTS (SELECT FROM verification_jobs j JOIN search_results r ON r.id=j.result_id
+                    WHERE r.run_id=s.id AND j.status IN ('queued','running')) AS source_checks
+            FROM search_runs s WHERE id=%s FOR UPDATE OF s""", (run_id,)).fetchone()
+        if run is None:
+            raise KeyError(run_id)
+        if paused and not (run["paused"] or can_pause_run(run, run["source_checks"])):
+            raise ValueError("This run has finished.")
+        if run["paused"] == paused:
+            return False
+        conn.execute("UPDATE search_runs SET paused=%s WHERE id=%s", (paused, run_id))
+        return not paused and run["status"] in ("running", "queued")
+
+
 def list_runs(limit: int = 12):
     with connect() as conn:
         return conn.execute(
-            "SELECT id, scope, status, total_companies, completed_companies, "
+            "SELECT id, scope, status, paused, total_companies, completed_companies, "
             "result_count, error_count, created_at, event_analysis_status, "
             "search_settings ? 'processing_stopped_at' AS processing_stopped FROM search_runs "
             "ORDER BY id DESC LIMIT %s", (limit,)

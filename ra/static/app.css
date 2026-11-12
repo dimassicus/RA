@@ -49,3 +49,5 @@ html:lang(ru) .search-switch input:checked ~ .switch-state:after{content:"Вкл
 .archive-results { padding-inline-start: 1.3rem; }
 .archive-results li { margin: 0.8rem 0; }
 .archive-evidence { padding: 0 1rem; }
+
+.run-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}.run-control{margin-inline-start:auto}

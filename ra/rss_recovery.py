@@ -238,7 +238,7 @@ def collect_paid():
         return False
     with db.connect() as conn:
         job = conn.execute("""SELECT j.run_id,j.subject_key FROM rss_recovery j JOIN search_runs s ON s.id=j.run_id
-            WHERE s.status<>'queued' AND NOT (s.search_settings ? 'processing_stopped_at')
+            WHERE s.status<>'queued' AND NOT s.paused AND NOT (s.search_settings ? 'processing_stopped_at')
             AND j.status<>'recovered' AND NOT EXISTS
             (SELECT FROM rss_brave_attempts b WHERE b.run_id=j.run_id AND b.subject_key=j.subject_key)
             ORDER BY j.id LIMIT 1""").fetchone()
@@ -263,7 +263,7 @@ def _recover_one():
         return True
     with db.connect() as conn:
         paid = conn.execute("""SELECT b.* FROM rss_brave_attempts b JOIN search_runs s ON s.id=b.run_id
-            WHERE s.status NOT IN ('running','queued') AND NOT (s.search_settings ? 'processing_stopped_at') AND b.staged IS NOT NULL
+            WHERE s.status NOT IN ('running','queued') AND NOT s.paused AND NOT (s.search_settings ? 'processing_stopped_at') AND b.staged IS NOT NULL
             ORDER BY b.run_id,b.subject_key LIMIT 1 FOR UPDATE OF b SKIP LOCKED""").fetchone()
         if paid:
             run = db.get_run(paid['run_id'])
@@ -277,7 +277,7 @@ def _recover_one():
         if time.time() < rss_gate.google.until:
             return False
         job = conn.execute("""SELECT j.* FROM rss_recovery j JOIN search_runs s ON s.id=j.run_id
-            WHERE s.status NOT IN ('running','queued') AND NOT (s.search_settings ? 'processing_stopped_at') AND j.status='pending' AND j.next_attempt<=now()
+            WHERE s.status NOT IN ('running','queued') AND NOT s.paused AND NOT (s.search_settings ? 'processing_stopped_at') AND j.status='pending' AND j.next_attempt<=now()
             ORDER BY j.next_attempt,j.id LIMIT 1 FOR UPDATE OF j SKIP LOCKED""").fetchone()
         if not job:
             return False

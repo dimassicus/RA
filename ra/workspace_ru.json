@@ -1,4 +1,11 @@
 {
+  "Could not update the run. Refresh to check its status.": "Не удалось изменить состояние поиска. Обновите страницу, чтобы проверить его статус.",
+  "Pause": "Приостановить",
+  "Resume": "Продолжить",
+  "Paused": "Приостановлено",
+  "Pause requested. Current work stops at the next checkpoint.": "Пауза запрошена. Текущий этап завершится, и обработка приостановится.",
+  "This run has finished.": "Этот поиск уже завершён.",
+  "Resume this run first.": "Сначала возобновите этот поиск.",
   "Company name (full legal name)": "Полное юридическое наименование",
   "e.g. Fertilizantes Heringer S.A.": "Например, Fertilizantes Heringer S.A.",
   "Company name (short)": "Краткое наименование",

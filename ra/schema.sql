@@ -329,6 +329,7 @@ ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS filing_coverage JSONB NOT NULL 
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS filing_attachments JSONB NOT NULL DEFAULT '[]';
 
 ALTER TABLE verification_jobs ADD COLUMN IF NOT EXISTS translation_checkpoint JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS paused BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS completed_subject_keys TEXT[] NOT NULL DEFAULT '{}';
 
 -- Display translations are shared by exact source wording. They never enter scoring or event grouping.

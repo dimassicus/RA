@@ -370,11 +370,19 @@ def process_jobs(run_id):
     with local_models.batch(f"run {run_id}"):
         with db.connect() as conn:
             jobs = conn.execute("""UPDATE verification_jobs j SET status='running',updated_at=now()
-                FROM search_results r WHERE j.result_id=r.id AND r.run_id=%s AND j.status='queued'
+                FROM search_results r JOIN search_runs s ON s.id=r.run_id
+                WHERE j.result_id=r.id AND r.run_id=%s AND NOT s.paused AND j.status='queued'
                 RETURNING j.result_id,j.source_url,j.translation_checkpoint""", (run_id,)).fetchall()
         if not jobs:
             return
         flows, documents, failed = {}, {}, set()
+
+        class Paused(Exception):
+            pass
+
+        def check_pause():
+            if db.run_paused(run_id):
+                raise Paused
 
         def prepare_source(key, index, doc, subject, saved):
             def checkpoint(value):
@@ -396,6 +404,7 @@ def process_jobs(run_id):
         def tasks():
             yield headline_checks()
             for job in jobs:
+                check_pause()
                 key = job['result_id']
                 try:
                     flow = _verification(key, retrieve, job['source_url'])
@@ -410,8 +419,9 @@ def process_jobs(run_id):
                     failed.add(key)
 
         try:
-            local_models.run_phases(tasks(), f"run {run_id}")
+            local_models.run_phases(tasks(), f"run {run_id}", before_step=check_pause)
             for job in jobs:
+                check_pause()
                 key = job['result_id']
                 if key not in failed:
                     try:
@@ -425,6 +435,8 @@ def process_jobs(run_id):
                 with db.connect() as conn:
                     conn.execute("UPDATE verification_jobs SET status=%s,error=%s,translation_checkpoint='{}',updated_at=now() WHERE result_id=%s",
                                  (status,error,key))
+        except Paused:
+            return
         finally:
             for flow in flows.values():
                 flow.close()
@@ -436,7 +448,7 @@ def process_jobs(run_id):
 def next_run():
     with db.connect() as conn:
         row = conn.execute("""SELECT r.run_id FROM verification_jobs j JOIN search_results r ON r.id=j.result_id
-            JOIN search_runs s ON s.id=r.run_id WHERE j.status='queued' AND s.status IN ('completed','partial')
+            JOIN search_runs s ON s.id=r.run_id WHERE j.status='queued' AND NOT s.paused AND s.status IN ('completed','partial')
             ORDER BY j.updated_at,j.result_id LIMIT 1""").fetchone()
     return row['run_id'] if row else None
 
