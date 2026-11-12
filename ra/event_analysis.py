@@ -6,6 +6,7 @@ from collections import defaultdict
 
 from . import local_models, article_translation, db, headline_review, keywords, translation_names, company_developments, decision_review
 from .events import event_assessment
+from .language import base_language
 from .scoring import WEEK_TIMEZONE
 from .article_content import canonical_url
 
@@ -72,7 +73,7 @@ def source_texts(document, verification, subject=None):
             kind = "selected original filing pages; full report not assessed"
         elif doc.get("review_only"):
             kind = "reader recovery, analyst review required"
-        elif doc.get("language") not in ("en", "pt"):
+        elif base_language(doc.get("language")) != "en":
             try:
                 body = article_translation.checked_text(doc, subject)
                 kind = "reviewed translation"
@@ -161,13 +162,42 @@ def grouping_batches(records, per_document):
         yield batch
 
 
+def brief_name(subject):
+    return (subject.get("short_name") or "").strip() or subject["name"]
+
+
+def brief_name_pattern(subject):
+    labels = list(translation_names.names(subject))
+    # Brazilian filings also abbreviate the registered Sociedade Anônima legal form.
+    stem = re.fullmatch(r"(.+?)\s+sociedade an[oô]nima(?: fechada)?", subject["name"], re.I)
+    if stem:
+        labels.extend(f"{stem[1]} {suffix}" for suffix in ("S.A.", "S.A", "SA", "S/A"))
+    return translation_names.pattern(tuple(labels))
+
+
+def name_brief(text, name, matcher, *, narrative=False):
+    # Preserve quoted source language when standardizing the first issuer reference in prose.
+    parts = re.split(r'("[^"]*"|“[^”]*”)', text)
+    for index in range(0, len(parts), 2):
+        part = parts[index]
+        match = matcher.search(part)
+        if match:
+            tail = part[match.end():]
+            ending = (narrative and match[0].endswith(".") and not name.endswith(".")
+                      and (not tail.strip() or re.match(r"\s+[A-Z]", tail)))
+            parts[index] = part[:match.start()] + name + ("." if ending else "") + tail
+            break
+    return "".join(parts)
+
+
 def draft_company(company, rows, previous=(), model=None, *, per_document=True):
     """Yield each finished group so another model failure cannot discard its brief."""
     model = model or keywords.model_json
     subject = company if isinstance(company, dict) else {"name": company}
     company = subject["name"]
+    display_name = brief_name(subject)
     labels = translation_names.names(subject)
-    matcher = translation_names.pattern(labels)
+    matcher = brief_name_pattern(subject)
     records = [evidence(r, subject) for r in sorted(rows, key=lambda a: (str(a.get('published_at') or ''), a['id'])) if triage_candidate(r)]
     for record in records:
         if record['decision_notice']:
@@ -186,7 +216,7 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
                        else source_sample(r["sources"], limit))
             leads.append(dict(r, sources=sources, corroboration=[]))
         instruction = ("Group coverage by concrete company incident, across languages and publishers. "
-            "Use the supplied company name verbatim or its original ticker. Never translate a proper name. "
+            "All company_names identify the same issuer. Use company verbatim when naming it. "
             "Return every input id once. Use an existing event ID for the same incident, otherwise use the first "
             "article ID of the incident in this batch. Score each standalone story -1 negative, 0 neutral, +1 positive. Distinguish different sites, cases, periods and subsequent "
             "decisions. Group reports of a ruling and its implementation separately from an earlier petition. "
@@ -201,7 +231,7 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             "A listing in a generic calendar or directory does not establish a new event or confirm a previously reported incident. "
             "Separate repeated inquiries on different dates unless the source identifies the same inquiry. Classify purely favourable announcements as positive and archive them. "
             "Never infer corporate wrongdoing from an owner's case. Give each event a specific English title.")
-        payload = {"company": company, "company_names": labels, "existing": anchors, "leads": leads}
+        payload = {"company": display_name, "company_names": labels, "existing": anchors, "leads": leads}
         response = model(instruction, payload, _GROUPS)["assignments"]
         event_ids = allowed | {e['event'] for e in anchors} | {0}
         def consistent(assignments):
@@ -267,8 +297,8 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
         if ruling and ruling['status']=='unconfirmed' and len(members)>1:
             ruling = decision_review.disposition(members, company, model)
         if ruling and ruling['status'] == 'unconfirmed':
-            title = company + ' · ' + next(r['title'] for r in members if r['url'] == ruling['notice_url'])
-            summary = (f"Coverage dated {ruling['as_of']} reports a decision involving {company}. "
+            title = display_name + ' · ' + next(r['title'] for r in members if r['url'] == ruling['notice_url'])
+            summary = (f"Coverage dated {ruling['as_of']} reports a decision involving {display_name}. "
                        "RA could not establish its terms from readable source text. The notice alone does not establish "
                        "the relief granted, any continuing restrictions, or the financial effect on the company.")
             yield {r['id']:dict(event=key, sentiment=r['score'], title=title[:250], summary=summary,
@@ -282,7 +312,8 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             "For event_day give YYYY-MM-DD for the action being reported only when its exact date appears in source text. "
             "For a results announcement use its release date. Omit reporting-period ends, background dates and future deadlines. "
             "Use an empty string if the action date is uncertain. "
-            "Include one supplied company name or ticker verbatim in both title and summary. Never translate company names. "
+            "Name the issuer in both title and summary using company verbatim. Use that same name throughout. "
+            "The other company_names are aliases of this issuer. Preserve verbatim source quotations. "
             "Use only the supplied evidence. Distinguish allegations, source statements and supported impacts. "
             "Do not invent facts, assume that silence means safety, or treat repeated coverage as greater damage. "
             "Do not claim that a filing omits details on the basis of excerpts. Identify the company’s role. "
@@ -293,7 +324,7 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             "Write the title and summary from the current evidence. Never import an older incident solely because the issuer appears again. "
             "Keep an issuer response to an exchange inquiry neutral when no adverse impact was established. "
             "Describe uncertainty where needed. Return title and summary.")
-        payload = {"company": company, "company_names": labels, "event": {"event": key}, "coverage": len(members),
+        payload = {"company": display_name, "company_names": labels, "event": {"event": key}, "coverage": len(members),
                    "publication_dates": sorted({r['published'] for r in members}), "evidence": facts}
         earnings = any(r.get('profit_decline_quote') for r in members)
         if earnings:
@@ -329,7 +360,7 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
                       re.search(r'\bpermanent(?:ly)?\b', ruling['outcome']+' '+ruling['remaining'], re.I)) and
                      (not ruling.get('decision_day') or decision_review.mentions_day(summary, ruling['decision_day'])))))
         if not valid(draft):
-            draft = model(instruction + " Rewrite to 180–210 words. Copy the supplied issuer name or ticker into both fields.", payload, _DRAFT)
+            draft = model(instruction + " Rewrite to 180–210 words. Copy company into both fields.", payload, _DRAFT)
         aligned = True
         if ruling and valid(draft):
             verdict = model("Check the English brief against the dated ruling and its quoted evidence. "
@@ -340,7 +371,7 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             aligned = verdict.get("consistent") is True
         if ruling and (not aligned or not valid(draft)):
             # Give the analyst the dated source record even if the model repeats a stale legal status.
-            draft = {"title": company + " · reported decision", "summary":
+            draft = {"title": display_name + " · reported decision", "summary":
                      ("Decision dated " + ruling['decision_day'] + ". " if ruling.get('decision_day') else "") +
                      "The notice was published on " + ruling["as_of"] + ". " +
                      ruling["outcome"] + " " + ruling["remaining"]}
@@ -351,21 +382,26 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
                 not any(decision_review.mentions_day(s['text'], day, s.get('language', 'en'))
                 for fact in facts for s in fact['sources'])):
             day = None
-        yield {r['id']: {"event": key, "sentiment": r["score"], "title": draft['title'][:250],
+        # Give each brief the same first issuer reference even when the model uses a source alias.
+        title = name_brief(draft["title"], display_name, matcher)
+        summary = name_brief(draft["summary"], display_name, matcher, narrative=True)
+        yield {r['id']: {"event": key, "sentiment": r["score"], "title": title[:250],
                          **({"profit_decline_quote": r["profit_decline_quote"]} if r.get("profit_decline_quote") else {}),
                          **({"event_day": day} if day else {}),
-                         "summary": draft['summary'].strip(), **({"decision":ruling} if ruling else {})} for r in members}
+                         "summary": summary.strip(), **({"decision":ruling} if ruling else {})} for r in members}
 
 
 def run_events(run, rows):
-    countries = {s.get('id') or s['name']: s.get('country_registration') or 'Unspecified' for s in run['subjects']}
+    subjects = {s.get('id') or s['name']: s for s in run['subjects']}
     groups = defaultdict(list)
     for row in rows:
         draft = row.get('event_draft') or {}
         if candidate(row) and draft.get('event'):
-            groups[(row.get('company_id') or row['subject_name'], row['subject_name'], row.get('event_group') or str(row['id']))].append(row)
+            groups[(row.get('company_id') or row['subject_name'], row.get('event_group') or str(row['id']))].append(row)
     result = []
-    for (company, name, key), members in groups.items():
+    for (company, key), members in groups.items():
+        subject = subjects.get(company) or next((s for s in run['subjects'] if s['name'] == members[0]['subject_name']),
+                                                {'name': members[0]['subject_name']})
         initial = event_assessment(members)
         score = event_assessment(members, saved=True) if run.get('selection_saved') else initial
         draft = next((r['event_draft'] for r in members if (r.get('event_draft') or {}).get('summary')), {})
@@ -375,7 +411,7 @@ def run_events(run, rows):
         day = first_publication.astimezone(WEEK_TIMEZONE).date() if first_publication else None
         if event_day:
             day = _day(event_day)
-        result.append(dict(country=countries.get(company, countries.get(name, 'Unspecified')), company=name, key=key,
+        result.append(dict(country=subject.get('country_registration') or 'Unspecified', company=brief_name(subject), key=key,
                            title=draft.get('title') or members[0].get('title_en') or members[0]['title'],
                            summary=draft.get('summary'), decision=draft.get('decision'), score=score['score'], reason=score['reason'],
                            day=day, date_label='Event' if event_day else 'First coverage',

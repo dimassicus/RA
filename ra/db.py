@@ -435,6 +435,21 @@ def exposure_coverage(run_id):
                             "WHERE run_id=%s ORDER BY branch,topic", (run_id,)).fetchall()
 
 
+def mark_article_copies(conn, rows, *, snapshots=None):
+    by_id = {row['id']: row for row in rows}
+    if snapshots is None:
+        companies = list({r['company_id'] for r in rows if r.get('company_id')})
+        snapshots = [r['metrics'] for r in conn.execute(
+            "SELECT metrics FROM company_weekly_scores WHERE company_id=ANY(%s) AND metrics ? 'copy_of'",
+            (companies,))]
+    for metrics in snapshots:
+        counted = set(metrics['article_ids'])
+        for other, representative in metrics.get('copy_of', {}).items():
+            for lead in (int(other), representative):
+                if lead in by_id:
+                    by_id[lead].update(copy_lead=representative, copy_counted=representative in counted)
+
+
 def get_results(run_id: int):
     from .exposure import scope_sector_paths
     with connect() as conn:
@@ -444,11 +459,12 @@ def get_results(run_id: int):
             "SELECT * FROM search_results WHERE run_id = %s "
             "ORDER BY published_at DESC NULLS LAST, id DESC", (run_id,)
         ).fetchall()
+        mark_article_copies(conn, rows)
         return [scope_sector_paths(row, subjects.get(row["subject_key"], {})) for row in rows]
 
 
 def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, tuple[str, str]] | None = None,
-                         scores: dict[int, int] | None = None, *, save_all=False) -> int:
+                         scores: dict[int, int] | None = None, *, save_all=False, originally_selected=None) -> int:
     """Review translations without DB locks, then save the selection atomically."""
     from . import headline_review, score_store
     with connect() as conn:
@@ -460,7 +476,7 @@ def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, 
         )}
     if save_all:
         selected_ids = list(current)
-    if (set(selected_ids) | set(scores or {})) - current.keys():
+    if (set(selected_ids) | set(scores or {}) | set(originally_selected or ())) - current.keys():
         raise ValueError("A selected lead does not belong to this run")
     for result_id, (title_en, publisher_en) in (edits or {}).items():
         if result_id not in current:
@@ -480,6 +496,9 @@ def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, 
         run = conn.execute("SELECT status FROM search_runs WHERE id = %s FOR UPDATE", (run_id,)).fetchone()
         if run is None or run["status"] in ("queued", "running"):
             raise ValueError("The search must finish before selecting report leads")
+        if originally_selected is not None and not save_all and not prepared and not scores and set(selected_ids) == originally_selected:
+            return conn.execute("SELECT count(*) AS n FROM search_results WHERE run_id=%s AND report_selected",
+                                (run_id,)).fetchone()["n"]
         for result_id in prepared:
             latest = conn.execute(
                 "SELECT id, title, language, title_en, publisher_en FROM search_results WHERE id=%s FOR UPDATE",
@@ -493,8 +512,13 @@ def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, 
                 "translation_provider = 'analyst edited' WHERE id = %s",
                 (changed, Jsonb(qa), title_en, publisher_en, result_id),
             )
-        selected = conn.execute("UPDATE search_results SET report_selected=(%s OR id=ANY(%s)) WHERE run_id=%s "
-                                "RETURNING report_selected", (save_all, selected_ids, run_id)).fetchall()
+        if originally_selected is None or save_all:
+            conn.execute("UPDATE search_results SET report_selected=(%s OR id=ANY(%s)) WHERE run_id=%s",
+                         (save_all, selected_ids, run_id))
+        else:
+            changed_ids = list(set(selected_ids).symmetric_difference(originally_selected))
+            conn.execute("UPDATE search_results SET report_selected=(id=ANY(%s)) WHERE run_id=%s AND id=ANY(%s)",
+                         (selected_ids, run_id, changed_ids))
         score_store._assess(conn, run_id)
         for rid, value in (scores or {}).items():
             article = conn.execute("SELECT * FROM search_results WHERE id=%s AND run_id=%s FOR UPDATE", (rid, run_id)).fetchone()
@@ -504,7 +528,8 @@ def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, 
                                 "Analyst confirmed article sentiment on the run report")
         conn.execute("UPDATE search_runs SET selection_saved=TRUE WHERE id=%s", (run_id,))
         score_store._weekly(conn)
-        return sum(row["report_selected"] for row in selected)
+        return conn.execute("SELECT count(*) AS n FROM search_results WHERE run_id=%s AND report_selected",
+                            (run_id,)).fetchone()["n"]
 
 
 

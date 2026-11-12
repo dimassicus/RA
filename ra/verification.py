@@ -7,16 +7,17 @@ import re
 
 from .aliases import LEGAL_SUFFIX, company_names, headline_identity, related_identity, normalized
 from .adverse_terms import PERSON_TITLES
+from .language import base_language
 from .relevance import case_context
 from .article_content import validate_pdf_text
 from .scoring import COMPILED, UNCERTAIN, NEGATION, sentiment_assessment
 from . import article_translation
 
-VERSION = 'source-attribution-v5'
+VERSION = 'source-attribution-v6'
 # Deliberately closed vocabulary between the company name and event phrase.
 # 'Acme's supplier filed for bankruptcy' must never become Acme's bankruptcy.
 BRIDGE = re.compile(r'(?:(?:s|has|have|had|is|was|were|has been|will|its|the|a|an|that it|that the company|'
-                    r'files|filed|filing|for|reports|reported|announces|announced|'
+                    r'files|filed|filing|for|reports|reported|records|recorded|announces|announced|'
                     r'confirms|confirmed|declares|declared|suffers|suffered|enters|entered|seeks|sought|'
                     r'company|ceo|chairman|president|chief executive|net|annual|quarterly|'
                     r'foi|esta|em|entrou|pede|pediu|anuncia|anunciou|informa|'
@@ -29,16 +30,16 @@ OTHER_ENTITY = re.compile(r'\b(?:subsidiar\w*|supplier\w*|rival\w*|competitor\w*
 
 def declared_hibernation(sentence, names):
     """Recognize a formally defined issuer's own enumerated board decision."""
-    declaration = re.match(r'^A\s+(.{3,180}?)\s*\([“"\']Companhia[”"\']\)', sentence, re.I | re.S)
+    declaration = re.match(r'^(?:The\s+)?(\w.{2,179}?)\s*\((?:the\s+)?[“"\']Company[”"\']\)', sentence, re.I | re.S)
     if not declaration or LEGAL_SUFFIX.sub('', normalized(declaration[1])) not in names:
         return None
-    decision = re.search(r'\ba Diretoria da Companhia decidiu\s*\(I\)', sentence, re.I)
+    decision = re.search(r"\bthe (?:Company[’']s (?:executive )?board|(?:executive )?board of the Company) decided\s*\(I\)", sentence, re.I)
     if not decision or decision.start() < declaration.end():
         return None
     if re.search(r'[“”"‘’\']', sentence[declaration.end():decision.start()]):
         return None  # A quoted third-party statement does not inherit the issuer's definition.
-    action = re.search(r';\s*(?:e\s+)?\((?:II|III|IV)\)\s*hibernar\s+as\s+(?:plantas|unidades)\b'
-                       r'(?=\s+(?:localizadas|situadas)\s+em\b)',
+    action = re.search(r';\s*(?:and\s+)?\((?:II|III|IV)\)\s*(?:to\s+)?(?:mothball|hibernate) the (?:plants|units)\b'
+                       r'(?=\s+(?:located|situated) in\b)',
                        sentence[decision.end():], re.I)
     if not action:
         return None
@@ -73,7 +74,7 @@ def _verify(document, subject, article):
     if article.get('discovery_service') == 'FCA Warning RSS':
         return {**result, 'reason': 'Possible clone warning; analyst must identify the affected legal entity'}
     # An English headline is not a translation of the full article.
-    translated = document.get('language', '').lower().split('-')[0] not in ('en', 'pt')
+    translated = base_language(document.get('language')) != 'en'
     if translated:
         result['translation'] = article_translation.summary(document)
         try:
@@ -106,10 +107,7 @@ def _verify(document, subject, article):
         if stages:
             ambiguous = True
             continue
-        # Portuguese "no" means "in the"; its negation is "não", handled by UNCERTAIN.
-        english_negation = translated or document.get('language', '').lower().split('-')[0] != 'pt'
-        negated = any(match[0] != 'no' or english_negation for match in NEGATION.finditer(context))
-        if (UNCERTAIN.search(context) or negated or CONTEXT.search(context)
+        if (UNCERTAIN.search(context) or NEGATION.search(context) or CONTEXT.search(context)
                 or HISTORICAL.search(context) or OTHER_ENTITY.search(folded)):
             if any(pattern.search(folded) for _, _, pattern in COMPILED):
                 ambiguous = True
@@ -144,8 +142,8 @@ def _verify(document, subject, article):
                 if len(bridge) <= 90 and BRIDGE.fullmatch(bridge):
                     linked = True
                     break
-            if (not linked and phrase == 'hibernar' and folded.count('hibernar') == 1
-                    and not translated and document.get('language', '').lower().split('-')[0] == 'pt'
+            if (not linked and re.fullmatch(r"(?:mothball|hibernate) the (?:plants|units)", phrase)
+                    and folded.count(phrase) == 1
                     and document.get('method') == 'PDF text (no OCR)' and article.get('source_kind') == 'official'):
                 attribution = declared_hibernation(sentence, names)
                 linked = attribution is not None

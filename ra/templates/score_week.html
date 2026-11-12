@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_copy_status.html' import copy_status %}
 {% block title %}Company week · RA{% endblock %}
 {% block content %}
 <p class="back"><a href="{{ url_for('scores') }}">← Weekly scores</a></p>
@@ -7,5 +8,9 @@
 <div class="table-scroll"><table><thead><tr><th>Event score</th><th>Company event</th><th>Selected evidence</th></tr></thead><tbody>
 {% for event in record.metrics.contributions %}<tr><td>{{ '%+d'|format(event.score) if event.score else '0' }}</td><td>{{ event.title }}<p>{{ event.reason }}</p></td><td><details><summary>{{ event.source_count }} sources</summary><ul>{% for a in articles if a.id in event.article_ids %}<li><a href="{{ url_for('article_score', result_id=a.id) }}">{{ a.title }}</a> · {{ a.published_at.strftime('%d %b %Y') if a.published_at }} · {{ a.score_reason }}</li>{% endfor %}</ul></details></td></tr>
 {% else %}<tr><td colspan="3">No selected, eligible company events for this week.</td></tr>{% endfor %}</tbody></table></div></section>
+{% if record.metrics.get('copy_of') %}
+<section class="panel list-panel"><h2>Repeated articles</h2><p>All copies stay in the search history.</p><ul>
+{% for a in articles if a.copy_lead and a.copy_lead != a.id %}<li><a href="{{ url_for('article_score', result_id=a.id) }}">#{{ a.id }} · {{ a.title }}</a> {{ copy_status(a) }}</li>{% endfor %}
+</ul></section>{% endif %}
 <section class="panel list-panel"><h2>Saved weekly revisions</h2><p>Late articles, translations and analyst corrections can change a past week. Previous snapshots remain recorded on their original scale; versions before source-credit-v6 used −3 to +3.</p><table><thead><tr><th>Saved</th><th>Mean</th><th>Included</th><th>Excluded</th><th>Rule version</th></tr></thead><tbody>{% for revision in history %}<tr><td>{{ revision.created_at.strftime('%d %b %Y %H:%M %Z') }}</td><td>{{ '%+.2f'|format(revision.snapshot.mean_score) if revision.snapshot.mean_score is not none else '—' }}</td><td>{{ revision.snapshot.get("event_count", revision.snapshot.article_count) }}</td><td>{{ revision.snapshot.excluded_count }}</td><td>{{ revision.snapshot.version }}</td></tr>{% endfor %}</tbody></table></section>
 {% endblock %}

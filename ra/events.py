@@ -2,6 +2,7 @@
 import re
 from collections import defaultdict
 from datetime import timedelta
+from urllib.parse import parse_qsl, urlsplit
 
 from .article_content import canonical_url
 
@@ -63,9 +64,24 @@ def assign_groups(articles):
     return assigned
 
 
+def article_copy_key(url):
+    """Compare publisher editions for scoring only; keep the original link for history."""
+    parts = urlsplit(canonical_url(url))
+    host = re.sub(r'^(?:(?:www|mobile|m|amp)\.)+', '', parts.netloc)
+    path = parts.path.rstrip('/')
+    # Kontan's AMP host serves the same /news/ article slugs as its industry desk.
+    if host == 'industri.kontan.co.id' and path.startswith('/news/'):
+        host = 'kontan.co.id'
+    path = re.sub(r'^/(?:amp|mobile)/(?=.)', '/', path)
+    path = re.sub(r'(?<=.)/(?:amp|mobile)$|\.amp(?=\.html?$)|\.amp$', '', path)
+    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+             if not ((k.lower() in ('amp', 'amphtml') and v.lower() in ('', '1', 'true', 'yes')) or
+                     (k.lower() in ('output', 'format') and v.lower() == 'amp'))]
+    return ('url', host, path, tuple(sorted(query)))
+
+
 def event_assessment(members, *, saved=False):
     """Count distinct documents. A repeated discovery never adds weight."""
-    articles = [r for r in members if not saved or r.get('report_selected')]
     parents = {}
 
     def root(key):
@@ -75,23 +91,27 @@ def event_assessment(members, *, saved=False):
             key = parents[key]
         return key
 
-    for row in articles:
+    keys = {}
+    for row in members:
         check = row.get('verification') or {}
-        key = root(canonical_url(row['url']))
+        keys[row['id']] = article_copy_key(row['url'])
+        key = root(keys[row['id']])
         if check.get('source_url'):
-            parents[root(canonical_url(check['source_url']))] = key
+            parents[root(article_copy_key(check['source_url']))] = key
         if check.get('document_hash'):
             parents[root(('hash', check['document_hash']))] = key
-    unique, duplicates = {}, []
-    for row in sorted(articles, key=lambda r: (r.get('score_status') == 'reviewed',
+    unique, duplicates, copy_of = {}, [], {}
+    for row in sorted(members, key=lambda r: (not saved or bool(r.get('report_selected')), r.get('score_status') == 'reviewed',
                       str(r.get('score_updated_at') or r.get('created_at') or ''), r['id']), reverse=True):
-        key = root(canonical_url(row['url']))
+        key = root(keys[row['id']])
         if key in unique:
-            duplicates.append(row['id'])
+            copy_of[str(row['id'])] = unique[key]['id']
+            if not saved or row.get('report_selected'):
+                duplicates.append(row['id'])
         else:
             unique[key] = row
     sources = [r for r in unique.values() if r.get('score') in (-1, 0)
-               and (not saved or r.get('score_included'))
+               and (not saved or (r.get('report_selected') and r.get('score_included')))
                and (r.get('score_status') == 'reviewed' or not (r.get('event_draft') or {}).get('excluded'))]
     adverse = [r for r in sources if r['score'] < 0]
     material = any(any(e.get('rule') in ('default or insolvency', 'material financial deterioration',
@@ -102,5 +122,5 @@ def event_assessment(members, *, saved=False):
     score = None if not sources else -1 if adverse and (material or weight >= len(sources) - len(adverse)) else 0
     reason = (f"{len(adverse)} negative and {len(sources)-len(adverse)} neutral distinct sources."
               + (" Material adverse evidence takes precedence." if material else ""))
-    return dict(score=score, sources=sources, duplicate_ids=duplicates, reason=reason,
+    return dict(score=score, sources=sources, duplicate_ids=duplicates, copy_of=copy_of, reason=reason,
                 priority=(material, weight, len(sources)))

@@ -6,7 +6,7 @@ from ra import article_translation as at
 from ra import headline_review, translation
 from ra.scoring import score_article
 from ra.verification import verify
-from test_verification import ARTICLE, NOW, SUBJECT, document
+from test_verification import ARTICLE, ISSUER_DECISION, NOW, SUBJECT, document
 
 
 def approved(*args, **kwargs):
@@ -22,7 +22,7 @@ def local(monkeypatch):
         'Acme Manufacturing reports net losses of 40 million dollars.', 'Argos test'))
 
 
-@pytest.mark.parametrize('language', ['ar', 'az', 'el', 'es', 'ru', 'tr', 'uz', 'vi', 'fr'])
+@pytest.mark.parametrize('language', ['ar', 'az', 'el', 'es', 'ru', 'tr', 'uz', 'vi', 'fr', 'pt-BR', 'PT_PT', 'sw'])
 def test_all_languages_use_body_not_headline_and_retain_original_evidence(local, language):
     source = document('Original source text.', language=language)
     prepared = at.prepare(source)
@@ -32,6 +32,23 @@ def test_all_languages_use_body_not_headline_and_retain_original_evidence(local,
     assert result['evidence'][0]['original_passages'] == ['Original source text.']
     assert result['translation']['reviewed'] == result['translation']['total'] == 1
     assert score_article({**ARTICLE, 'verification': result}, SUBJECT, NOW)['score_included']
+
+
+@pytest.mark.parametrize("language", ["pt-BR", "vi", "sw"])
+def test_official_board_decision_requires_reviewed_english_for_every_language(local, monkeypatch, language):
+    from ra.event_analysis import source_texts
+    body = "Acme Manufacturing disclosure."
+    source = document(body, language=language, method='PDF text (no OCR)', final_url=ARTICLE['url'])
+    article = dict(ARTICLE, source_kind='official')
+    check = verify(source, SUBJECT, article)
+    assert check['status'] == 'needs_review' and not check['evidence']
+    assert source_texts(source, check, SUBJECT)[0]['kind'] == 'original language, translation unverified'
+    monkeypatch.setattr(translation, 'argos_translate', lambda *args, **kw: (ISSUER_DECISION, 'test'))
+    prepared = at.prepare(source, SUBJECT)
+    check = verify(prepared, SUBJECT, article)
+    assert check['status'] == 'supported' and check['score'] == -1
+    assert check['evidence'][0]['original_passages'] == [body]
+    assert source_texts(prepared, check, SUBJECT)[0]['text'] == ISSUER_DECISION
 
 
 @pytest.mark.parametrize('english', [
@@ -93,10 +110,11 @@ def test_complete_coverage_cache_binding_and_invalidation(local, monkeypatch):
 def test_offline_review_only_unknown_and_native_languages_fail_safely(local, monkeypatch):
     monkeypatch.setattr(headline_review, 'readiness', lambda: {'ready': False, 'message': 'Start LM Studio'})
     monkeypatch.setattr(translation, 'argos_translate', lambda *a, **kw: pytest.fail('No model work expected'))
-    for lang in ('en', 'pt'):
+    for lang in ('en', 'EN-US'):
         source = document('Acme Manufacturing files for bankruptcy.', language=lang)
         assert at.prepare(source) == source
-    for source in (document('Original text.', language='vi'), document('Original text.', language=''),
+    for source in (document('Acme Manufacturing pede recuperação judicial.', language='pt'),
+                   document('Original text.', language='vi'), document('Original text.', language=''),
                    document('x' * 901, language='ar'),
                    document('Original text.', language='el', review_only=True),
                    {'status': 'unavailable', 'reason': 'Paywall'}):

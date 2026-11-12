@@ -113,6 +113,31 @@ def test_translation_change_reassesses_unreviewed_rows(database):
     assert len(score_store.article_history(article["id"])) == 1
 
 
+def test_copies_across_runs_link_to_the_actual_counted_lead(database):
+    company, run, desk = seed(database, url='https://industri.kontan.co.id/news/story')
+    _, other_run, amp = seed(database, url='https://amp.kontan.co.id/news/story')
+    save_event_fixture(database, desk, amp)
+    score_store.refresh_scores()
+    db.set_report_selection(run, [desk['id']])
+    score_store.review_score(desk['id'], -1, True, 'Reviewed the issuer impact')
+    for selected in (False, True):
+        if selected:
+            db.set_report_selection(other_run, [amp['id']])
+        actual, = db.get_results(other_run)
+        assert actual['copy_lead'] == desk['id'] and actual['copy_counted']
+        assert actual['report_selected'] == selected
+        record, articles, _ = score_store.week_detail(company['id'], week_start(desk['published_at']))
+        assert {a['id'] for a in articles} == {desk['id'], amp['id']}
+        assert record['metrics']['article_ids'] == [desk['id']]
+        assert record['metrics']['duplicate_count'] == int(selected)
+        client = create_app().test_client()
+        for path in [f"/runs/{other_run}", f"/articles/{amp['id']}/score",
+                     f"/scores/{company['id']}/{record['week_start']}"]:
+            response = client.get(path)
+            assert response.status_code == 200
+            assert f"lead #{desk['id']}</a> counted for this event" in response.text
+
+
 def test_review_validation_and_database_constraint(database):
     _, _, article = seed(database, published=False)
     score_store.refresh_scores()
@@ -1030,6 +1055,60 @@ def test_translation_feedback_is_saved_and_not_reused_for_changed_english(databa
     assert database.execute("SELECT translations FROM monitor_keywords WHERE id=%s", (row['id'],)).fetchone()['translations'] == {}
 
 
+def test_split_review_shows_cited_sources_and_saves_only_manual_changes(database):
+    company, run_id, lead = seed(database)
+    rid = lead['id']
+    database.execute("""UPDATE search_results SET event_draft=jsonb_build_object('event',id,
+        'title','Company event','summary','Company event brief','sentiment',-1) WHERE id=%s""", (rid,))
+    other = database.execute("""INSERT INTO search_results
+        (run_id,company_id,subject_key,subject_name,title,url,published_at,query,language)
+        VALUES (%s,%s,%s,%s,'Acme Manufacturing returns to profit','https://example.test/other',
+                %s,'test','en') RETURNING id""",
+        (run_id, company['id'], lead['subject_key'], company['name'], lead['published_at'])).fetchone()['id']
+    score_store.refresh_scores(run_id)
+    client = create_app().test_client()
+    with client.session_transaction() as session:
+        session['csrf_token'] = 'test'
+    path = f'/runs/{run_id}'
+    body = client.get(path).get_data(as_text=True)
+    cited, rest = body.split('id="summary-leads"', 1)[1].split('id="other-leads"', 1)
+    assert f'aria-label="Include lead {rid} in report"' in cited
+    assert f'aria-label="Include lead {other} in report"' not in cited
+    assert f'aria-label="Include lead {other} in report"' in rest
+    assert f'aria-label="Include lead {rid} in report"' not in rest
+    assert f'/articles/{rid}/score#source-evidence' in cited
+    form = dict(csrf_token='test', selection_baseline='')
+    assert client.post(path + '/review', data=form).status_code == 302
+    assert not db.get_run(run_id)['selection_saved']
+
+    # Another tab accepts the other lead and a worker finishes a translation.
+    db.set_report_selection(run_id, [other])
+    database.execute("UPDATE search_results SET title_en='New translation' WHERE id=%s", (rid,))
+    form.update(selected_ids=str(rid))
+    form['title_en_' + str(rid)] = ['', '']
+    form['publisher_en_' + str(rid)] = ['', '']
+    assert client.post(path + '/review', data=form).status_code == 302
+    assert all(a['report_selected'] for a in db.get_results(run_id))
+    assert score_store.get_article(rid)['title_en'] == 'New translation'
+    week = week_start(lead['published_at'])
+    assert score_store.week_detail(company['id'], week)[0]['metrics']['article_ids'] == [rid]
+    assert client.post(path + '/review', data=dict(csrf_token='test', selection_baseline=str(rid))).status_code == 302
+    rows = {r['id']: r for r in db.get_results(run_id)}
+    assert rows[rid]['score_auto'] == rows[rid]['score'] == -1
+    assert not rows[rid]['report_selected'] and rows[other]['report_selected']
+    assert rows[rid]['event_draft']['summary'] == 'Company event brief'
+    assert score_store.week_detail(company['id'], week)[0]['metrics']['article_ids'] == []
+
+    for other_selected in (False, True):
+        db.set_report_selection(run_id, [other] if other_selected else [])
+        # A saved copy may have been declined in another tab since this form opened.
+        bulk = dict(csrf_token='test', accept_summary=str(rid), selection_baseline=str(rid))
+        assert client.post(path + '/review', data=bulk).status_code == 302
+        rows = {r['id']: r for r in db.get_results(run_id)}
+        assert rows[rid]['report_selected'] and rows[other]['report_selected'] == other_selected
+        assert rows[rid]['score_auto'] == rows[rid]['score'] == -1
+
+
 def test_report_translation_audit_releases_connection_before_inference(database, monkeypatch):
     from ra import headline_review
     _, run_id, article = seed(database)
@@ -1179,6 +1258,26 @@ def test_news_request_allocation_uses_current_usage_and_atomic_cap(database):
     assert db.reserve_news_api_request('gnews', 2)
     assert not db.reserve_news_api_request('gnews', 2)
     assert db.remaining_news_api_requests({'gnews': 2}) == {'gnews': 0}
+
+
+@pytest.mark.parametrize('analyst_review', [False, True])
+def test_old_native_source_support_requires_translation_on_upgrade(database, analyst_review):
+    _, run_id, article = seed(database)
+    legacy = dict(version='source-attribution-v5', language='pt-BR', status='supported', score=-1,
+                  evidence=[], reason='Legacy source check')
+    database.execute("UPDATE search_results SET verification=%s WHERE id=%s", (db.Jsonb(legacy), article['id']))
+    score_store.refresh_scores(run_id)
+    if analyst_review:
+        score_store.review_score(article['id'], -1, True, 'Confirmed by analyst')
+    score_store.refresh_scores()
+    updated = score_store.get_article(article['id'])
+    assert updated['verification']['status'] == 'needs_review'
+    assert updated['score_included'] == analyst_review
+    from ra import verification_store
+    assert verification_store.job_summary(run_id)['source_retryable'] == 1
+    score_store.refresh_scores()
+    assert [r['previous'] for r in database.execute("SELECT previous FROM article_verification_history "
+            "WHERE result_id=%s", (article['id'],))] == [legacy]
 
 
 def test_company_events_save_selection_and_keep_original_briefs(database, monkeypatch):

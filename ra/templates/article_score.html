@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_copy_status.html' import copy_status %}
 {% block title %}Article score · RA{% endblock %}
 {% block content %}
 <p class="back"><a href="{{ url_for('run_detail', run_id=article.run_id, view='all') }}">← Search #{{ article.run_id }}</a> · <a href="{{ url_for('scores') }}">Weekly history</a></p>
@@ -17,7 +18,7 @@
 {% for span in part.excerpt.get('ranges', []) %}<small>Characters {{ span.start + 1 }}–{{ span.end }}{% if span.pages %} · PDF pages {{ span.pages|join(', ') }}{% endif %}</small><br>{% endfor %}
 <blockquote style="white-space: pre-wrap">{{ part.body }}</blockquote></details>{% endfor %}
 {% if article.verification.get('case_context') %}<p>Reported case context: {{ article.verification.case_context|join('; ') }}. These are source cues, not findings of guilt.</p>{% endif %}
-<p class="subtext">RA checks publisher evidence automatically. “Supported” means an explicit statement in the extracted source, not independent confirmation. English and Portuguese use source-text rules directly. Other languages use translations of the selected source text, independently checked by Qwen before the same company-impact rules run. Missing passages, translation uncertainty, unclear timing and ambiguous attribution require analyst review. A faithful translation alone cannot change a score.</p>
+<p class="subtext">RA checks publisher evidence automatically. “Supported” means an explicit statement in the extracted source, not independent confirmation. RA applies the same company-impact rules to English evidence for every source. For each non-English source, Qwen first checks the English translation of every selected passage against its original. Missing passages, translation uncertainty, unclear timing and ambiguous attribution require analyst review. A faithful translation alone cannot change a score.</p>
 {% set translation = article.verification.get('translation') %}
 {% if translation %}<p><strong>Source translation:</strong> {{ translation.get('reviewed', 0) }}/{{ translation.get('total', 0) }} passages approved · {{ translation.get('status', 'pending')|replace('_',' ') }}. {{ translation.get('reason', '') }}</p>
 <p class="subtext">{{ translation.get('providers', [])|join(' · ') }}</p>{% endif %}
@@ -44,7 +45,7 @@
 <p class="subtext">Public HTML and text PDFs only. Sources are cached seven days; access failures 24 hours. Publisher recovery may use Brave, Jina or Firecrawl requests. Unreadable sources remain excluded until analyst review.</p>
 {% if verification_history %}<details><summary>Source check history ({{ verification_history|length }})</summary><ul>{% for entry in verification_history %}<li>{{ entry.created_at.strftime('%d %b %Y %H:%M %Z') }} · {{ entry.assessment.status }} · {{ entry.assessment.reason }}</li>{% endfor %}</ul></details>{% endif %}
 </section>
-<section class="panel form-panel"><h2>Duplicate-event group</h2><p>Article #{{ article.id }} · {{ article.event_group or 'Not grouped yet' }} · {{ members|length }} source occurrences. Distinct selected sources determine one event score. Repeated copies add no weight.</p>
+<section class="panel form-panel"><h2>Duplicate-event group</h2>{{ copy_status(article) }}<p>Article #{{ article.id }} · {{ article.event_group or 'Not grouped yet' }} · {{ members|length }} source occurrences. Distinct selected sources determine one event score. Repeated copies add no weight.</p>
 <ul>{% for member in members %}<li><a href="{{ url_for('article_score', result_id=member.id) }}">#{{ member.id }} · {{ member.title }}</a> · {{ member.publisher }} · search #{{ member.run_id }}</li>{% endfor %}</ul>
 <form method="post" action="{{ url_for('article_group', result_id=article.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Grouping decision<select name="action"><option value="separate">Treat this article as a separate event</option><option value="merge">Join another article's event group</option><option value="automatic">Restore automatic grouping for this article</option></select></label><label>Other article ID (for joining)<input name="target_id" type="number" min="1" placeholder="Article number from its review page"></label><label>Reason<textarea name="reason" minlength="5" maxlength="2000" required rows="2"></textarea></label><button class="button secondary" {% if article.run_status in ('running','queued') %}disabled{% endif %}>Save grouping</button></form>
 {% if event_history %}<details><summary>Grouping history</summary><ul>{% for entry in event_history %}<li>{{ entry.created_at.strftime('%d %b %Y %H:%M %Z') }} · {{ entry.previous_group or 'ungrouped' }} → {{ entry.new_group or 'automatic' }} · {{ entry.reason }}</li>{% endfor %}</ul></details>{% endif %}</section>

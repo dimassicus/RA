@@ -4,6 +4,8 @@ import re
 
 from scripts.translation_review.simple import review_content
 
+from .language import base_language
+
 from . import filing_evidence, headline_review, local_models, translation, translation_names
 
 VERSION = "article-translation-v1"
@@ -115,8 +117,8 @@ def prepare(document, subject=None):
 
 
 def prepare_steps(document, subject=None, *, checkpoint=None):
-    language = document.get('language', '').lower().split('-')[0]
-    if document.get('status') != 'available' or document.get('review_only') or language in ('en', 'pt'):
+    language = base_language(document.get('language'))
+    if document.get('status') != 'available' or document.get('review_only') or language == 'en':
         return document
     body = document.get('body', '')
     old = document.get('translation', {})
@@ -207,7 +209,7 @@ def checked_text(document, subject=None):
         raise ValueError('Company name changed in the translated source; a fresh translation is required')
     if (data.get('status') != 'faithful' or data.get('version') != VERSION
             or data.get('source_hash') != fingerprint(document.get('body', ''))
-            or data.get('language') != document.get('language', '').lower().split('-')[0]
+            or data.get('language') != base_language(document.get('language'))
             or not parts or ''.join(p.get('source', '') for p in parts) != document.get('body')
             or not all(faithful(p) for p in parts)):
         raise ValueError(data.get('reason') or 'Complete, Qwen-approved full-article translation required')

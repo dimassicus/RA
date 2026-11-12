@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_copy_status.html' import copy_status %}
 {% block title %}Search #{{ run.id }} · RA{% endblock %}
 {% block content %}
 <p class="back"><a href="{{ url_for('dashboard') }}">← Back to watchlist</a></p>
@@ -57,8 +58,8 @@
 {% if s.count is defined %} · {{ s.count }} dated filing entries{% endif %}{% if s.first %} · Visible dates {{ s.first }} to {{ s.last }}{% endif %}
 {% if s.periods %} · Financial statements {{ s.periods|join(', ') }}{% endif %}{% if s.without_pdf %} · {{ s.without_pdf }} entries lacked a PDF{% endif %} {{ s.detail }}</li>{% endfor %}</ul>{% endfor %}
 </details></section>{% endif %}
-<section class="panel list-panel"><h2>AI summary for search results</h2>
-<p>Oldest first across all companies. Events without a documented event date use their first publication date.</p>
+<section class="panel list-panel" id="ai-summary"><h2>AI summary for search results</h2>
+<p>Oldest first across all companies. Events without a documented event date use their first publication date. <a href="#summary-leads">Review the leads used in this summary</a>.</p>
 {% if run.event_analysis_status == 'failed' %}<form method="post" action="{{ url_for('retry_events', run_id=run.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><p>AI drafting did not finish. Available evidence remains below.</p><button class="button secondary">Retry event drafts</button></form>
 {% elif run.event_analysis_status != 'complete' %}<p class="subtext" id="brief-progress" role="status">Company event briefs saved so far · {{ v.get('event_briefs',0) }}. Drafting follows publisher checks.</p>{% endif %}
 {% for event in events %}<article class="company-event"><p class="subtext">{% if event.day %}{{ event.date_label }} · <time datetime="{{ event.day.isoformat() }}">{{ event.day.strftime('%d %b %Y') }}</time>{% else %}Date unknown{% endif %} · {{ event.country }} · {{ event.company }}</p><strong>{{ event.title }}</strong>
@@ -71,14 +72,43 @@
 <details><summary>Supporting passage</summary><blockquote>{{ event.decision.outcome_quote }} {{ event.decision.remaining_quote }}</blockquote></details>
 {% else %}Decision reported. Its terms still need verification. <a href="{{ event.decision.notice_url }}">Read the notice</a></p>{% endif %}{% endif %}
 <details><summary>Source evidence ({{ event.sources|length }})</summary><ul>{% for source in event.sources %}<li>
-{{ source.published_at.strftime('%d %b %Y') if source.published_at else 'Publication date unknown' }} · <a href="{{ url_for('article_score', result_id=source.id) }}#source-evidence">{{ source.title }}</a> · {{ source.publisher }}
+{{ source.published_at.strftime('%d %b %Y') if source.published_at else 'Publication date unknown' }} · <a href="{{ url_for('article_score', result_id=source.id) }}#source-evidence">{{ source.title }}</a> · {{ source.publisher }} {{ copy_status(source) }}
 {% set quote = (source.event_draft or {}).get('profit_decline_quote') %}{% if quote %}<blockquote>{{ quote }}</blockquote>{% endif %}
 </li>{% endfor %}</ul></details></article>
 {% else %}<p>{{ 'No negative or neutral company events found.' if run.event_analysis_status == 'complete' else 'No completed event briefs yet.' }}</p>{% endfor %}</section>
 {% if country_leads %}<section class="panel"><details><summary>Country risk leads ({{ country_leads|length }})</summary><ul>{% for item in country_leads %}<li>{{ item.subject_name }} · <a href="{{ url_for('article_score', result_id=item.id) }}">{{ item.title }}</a></li>{% endfor %}</ul></details></section>{% endif %}
-<section class="panel list-panel"><div class="section-heading"><div><span class="step">Analyst review</span><h2>Company risk leads</h2></div><span class="pill">Source checks + analyst review</span></div>
-  <nav class="review-toolbar" aria-label="Lead relevance filters">{% for key, label in [('events', 'Negative and neutral leads'), ('risk', 'Recent risk leads'), ('developments', 'Credit developments'), ('factors', 'Risk factor matches'), ('governance', 'Leadership and ownership'), ('exposure', 'Country and sector exposure'), ('scored', 'Scored coverage'), ('review', 'Needs verification'), ('older', 'Older risks'), ('background', 'Background'), ('all', 'All collected')] %}<a class="button {{ 'primary' if view == key else 'secondary' }}" href="{{ url_for('run_detail', run_id=run.id, view=key) }}" {% if view == key %}aria-current="page"{% endif %}>{{ label }} ({{ all_count if key == 'all' else counts[key] }})</a>{% endfor %}</nav>
-  {% if counts.developments and view != 'developments' %}<p><a href="{{ url_for('run_detail', run_id=run.id, view='developments') }}">Review {{ counts.developments }} company leads for legal exposure, funding or market expansion.</a></p>{% endif %}
+<h2 id="analyst-review">Analyst review</h2>
+<form method="post" action="{{ url_for('review_run', run_id=run.id, view=view) }}" id="review-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="selection_baseline" value="{{ (summary_leads + results)|selectattr('report_selected')|map(attribute='id')|join(',') }}">
+  <section class="panel list-panel summary-review" id="summary-leads" aria-labelledby="summary-leads-heading">
+    <div class="section-heading"><div><h2 id="summary-leads-heading">Leads used in the AI summary ({{ summary_leads|length }})</h2>
+      <p>Check <strong>Accept</strong> beside an event to select all its leads. Expand the headline to review or change individual leads, then click <strong>Save report selection</strong>.</p>
+    </div></div>
+    <p><a href="#other-leads">Other collected leads ({{ other_count }})</a></p>
+    {% if summary_leads %}
+      <div class="review-toolbar">
+        <button type="submit" class="button primary" {% if run.status in ('queued','running') %}disabled{% endif %}>Save report selection</button>
+        <button type="submit" class="button secondary" name="accept_summary" value="{{ summary_leads|map(attribute='id')|join(',') }}" {% if run.status in ('queued','running') %}disabled{% endif %}>Accept all {{ summary_leads|length }} summary leads</button>
+      </div>
+      {% for event in events %}
+        <div class="event-choice">
+        <label class="event-accept" hidden><input type="checkbox" class="lead-check" data-event-accept aria-controls="event-leads-{{ loop.index }}" aria-label="Accept all leads for {{ event.company }}: {{ event.title }}"{% if event.sources|rejectattr('report_selected')|list|length == 0 %} checked{% endif %}> Accept</label>
+        <details class="review-event">
+          <summary><strong>{{ event.title }}</strong>
+            <span class="subtext">{{ event.company }} · {{ event.day.strftime('%d %b %Y') if event.day else 'Date unknown' }} · {{ event.sources|length }} {{ 'lead' if event.sources|length == 1 else 'leads' }} · {{ event.sources|selectattr('report_selected')|list|length }} saved</span>
+          </summary>
+          {% with rows=event.sources, table_id='event-leads-' ~ loop.index %}{% include '_review_leads.html' %}{% endwith %}
+        </details>
+        </div>
+      {% endfor %}
+      <button class="button primary" {% if run.status in ('queued','running') %}disabled{% endif %}>Save report selection</button>
+    {% else %}<p class="empty">{{ 'No leads are cited in the AI summary.' if run.event_analysis_status == 'complete' else 'Leads appear here as event briefs are drafted.' }}</p>{% endif %}
+  </section>
+  <section class="panel list-panel" id="other-leads" aria-labelledby="other-leads-heading">
+    <div class="section-heading"><h2 id="other-leads-heading">Other collected leads ({{ other_count }})</h2></div>
+  <nav class="review-toolbar" aria-label="Lead relevance filters">{% for key, label in [('events', 'Negative and neutral leads'), ('risk', 'Recent risk leads'), ('developments', 'Credit developments'), ('factors', 'Risk factor matches'), ('governance', 'Leadership and ownership'), ('exposure', 'Country and sector exposure'), ('scored', 'Scored coverage'), ('review', 'Needs verification'), ('older', 'Older risks'), ('background', 'Background'), ('all', 'All other leads')] %}<a class="button {{ 'primary' if view == key else 'secondary' }}" href="{{ url_for('run_detail', run_id=run.id, view=key, _anchor='other-leads') }}" {% if view == key %}aria-current="page"{% endif %}>{{ label }} ({{ other_count if key == 'all' else counts[key] }})</a>{% endfor %}</nav>
+  {% if counts.developments and view != 'developments' %}<p><a href="{{ url_for('run_detail', run_id=run.id, view='developments', _anchor='other-leads') }}">Review {{ counts.developments }} company leads for legal exposure, funding or market expansion.</a></p>{% endif %}
   {% if view == 'factors' %}<p>Possible themes from original headlines and available source text. Open the evidence to check the connection and any threshold.</p>{% endif %}
   {% if view == 'governance' %}<p>These headlines flag possible changes for review. Check who changed roles or holdings, the effective date and any credit impact in the original disclosure.</p>
   {% for roster in rosters %}<details open><summary>{{ roster.company_name }} · {{ roster.source_label }}</summary>
@@ -87,24 +117,22 @@
   {% if view == 'exposure' %}<details open><summary>Country and sector checks ({{ exposure_checks|length }})</summary>
   <ul>{% for check in exposure_checks %}<li>{{ check.branch|title }} · {{ check.topic }} · {{ check.leads }} feed matches before company matching{% if check.error %} · {{ check.error }}{% endif %}</li>{% endfor %}</ul>
   <p>Each lead lists a company’s recorded exposure and a possible impact to check against the source.</p></details>{% endif %}
-  <p class="callout">The table lists individual leads for review. Positive leads remain accessible under All collected and never contribute to company events.</p>
+
+    {% if results %}
+      {% with rows=results, table_id='other-lead-table' %}{% include '_review_leads.html' %}{% endwith %}
+    {% else %}<p class="empty">No other leads in this view.</p>{% endif %}
+  </section>
+  {% if all_count %}<div class="panel list-panel">
+    <div class="review-toolbar bottom">
+      <button class="button primary" name="section" value="other" {% if run.status in ('queued','running') %}disabled{% endif %}>Save report selection</button>
+      <button class="button secondary" name="action" value="all" {% if run.status in ('queued','running') %}disabled{% endif %}>Save all {{ all_count }} leads</button>
+      <span>{{ selected_count }} selected for this run. Saving applies choices from both sections. Save all selects the entire run.</span>
+    </div>
+    <p>Only selected, eligible evidence contributes to weekly scores. Excluded leads keep their data and preliminary scores.</p>
+  </div>{% endif %}
+</form>
   <form method="post" action="{{ url_for('verify_run', run_id=run.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary" {% if run.status in ('running','queued') %}disabled{% endif %}>Check next sources · up to 8 per company</button><p class="subtext">RA checks the publisher’s article for evidence of company impact. Qwen separately reviews headline translations. No action is needed while queued or running.</p></form>
-  <p class="callout">Open the source, check the legal entity, dates and context, then tick the leads you want in your report. Choosing a score confirms that you checked company identity, source and date. Save all leads includes every view using current scores and your edits. Selection does not mark an event as verified; English text is machine translated and should be checked against the original.</p>
-  {% if results or all_count %}<form method="post" action="{{ url_for('review_run', run_id=run.id) }}" id="review-form">{% for selected_id in hidden_selected %}<input type="hidden" name="selected_ids" value="{{ selected_id }}">{% endfor %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="review-toolbar"><button type="button" class="link-button" onclick="this.form.querySelectorAll('tr:not([hidden]) .lead-check').forEach(box => box.checked = true)">Select visible</button><button type="button" class="link-button" onclick="this.form.querySelectorAll('tr:not([hidden]) .lead-check').forEach(box => box.checked = false)">Clear visible</button><button type="submit" class="button primary" {% if run.status in ('queued', 'running') %}disabled{% endif %}>Save report selection</button><button type="submit" name="action" value="all" class="button secondary" {% if run.status in ('queued', 'running') %}disabled{% endif %}>Save all leads</button><span class="subtext">{{ selected_count }} saved for the selected-lead PDF / Excel. Changes apply after saving. Other views keep their selections. Only selected, eligible leads contribute to weekly event scores.</span></div><p id="lead-count" class="subtext" role="status"></p>
-  <div class="table-scroll"><table id="lead-table"><thead><tr><th>Report</th><th>Published</th>
-    {% macro filter_header(key, title, all_label) %}
-    <th scope="col" data-column="{{ key }}"><button type="button" class="link-button column-sort" aria-label="Sort by {{ title|lower }}">{{ title }} <span aria-hidden="true">↕</span></button>
-      <select class="column-filter" aria-label="Filter by {{ title|lower }}"><option value="">{{ all_label }}</option></select></th>
-    {% endmacro %}
-    {{ filter_header('company', 'Company', 'All companies') }}<th>Headline / publisher</th>
-    {{ filter_header('score', 'Article score', 'All scores') }}<th scope="col">Review cue<select id="cue-filter" class="column-filter" aria-label="Filter by keyword"><option value="">All cues</option></select></th><th>Discovery</th></tr></thead>
-    <tbody>{% set company_labels = company_labels|default({}) %}{% for item in results %}<tr data-keywords='{{ item.keyword_hits|tojson }}' data-company="{{ company_labels.get(item.subject_name, item.subject_name) }}" data-score="{{ item.score if item.score is defined and item.score is not none else 'pending' }}">
-    <td><label class="check-label"><input class="lead-check" type="checkbox" name="selected_ids" value="{{ item.id }}" {% if item.report_selected %}checked{% endif %} aria-label="Include lead {{ item.id }} in report"></label></td><td class="nowrap">{{ item.published_at.strftime('%d %b %Y') if item.published_at else 'Date unknown' }}</td><td>{{ company_labels.get(item.subject_name, item.subject_name) }}{% for path in item.exposure_paths %}<span class="subtext">{{ path }}</span>{% endfor %}</td><td><span class="source-kind {{ item.source_kind }}">{{ 'Official notice' if item.source_kind == 'official' else 'News lead' }}</span><a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a>{% if item.discovery_summary %}<details><summary>Source summary</summary>{{ item.discovery_summary }}</details>{% endif %}{% if item.title_en and (item.title_en != item.title or item.language not in ('en','zxx')) %}<span class="translation"><strong>English:</strong> {{ item.title_en }}</span><span class="subtext">Translation review: {{ (item.get('headline_review') or {}).get('status', 'pending')|replace('_',' ') }}</span>{% elif not item.title_en %}<span class="translation-pending">{{ 'English translation unavailable: ' ~ item.translation_provider if item.translation_provider else 'English translation in progress' }}</span>{% endif %}<span class="subtext">Publisher: {{ item.publisher or 'unknown' }}{% if item.publisher_en %} · English name: {{ item.publisher_en }}{% endif %}{% if item.discovery_service %} · Found via: {{ item.discovery_service }}{% endif %}</span>{% if item.get('group_sources') %}<details><summary>{{ item.group_sources|length }} other source occurrence(s) for this event</summary><ul>{% for source in item.group_sources %}<li><a href="{{ url_for('article_score', result_id=source.id) }}">#{{ source.id }} · {{ source.title }}</a> · {{ source.publisher }}</li>{% endfor %}</ul></details>{% endif %}<details class="translation-edit"><summary>Correct English text</summary><label>Headline in English<input name="title_en_{{ item.id }}" value="{{ item.title_en }}" maxlength="1000"></label><label>Publisher name in English<input name="publisher_en_{{ item.id }}" value="{{ item.publisher_en }}" maxlength="250"></label></details></td><td>{% if item.score is defined and item.score is not none %}<span class="score-badge score-{{ item.score }}">{{ '%+d'|format(item.score) if item.score else '0' }}</span><span class="subtext">{{ item.score_status|replace('_',' ') }} · {{ 'Included' if item.score_included else 'Excluded' }}</span><span class="subtext">{{ item.score_reason }}</span>{% else %}<span class="subtext">Scoring pending</span>{% endif %}<label>Analyst score<select name="score_{{ item.id }}" aria-label="Review score for lead {{ item.id }}"><option value="">Keep current score</option>{% for value, label in score_labels.items() %}<option value="{{ value }}">{{ '%+d'|format(value) if value else '0' }} · {{ label }}</option>{% endfor %}</select></label><a href="{{ url_for('article_score', result_id=item.id) }}">Review evidence &amp; score</a><span class="subtext">Source: {{ item.verification.get('status', 'pending')|replace('_',' ') }} · {{ item.event_group }}</span></td><td>{% set theme_review = item.get('risk_factor_review') or {} %}<span class="subtext">Theme assessment: {{ theme_review.get('status', 'pending')|replace('_',' ') }}{% if theme_review.get('coverage') %} · {{ theme_review.coverage }}{% endif %}</span>{% if theme_review.get('status') in ('inconclusive', 'incomplete') %}<span class="subtext">Some themes could not be assessed. No match does not mean no relevant risk.</span>{% endif %}{% for match in theme_review.get('matches', []) %}<details><summary>{{ match.factor }}</summary><p>{{ match.kind|capitalize }} match · {{ match.connection }}</p><blockquote>{{ match.quote }}</blockquote><small>{{ match.from }}</small></details>{% endfor %}{% for label in item.governance %}<span class="tag">{{ label }} lead</span>{% endfor %}<span class="subtext">{{ item.relevance_reason }}</span>{% for topic in item.credit_developments %}<strong class="subtext">{{ topic }}</strong>{% endfor %}{% for hit in item.keyword_hits %}<span class="tag">{{ hit.term }} · {{ hit.direction }}</span>{% else %}{% for signal in item.signal_terms %}<span class="tag">{{ signal }}</span>{% endfor %}{% endfor %}</td><td><span class="freshness {{ 'old' if item.seen_before else 'new' }}">{{ 'Seen before' if item.seen_before else 'New to system' }}</span><span class="subtext">{{ item.language }}</span></td>
-  </tr>{% endfor %}</tbody></table></div>
-  <script src="{{ url_for('static', filename='lead-table.js') }}" defer></script>
-  <div class="review-toolbar bottom"><button type="submit" class="button primary" {% if run.status in ('queued', 'running') %}disabled{% endif %}>Save report selection</button><button type="submit" name="action" value="all" class="button secondary" {% if run.status in ('queued', 'running') %}disabled{% endif %}>Save all leads</button></div></form>
-  {% elif run.status in ('queued', 'running') %}<p class="empty">The search is running. This page will update when it finishes.</p>{% else %}<p class="empty">No leads in this view. Check the other views and source errors; this does not establish that no relevant events occurred.</p>{% endif %}
-</section>
+<script src="{{ url_for('static', filename='lead-table.js') }}" defer></script>
 <p class="subtext">Disclosure coverage is partial. Exchange filings, unlinked documents and restricted pages may be missing.</p>
 {% if errors %}<section class="panel errors-panel"><span class="step">Source access</span><h2>Source errors and recovery</h2><ul>{% for error in errors %}<li><strong>{{ error.subject_name }}:</strong> {{ error.message }}</li>{% endfor %}</ul></section>{% endif %}
 <script>

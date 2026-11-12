@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
+from .language import base_language
 from .relevance import headline
 from .aliases import headline_identity, normalized
 
@@ -36,7 +37,7 @@ RULES = [
     (1, "limited improvement", r"(?:reduces?|reduced|narrows?|narrowed|cuts?|cut) (?:its )?losses|(?:losses|net loss) (?:narrow\w*|fall\w*|fell|shrink\w*|declin\w*|decreas\w*|reduc\w*)|(?:profit|earnings|revenue|sales) (?:grow\w*|ris\w*|rose|increas\w*|improv\w*)|(?:wins?|won|secures?|secured) (?:a |new |major )?contract|lucro (?:cresce|aumenta)|reduz (?:o )?prejuizo|queda (?:do|no) prejuizo"),
     (-2, "default or insolvency", r"bankrupt\w*|insolven\w*|liquidation|(?:payment |debt |bond )?default(?:s|ed)?|missed (?:debt |bond |interest )?payments?|fails? to (?:repay|pay creditors)|falencia|inadimplencia|vo no|pha san|iflas"),
     (-2, "material financial deterioration", r"restructur\w*|recuperacao (?:extra)?judicial|liquidity crisis|cash (?:crisis|shortfall)|profit warning|(?:credit |rating )downgrad\w*|downgrad\w* (?:its |the )?(?:credit |issuer |debt )?rating|negative outlook|debt crisis|konkordato\w*|temerrut\w*|(?:profit|earnings) (?:plung\w*|collaps\w*)"),
-    (-2, "operating disruption", r"shutdown\w*|plant closure|plant fire|explosion|(?:halts?|suspends?) (?:production|operations)|hibernacao|hibernar|paralisacao|fechamento|suspensao (?:das? )?(?:operacoes|producao)"),
+    (-2, "operating disruption", r"shutdown\w*|plant closure|plant fire|explosion|(?:mothball|hibernate) the (?:plants|units)|(?:halts?|suspends?) (?:production|operations)|hibernacao|hibernar|paralisacao|fechamento|suspensao (?:das? )?(?:operacoes|producao)"),
     (-2, "legal or creditor pressure", r"(?:faces?|facing|hit by) (?:a |an )?(?:lawsuit|investigation|sanctions)|(?:fined|convicted)|(?:creditor |debt )?mediation|procedimento de mediacao|tutela de urgencia|arbitration|arbitragem|multas?|condena\w*"),
     (-1, "limited financial deterioration", r"loss(?:es)?|prejuizo\w*|(?:profit|earnings|revenue|sales) (?:fall\w*|fell|declin\w*|drop\w*|decreas\w*)|queda (?:do|no|de) lucro|lucro cai|zarar\w*|thua lo"),
     (-1, "staff or management disruption", r"layoffs?|resign\w*|renuncia\w*|demiss\w*|istifa\w*|strike|greve|tu chuc"),
@@ -80,6 +81,8 @@ def input_hash(article: dict, subject: dict, now: datetime | None = None) -> str
     if article.get("report_selected") and draft.get("event") and draft.get("sentiment") in (-1, 0) and not draft.get("excluded"):
         values["selected_event"] = True
         values["exposure_paths"] = article.get("exposure_paths") or []
+    if base_language(article.get("language")) not in ("", "en") and not headline(article, "title_en"):
+        values["missing_english_headline"] = True
     values["subject"] = subject
     published = article.get("published_at")
     if published and published.tzinfo is None:
@@ -117,7 +120,7 @@ def score_article(article: dict, subject: dict, now: datetime | None = None) -> 
         problem = "Company identity is not supported by the headline"
     elif article.get("discovery_service") == "FCA Warning RSS":
         problem = "Possible clone warning; confirm which entity is affected"
-    elif article.get("language", "").split("-")[0] not in ("", "en", "pt") and not english:
+    elif base_language(article.get("language")) not in ("", "en") and not english:
         problem = "English translation unavailable; native-language coverage is incomplete"
     elif evidence and (UNCERTAIN.search(text) or NEGATION.search(text)):
         problem = "Conditional, denied, negated or uncertain event; review context"
@@ -168,12 +171,14 @@ def aggregate_week(articles: list[dict]) -> dict:
     for row in articles:
         by_event[row.get("event_group") or row["url"]].append(row)
     contributions, groups, included, excluded, duplicates = [], [], [], [], []
+    copy_of = {}
     for key, members in sorted(by_event.items()):
         result = event_assessment([r for r in members if (r.get("event_draft") or {}).get("event")], saved=True)
         first = min(result["sources"] or members, key=lambda a: a["id"])
         ids = sorted(a["id"] for a in members)
         groups.append({"id": key, "representative_id": first["id"], "article_ids": ids})
         duplicates.extend(result["duplicate_ids"])
+        copy_of.update(result["copy_of"])
         used = {a["id"] for a in result["sources"]}
         excluded.extend(i for i in ids if i not in used and i not in result["duplicate_ids"])
         included.extend(used)
@@ -190,6 +195,7 @@ def aggregate_week(articles: list[dict]) -> dict:
         "score": int(mean.quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if values else None,
         "mean_score": float(mean.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if values else None,
         "event_count": len(values), "duplicate_count": len(duplicates), "duplicate_ids": sorted(duplicates),
+        **({"copy_of": copy_of} if copy_of else {}),
         "groups": groups, "article_count": len(included), "excluded_count": len(excluded),
         "negative_count": values.count(-1), "neutral_count": values.count(0), "positive_count": values.count(1),
         "worst_score": min(values, default=None), "best_score": max(values, default=None),

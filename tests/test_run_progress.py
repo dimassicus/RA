@@ -31,7 +31,7 @@ def run_page(status="completed", theme_status="inconclusive"):
         html = render_template("run.html", run=run, verification_jobs=checks,
                                reviewer={"message": "Ready"}, search_progress=None,
                                score_labels=LABELS, results=[article], errors=[], view="all", counts={}, all_count=2,
-                               selected_count=0, hidden_selected=[], rosters=[], exposure_checks=[])
+                               selected_count=0, summary_leads=[], other_count=2, rosters=[], exposure_checks=[])
     return html, checks
 
 

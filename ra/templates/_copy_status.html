@@ -1,0 +1,11 @@
+{% macro copy_status(lead) -%}
+{% if lead.copy_lead %}
+<span class="copy-status">
+{%- if lead.copy_lead != lead.id -%}
+Duplicate · <a href="{{ url_for('article_score', result_id=lead.copy_lead) }}">lead #{{ lead.copy_lead }}</a> {{ 'counted for this event' if lead.copy_counted else 'represents this article; no copy counts yet' }}.
+{%- elif lead.copy_counted -%}Lead #{{ lead.id }} counted once for this event.
+{%- else -%}Lead #{{ lead.id }} represents this article; no copy counts yet.
+{%- endif -%}
+</span>
+{% endif %}
+{%- endmacro %}

@@ -52,13 +52,21 @@ def test_ai_summary_orders_events_across_companies_and_their_sources(monkeypatch
     with create_app().test_client() as client:
         page = client.get('/runs/5')
         assert page.status_code == 200
-        summary = page.get_data(as_text=True).split('AI summary for search results', 1)[1].split('Company risk leads', 1)[0]
+        summary = page.get_data(as_text=True).split('AI summary for search results', 1)[1].split('id="analyst-review"', 1)[0]
         labels = ['Brief 5', 'Brief 1', 'Brief 2', 'Source 2', 'Source 3', 'Date unknown', 'Brief 4']
         assert [summary.index(label) for label in labels] == sorted(summary.index(label) for label in labels)
-        leads = page.get_data(as_text=True).split('id="lead-table"', 1)[1].split('</tbody>', 1)[0]
-        expected = [2, 1, 3, 5, 4]
-        positions = [leads.index(f'aria-label="Include lead {i} in report"') for i in expected]
-        assert positions == sorted(positions)
+        review = page.get_data(as_text=True).split('id="summary-leads"', 1)[1].split('id="other-leads"', 1)[0]
+        assert 'name="accept_summary" value="5,1,2,3,4"' in review
+        groups = review.split('<div class="event-choice">')[1:]
+        expected = [(5, [5]), (1, [1]), (2, [2, 3]), (4, [4])]
+        assert len(groups) == len(expected)
+        for index, (group, (event, ids)) in enumerate(zip(groups, expected), 1):
+            assert f'aria-controls="event-leads-{index}"' in group
+            assert f'<table id="event-leads-{index}">' in group
+            assert f'<summary><strong>Brief {event}</strong>' in group
+            assert group.count('name="selected_ids"') == len(ids)
+            positions = [group.index(f'aria-label="Include lead {i} in report"') for i in ids]
+            assert positions == sorted(positions)
 
 
 def test_risk_view_hides_noise_and_preserves_other_view_selections(monkeypatch):
@@ -77,10 +85,10 @@ def test_risk_view_hides_noise_and_preserves_other_view_selections(monkeypatch):
     monkeypatch.setattr(db, "get_errors", lambda run_id: [])
     monkeypatch.setattr(verification_store, "job_summary", lambda run_id: {})
     with create_app().test_client() as client:
-        body = client.get("/runs/5").get_data(as_text=True)
+        body = client.get("/runs/5?view=risk").get_data(as_text=True)
         assert "Acme Manufacturing faces bankruptcy" in body
         assert "National team wins cup" not in body
-        assert 'type="hidden" name="selected_ids" value="2"' in body
+        assert 'name="selection_baseline" value=""' in body
         assert "National team wins cup" in client.get("/runs/5?view=all").get_data(as_text=True)
         assert client.get("/runs/5?view=invalid").status_code == 400
 

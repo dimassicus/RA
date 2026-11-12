@@ -56,3 +56,32 @@ def test_event_brief_retries_literal_name_translation():
         return {'title':issuer+' loss','summary':issuer+' '+('evidence '*160)}
     draft,=event_analysis.draft_company(SUBJECT,[row],model=model)
     assert draft[1]['title']=='Lautan Luas loss'
+
+
+def test_event_briefs_use_one_watchlist_name_for_distinct_heringer_events():
+    subject = dict(id=1, name='FERTILIZANTES HERINGER SOCIEDADE ANÔNIMA',
+                   short_name='Fertilizantes Heringer', country_registration='Brazil')
+    labels = {1: 'Fertilizantes Heringer', 2: 'Fertilizantes Heringer S.A.'}
+    actions = {1: 'reports a CEO resignation', 2: 'calls a shareholder meeting'}
+    rows = [dict(id=i, company_id=1, subject_name=label, title=f'{label} {actions[i]}',
+                 score=0, url=f'https://example.test/{i}') for i, label in labels.items()]
+
+    def model(instruction, payload, schema):
+        assert payload['company'] == subject['short_name']
+        if 'leads' in payload:
+            return {'assignments': [dict(id=i, event=i, sentiment=0, title=actions[i]) for i in labels]}
+        i = payload['event']['event']
+        return dict(title=rows[i-1]['title'], summary=f'{labels[i]} {actions[i]}. ' + 'Evidence. ' * 150)
+
+    for group in event_analysis.draft_company(subject, rows, model=model):
+        for i, draft in group.items():
+            rows[i-1].update(event_group=f'event:{i}', event_draft=draft)
+    events = event_analysis.run_events({'subjects': [subject]}, rows)
+    assert len(events) == 2
+    for event in events:
+        source, = event['sources']
+        i = source['id']
+        assert event['company'] == subject['short_name']
+        assert event['title'] == f'Fertilizantes Heringer {actions[i]}'
+        assert event['summary'].startswith(event['title'] + '.')
+        assert source['title'] == f'{labels[i]} {actions[i]}'

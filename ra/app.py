@@ -453,24 +453,28 @@ def create_app() -> Flask:
         if not run:
             abort(404)
         all_results = classify_results(run, db.get_results(run_id))
-        view = request.args.get("view", "events")
+        view = request.args.get("view", "all")
         if view not in ("events", "developments", "risk", "review", "older", "background", "scored", "exposure", "governance", "factors", "all"):
             abort(400, "Unknown lead view")
-        ordinary = [item for item in all_results if (item.get("score") or 0) <= 0]
-        results = [item for item in (all_results if view == "all" else ordinary) if view == "all" or item["relevance"] == view
+        events = event_analysis.run_events(run, all_results)
+        summary_leads = [row for event in events for row in event["sources"]]
+        summary_ids = {row["id"] for row in summary_leads}
+        all_results.sort(key=lambda item: (item.get("published_at") is None, item.get("published_at"), item["id"]))
+        other_leads = [item for item in all_results if item["id"] not in summary_ids]
+        ordinary = [item for item in other_leads if (item.get("score") or 0) <= 0]
+        results = [item for item in (other_leads if view == "all" else ordinary) if view == "all" or item["relevance"] == view
                    or (view == "events" and event_analysis.candidate(item))
                    or (view == "scored" and item.get("score_included"))
                    or (view == "exposure" and item.get("exposure_paths"))
                    or (view == "developments" and item["credit_developments"])
                    or (view == "factors" and item.get("risk_factor_review", {}).get("matches"))
                    or (view == "governance" and item["governance"])]
-        results.sort(key=lambda item: (item.get("published_at") is None, item.get("published_at"), item["id"]))
-        visible_ids = {item["id"] for item in results}
         return render_template(
             "run.html", run=run, results=results, errors=db.get_errors(run_id), view=view,
-            events=event_analysis.run_events(run, all_results),
+            events=events, summary_leads=summary_leads, other_count=len(other_leads),
             company_labels={s["name"]: company_label(s) for s in run["subjects"]},
-            country_leads=[item for item in ordinary if any(p.startswith("Country ·") for p in item.get("exposure_paths", []))],
+            country_leads=[item for item in all_results if (item.get("score") or 0) <= 0 and
+                           any(p.startswith("Country ·") for p in item.get("exposure_paths", []))],
             counts={"events": sum(event_analysis.candidate(item) for item in ordinary), **{key: sum(item["relevance"] == key for item in ordinary)
                     for key in ("risk", "review", "older", "background")},
                     "developments": sum(bool(item["credit_developments"]) for item in ordinary),
@@ -484,8 +488,6 @@ def create_app() -> Flask:
             reviewer=headline_review.readiness(),
             search_progress=worker.search_progress(run), all_count=len(all_results),
             selected_count=sum(bool(item["report_selected"]) for item in all_results),
-            hidden_selected=[item["id"] for item in all_results
-                             if item["report_selected"] and item["id"] not in visible_ids],
         )
 
     @app.post("/runs/<int:run_id>/retry-events")
@@ -546,19 +548,32 @@ def create_app() -> Flask:
             abort(404)
         try:
             selected_ids = [int(value) for value in request.form.getlist("selected_ids")]
+            before = request.form.get("selection_baseline")
+            originally_selected = None if before is None else {int(value) for value in before.split(",") if value}
+            if "accept_summary" in request.form:
+                # Accept the sources displayed on this page, including collapsed and filtered rows.
+                cited = {int(value) for value in request.form["accept_summary"].split(",") if value}
+                selected_ids = list(set(selected_ids) | cited)
+                originally_selected = (originally_selected or set()) - cited
             edits = {}
             for result in db.get_results(run_id):
                 title_key, publisher_key = f"title_en_{result['id']}", f"publisher_en_{result['id']}"
                 if title_key in request.form and publisher_key in request.form:
-                    edits[result["id"]] = (
-                        request.form[title_key].strip(), request.form[publisher_key].strip()
-                    )
+                    # New forms post the displayed value first, then the edited value.
+                    values = [request.form.getlist(key) for key in (title_key, publisher_key)]
+                    if any(len(pair) == 1 or pair[0] != pair[-1] for pair in values):
+                        edits[result["id"]] = tuple(
+                            pair[-1].strip() if len(pair) == 1 or pair[0] != pair[-1] else result[field]
+                            for pair, field in zip(values, ("title_en", "publisher_en")))
             scores = {int(k[6:]): int(value) for k, value in request.form.items() if k.startswith("score_") and value}
-            count = db.set_report_selection(run_id, selected_ids, edits, scores, save_all=request.form.get("action") == "all")
+            count = db.set_report_selection(run_id, selected_ids, edits, scores,
+                                            save_all=request.form.get("action") == "all",
+                                            originally_selected=originally_selected)
             flash(f"Saved {count} leads. Weekly scores now reflect the selected, eligible event evidence.", "success")
         except ValueError as exc:
             flash(str(exc), "error")
-        return redirect(url_for("run_detail", run_id=run_id))
+        return redirect(url_for("run_detail", run_id=run_id, view=request.args.get("view"),
+                                _anchor="other-leads" if request.form.get("section") == "other" else "summary-leads"))
 
     @app.get("/runs/<int:run_id>/report.<format>")
     def download_selected_report(run_id: int, format: str):

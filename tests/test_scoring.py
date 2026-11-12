@@ -76,6 +76,9 @@ def test_missing_date_untranslated_language_and_clone_warning_are_excluded():
 
 def test_company_specific_official_source_and_translation():
     result = score_article(article("Fato Relevante - Hibernação", language="pt", source_kind="official"), SUBJECT, NOW)
+    assert result["score"] == 0 and "English translation unavailable" in result["score_reason"]
+    result = score_article(article("Fato Relevante - Hibernação", language="pt", source_kind="official",
+                                   title_en="Material fact: plant closure"), SUBJECT, NOW)
     assert result["score"] == -1
     result = score_article(article("Acme Manufacturing 财务消息", language="zh", title_en="Acme Manufacturing returns to profit"), SUBJECT, NOW)
     assert result["score"] == 1
@@ -150,6 +153,20 @@ def test_latest_analyst_exclusion_overrides_older_inclusion():
     result = aggregate_week([newer, older])
     assert result["score"] is None
     assert result["excluded_ids"] == [2]
+
+
+def test_mobile_amp_copies_are_scoped_to_the_article_and_event():
+    urls = ["https://www.paper.test/story?id=4", "https://m.paper.test/story?id=4&utm_source=x",
+            "https://paper.test/amp/story?id=4", "https://paper.test/story/amp/?id=4",
+            "https://mobile.paper.test/story?id=4&output=amp", "https://amp.paper.test/story?id=4",
+            "https://paper.test/story?id=5", "https://independent.test/story?id=4"]
+    rows = [assessed(0, id=i, url=url, event_group='one') for i, url in enumerate(urls, 1)]
+    rows[0]['score_status'] = 'reviewed'
+    rows.append(assessed(0, id=9, url=urls[0], event_group='two'))
+    result = aggregate_week(rows)
+    assert result['article_ids'] == [1, 7, 8, 9]
+    assert result['copy_of'] == {str(i): 1 for i in range(2, 7)}
+    assert result['event_count'] == 2
 
 
 def test_score_hash_changes_when_future_publication_becomes_eligible():

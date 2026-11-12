@@ -16,6 +16,10 @@ _ENGLISH_FILING_TITLE = re.compile(
 )
 
 
+def base_language(code: str) -> str:
+    return (code or "").lower().replace("_", "-").split("-", 1)[0]
+
+
 def _detected(text: str) -> tuple[str, float]:
     from langdetect import DetectorFactory, detect_langs
     from langdetect.lang_detect_exception import LangDetectException

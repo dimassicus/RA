@@ -171,10 +171,37 @@ def _weekly(conn):
     return changed
 
 
+def _retire_native_portuguese_checks(conn):
+    # Earlier verifiers assessed Portuguese originals without a reviewed translation.
+    rows = conn.execute("""SELECT id,verification FROM search_results
+        WHERE lower(split_part(replace(verification->>'language','_','-'),'-',1))='pt'
+        AND verification->>'version' IN ('source-attribution-v1','source-attribution-v2','source-attribution-v3',
+                                         'source-attribution-v4','source-attribution-v5')
+        AND NOT verification ? 'translation' AND verification->>'status' IN ('supported','needs_review','unmatched')
+        AND COALESCE(verification->>'reason','') NOT IN (
+            'Recovered publisher text requires analyst confirmation of the event and company impact',
+            'Selected original filing pages require analyst confirmation of company impact',
+            'Possible clone warning; analyst must identify the affected legal entity')
+        FOR UPDATE""").fetchall()
+    reason = "Reviewed English translation required. Retry source checks to reassess the original passages."
+    for row in rows:
+        old = row['verification']
+        updated = dict(old, translation={'status': 'needs_review', 'reason': reason})
+        if old['status'] == 'supported':
+            updated.update(status='needs_review', evidence=[], reason=reason)
+            updated.pop('score', None)
+            updated.pop('signature', None)
+        conn.execute('INSERT INTO article_verification_history (result_id,previous,assessment) VALUES (%s,%s,%s)',
+                     (row['id'], Jsonb(old), Jsonb(updated)))
+        conn.execute('UPDATE search_results SET verification=%s WHERE id=%s', (Jsonb(updated), row['id']))
+
+
 def refresh_scores(run_id=None):
     """One transaction prevents charts observing half-rebuilt scores."""
     with db.connect() as conn:
         _lock(conn)
+        if run_id is None:
+            _retire_native_portuguese_checks(conn)
         conn.execute("UPDATE search_runs s SET selection_saved=TRUE WHERE NOT selection_saved AND EXISTS "
                      "(SELECT 1 FROM search_results r WHERE r.run_id=s.id AND r.report_selected)")
         _migrate_three_grades(conn)
@@ -185,8 +212,11 @@ def refresh_scores(run_id=None):
 
 def get_article(result_id):
     with db.connect() as conn:
-        return conn.execute("SELECT r.*,s.status AS run_status FROM search_results r "
-                            "JOIN search_runs s ON s.id=r.run_id WHERE r.id=%s", (result_id,)).fetchone()
+        row = conn.execute("SELECT r.*,s.status AS run_status FROM search_results r "
+                           "JOIN search_runs s ON s.id=r.run_id WHERE r.id=%s", (result_id,)).fetchone()
+        if row:
+            db.mark_article_copies(conn, [row])
+        return row
 
 
 def article_history(result_id):
@@ -243,6 +273,7 @@ def week_detail(company_id, start):
             return None, [], []
         ids = row["metrics"]["article_ids"] + row["metrics"]["excluded_ids"] + row["metrics"].get("duplicate_ids", [])
         articles = conn.execute("SELECT * FROM search_results WHERE id=ANY(%s) ORDER BY score,id", (ids,)).fetchall()
+        db.mark_article_copies(conn, articles, snapshots=[row["metrics"]])
         history = conn.execute("SELECT * FROM weekly_score_history WHERE company_id=%s AND week_start=%s ORDER BY id DESC",
                                (company_id, start)).fetchall()
         return row, articles, history
