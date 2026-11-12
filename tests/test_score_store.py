@@ -1376,6 +1376,32 @@ def test_archive_xlsx_uses_all_matching_rows_and_links_evidence(database, monkey
     assert book.worksheets[0]['G2'].value == 2 and book.worksheets[1].max_row == 3
 
 
+def test_russian_archive_shows_saved_translations_in_results_and_excel(database):
+    from io import BytesIO
+    from openpyxl import load_workbook
+    from ra import bilingual
+
+    company, _, lead = seed(database, title='Company filing')
+    save_event_fixture(database, lead)
+    database.execute("UPDATE search_results SET score=0, event_group='event:one' WHERE id=%s", (lead['id'],))
+    for source, russian in [('Company filing', 'Отчёт компании'), ('Test event brief', 'Описание события')]:
+        bilingual.enqueue(database, source, 'en')
+        database.execute("UPDATE result_translations SET russian=%s WHERE key=%s",
+                         (russian, bilingual.key(source, 'en')))
+    client = create_app().test_client()
+    client.set_cookie('ra_language', 'ru')
+    params = dict(company_id=company['id'], view='events')
+    response = client.get('/archive', query_string=params)
+    assert response.status_code == 200
+    for label in ('Поиск по архиву', 'Скачать все результаты в Excel', 'Отчёт компании', 'Описание события'):
+        assert label in response.text
+    download = client.get('/archive', query_string={**params, 'download': 'xlsx'})
+    book = load_workbook(BytesIO(download.data))
+    assert book.sheetnames == ['События компании', 'Публикации']
+    assert [book.active[cell].value for cell in ('E2', 'F2', 'G2')] == ['Отчёт компании', 'Описание события', 1]
+    assert book.worksheets[1]['E2'].value == 'Отчёт компании'
+
+
 def test_watchlist_removal_requires_confirmation_for_this_company(database):
     company, _, lead = seed(database)
     cid = company['id']
