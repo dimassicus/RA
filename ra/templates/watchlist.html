@@ -16,7 +16,7 @@
         </details>
       </td>
       <td>{{ _(company.country_registration) }}</td><td>{{ _(company.primary_industries or '—') }}</td><td>{{ company.key_owners or company.affiliates or '—' }}</td>
-      <td class="row-actions"><a href="{{ url_for('edit_company', company_id=company.id) }}">{{ _('Edit') }}</a><form method="post" action="{{ url_for('remove_company', company_id=company.id) }}" onsubmit='return confirm({{ _("Remove this company from the active watchlist? Search history will be kept.")|tojson }});'><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="link-button danger">{{ _('Remove') }}</button></form></td>
+      <td class="row-actions"><a href="{{ url_for('edit_company', company_id=company.id) }}">{{ _('Edit') }}</a><a class="link-button danger" href="{{ url_for('remove_company', company_id=company.id) }}">{{ _('Remove') }}</a></td>
     </tr>{% endfor %}
   </tbody></table></div>
   {% else %}<p class="empty">{{ _('No active companies yet.') }}</p>{% endif %}

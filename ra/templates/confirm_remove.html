@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}{{ _('Remove company from watchlist') }} · RA{% endblock %}
+{% block content %}
+<section class="panel form-panel">
+  <h1>{{ _('Remove {0} from the active watchlist?').format(company|company_label) }}</h1>
+  <p>{{ _('Its search history and saved scores will be kept. You can restore it from Removed companies.') }}</p>
+  <form method="post" action="{{ url_for('remove_company', company_id=company.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-actions"><a class="button secondary" href="{{ url_for('watchlist') }}">{{ _('Cancel') }}</a>
+      <button class="button secondary danger" type="submit" name="confirm_remove" value="{{ company.id }}">{{ _('Yes, remove company') }}</button></div>
+  </form>
+</section>
+{% endblock %}

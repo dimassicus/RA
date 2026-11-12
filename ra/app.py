@@ -18,7 +18,7 @@ from .importer import stage_workbook
 from .exposure import topic_links
 from .company_report import load_report
 from .company_exports import company_pdf, company_xlsx
-from .aliases import normalized, provider_name, validate_aliases
+from .aliases import normalized, parse_aliases, provider_name, validate_aliases
 from .publisher_lookup import original_title
 from .search import company_search_plan
 from .reports import make_pdf, make_xlsx
@@ -62,7 +62,7 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.jinja_env.globals["country_names"] = sorted(country.name for country in pycountry.countries)
     app.jinja_env.filters["week_cutoff"] = lambda start: start + timedelta(days=7)
-    app.jinja_env.filters.update(company_label=company_label, alphabetical_companies=alphabetical_companies)
+    app.jinja_env.filters.update(company_label=company_label, alphabetical_companies=alphabetical_companies, parse_aliases=parse_aliases)
     app.jinja_env.globals.update(_=i18n.message, ui_language=i18n.language, display_title=i18n.headline,
                                  display_summary=i18n.summary, display_passage=i18n.passage)
     app.jinja_env.filters['localdate'] = i18n.localdate
@@ -439,8 +439,13 @@ def create_app() -> Flask:
             flash(str(exc), "error")
             return redirect(url_for("edit_company", company_id=company_id))
 
-    @app.post("/companies/<int:company_id>/remove")
+    @app.route("/companies/<int:company_id>/remove", methods=["GET", "POST"])
     def remove_company(company_id: int):
+        if request.method == "GET" or request.form.get("confirm_remove") != str(company_id):
+            company = db.get_company(company_id)
+            if not company:
+                abort(404)
+            return render_template("confirm_remove.html", company=company)
         if not db.set_active(company_id, False):
             abort(404)
         flash("Company removed from the active watchlist. Its search history was kept.", "success")

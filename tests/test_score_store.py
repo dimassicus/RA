@@ -1374,3 +1374,21 @@ def test_archive_xlsx_uses_all_matching_rows_and_links_evidence(database, monkey
     book = export(view='events')
     assert book.sheetnames == ['Company events', 'Source leads']
     assert book.worksheets[0]['G2'].value == 2 and book.worksheets[1].max_row == 3
+
+
+def test_watchlist_removal_requires_confirmation_for_this_company(database):
+    company, _, lead = seed(database)
+    cid = company['id']
+    path = f'/companies/{cid}/remove'
+    client = create_app().test_client()
+    with client.session_transaction() as session:
+        session['csrf_token'] = 'test'
+    assert 'Yes, remove company' in client.get(path).text
+    for form in ({}, {'confirm_remove': str(cid + 1)}):
+        response = client.post(path, data={'csrf_token': 'test', **form})
+        assert response.status_code == 200 and company['name'] in response.text
+        assert db.get_company(cid)['active']
+    assert client.get('/watchlist').status_code == 200 and db.get_company(cid)['active']
+    response = client.post(path, data={'csrf_token': 'test', 'confirm_remove': str(cid)})
+    assert response.location.endswith('/watchlist') and not db.get_company(cid)['active']
+    assert score_store.get_article(lead['id'])['id'] == lead['id']
