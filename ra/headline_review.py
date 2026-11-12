@@ -179,6 +179,8 @@ def retry_pending():
             result["retry_count"] = row["headline_review"].get("retry_count", 0) + (result["status"] != "unavailable")
             result["retry_after"] = (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat()
         with db.connect() as conn:
+            from .bilingual import enqueue
+            enqueue(conn, english, subject=subject)
             conn.execute("""
                 UPDATE search_results SET title_en=%s,translation_provider=%s,headline_review=%s,language=%s
                 WHERE id=%s AND title=%s AND title_en=%s AND language=%s AND headline_review=%s

@@ -146,6 +146,15 @@ def _verification(result_id, fetcher, source_url):
                                            if r["enabled"] and search_settings.scope_enabled(r["scope"], settings)])
         next_stage("persistence")
         assessment['requested_url'] = url
+        from .bilingual import enqueue_prose
+        with db.connect() as conn:
+            enqueue_prose(conn, assessment, subject)
+            enqueue_prose(conn, themes, subject)
+            for doc in [prepared, *prepared.get('linked_documents', [])]:
+                enqueue_prose(conn, doc.get('translation', {}), subject)
+                if doc.get('excerpt') or doc.get('review_only'):
+                    from .bilingual import enqueue
+                    enqueue(conn, doc.get('body'), doc.get('language') or '', subject)
         with db.connect() as conn:
             score_store._lock(conn)
             current = conn.execute('SELECT verification FROM search_results WHERE id=%s FOR UPDATE', (result_id,)).fetchone()

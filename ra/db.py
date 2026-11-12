@@ -507,6 +507,9 @@ def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, 
             if latest != current[result_id]:
                 raise ValueError("The translation changed during review; reload before saving")
         for result_id, (changed, qa, title_en, publisher_en) in prepared.items():
+            if changed:
+                from .bilingual import enqueue
+                enqueue(conn, title_en)
             conn.execute(
                 "UPDATE search_results SET headline_review = CASE WHEN %s THEN %s ELSE headline_review END, title_en = %s, publisher_en = %s, "
                 "translation_provider = 'analyst edited' WHERE id = %s",

@@ -1,9 +1,9 @@
 <fieldset class="search-range">
-  <legend>Publication date range (optional)</legend>
+  <legend>{{ _('Publication date range (optional)') }}</legend>
   <div class="form-grid">
-    <label>Start date (inclusive)<input type="date" name="start_date" max="{{ search_today }}" data-search-start aria-describedby="{{ range_id }}-window"></label>
-    <label>End date (inclusive)<input type="date" name="end_date" max="{{ search_today }}" data-search-end aria-describedby="{{ range_id }}-window"></label>
+    <label>{{ _('Start date (inclusive)') }}<input type="date" name="start_date" max="{{ search_today }}" data-search-start aria-describedby="{{ range_id }}-window"></label>
+    <label>{{ _('End date (inclusive)') }}<input type="date" name="end_date" max="{{ search_today }}" data-search-end aria-describedby="{{ range_id }}-window"></label>
   </div>
-  <small>Choose any past date range, including a single day. Both dates are included, in Moscow time. Today ends at launch time. Leave both blank for the latest seven days. For ranges longer than seven days, RA checks months without company leads using configured archive providers. Coverage depends on source availability and request limits.</small>
-  <p id="{{ range_id }}-window" data-search-window role="status">Blank: rolling seven days ending at launch time.</p>
+  <small>{{ _('Choose any past date range, including a single day. Both dates are included, in Moscow time. Today ends at launch time. Leave both blank for the latest seven days. For ranges longer than seven days, RA checks months without company leads using configured archive providers. Coverage depends on source availability and request limits.') }}</small>
+  <p id="{{ range_id }}-window" data-search-window role="status">{{ _('Blank: rolling seven days ending at launch time.') }}</p>
 </fieldset>

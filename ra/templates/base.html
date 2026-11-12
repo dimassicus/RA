@@ -1,23 +1,35 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ ui_language() }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}RA · Credit Monitor{% endblock %}</title>
+  <title>{% block title %}{{ _('RA · Credit Monitor') }}{% endblock %}</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 <body>
   <header class="site-header">
-    <a href="{{ url_for('dashboard') }}" class="brand" aria-label="RA home"><span class="brand-mark">RA</span><span>Credit Monitor</span></a>
-    <nav aria-label="Main navigation"><a href="{{ url_for('setup') }}">Setup</a> · <a href="{{ url_for('scores') }}">Weekly scores</a></nav>
+    <a href="{{ url_for('dashboard') }}" class="brand" aria-label="{{ _('RA home') }}"><span class="brand-mark">RA</span><span>{{ _('Credit Monitor') }}</span></a>
+    <nav aria-label="{{ _('Main navigation') }}"><a href="{{ url_for('setup') }}">{{ _('Setup') }}</a> · <a href="{{ url_for('scores') }}">{{ _('Weekly scores') }}</a></nav>
+    <form class="language-toggle" method="post" action="{{ url_for('choose_language') }}" aria-label="English / Русский">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+      {% for code, name in [('en', 'English'), ('ru', 'Русский')] %}
+      <button type="submit" name="language" value="{{ code }}" lang="{{ code }}" aria-pressed="{{ 'true' if ui_language() == code else 'false' }}">{{ name }}</button>
+      {% endfor %}
+    </form>
   </header>
   <main class="container">
     {% for category, message in get_flashed_messages(with_categories=true) %}
-      <div class="notice notice-{{ category }}" role="status">{{ message }}</div>
+      <div class="notice notice-{{ category }}" role="status">{{ _(message) }}</div>
     {% endfor %}
     {% block content %}{% endblock %}
+    {% if g.get('translation_pending') %}
+    <p class="identity-note" role="status" data-translation-keys='{{ g.translation_pending|sort|tojson }}' data-url="{{ url_for('translations_ready') }}">{{ _('Some translations are pending. Refresh to see completed translations.') }}
+      <a href="{{ request.full_path }}">{{ _('Refresh') }}</a></p>
+    <script src="{{ url_for('static', filename='display-translations.js') }}" defer></script>
+    {% endif %}
   </main>
-  <footer class="site-footer">News search results are leads for analyst review. Verify the entity and source before treating a result as a credit event.</footer>
+  <footer class="site-footer">{{ _('News search results are leads for analyst review. Verify the entity and source before treating a result as a credit event.') }}</footer>
 </body>
 </html>

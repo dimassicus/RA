@@ -88,7 +88,7 @@ def test_company_name_searches_keep_local_and_english_even_without_translated_fa
     for country, language in (("Russian Federation", "ru"), ("Japan", "ja")):
         plan = search.company_search_plan({"name": "Example Manufacturing", "country_registration": country})
         languages = {search.feed_url(query, edition)[1].split("-")[0] for query, edition in plan}
-        assert languages == {"en", language}
+        assert languages == {"en", "ru", language}
         assert len(plan) == len(set(plan))
 
 
@@ -107,7 +107,7 @@ def test_new_country_exposure_editions_do_not_require_static_vocabulary():
     from ra.exposure import search_topic, topic_editions
     from urllib.parse import parse_qs, urlsplit
     subject = {"country_registration": "Germany", "primary_industries": "fertilizer"}
-    assert topic_editions([subject])["sector", "fertilizer"] == {"germany"}
+    assert topic_editions([subject])["sector", "fertilizer"] == {"germany", "russia"}
     calls = []
     def fetch(url):
         calls.append(parse_qs(urlsplit(url).query))
@@ -260,8 +260,8 @@ def test_sector_editions_span_linked_companies_and_retain_partial_results():
     plan = topic_editions(subjects)
     assert plan == topic_editions(reversed(subjects))
     editions = plan["sector", "fertilizer"]
-    assert editions == {"brazil", "mexico", "vietnam"}
-    assert plan["country", "brazil"] == {"brazil"}
+    assert editions == {"brazil", "mexico", "russia", "vietnam"}
+    assert plan["country", "brazil"] == {"brazil", "russia"}
     calls = []
     def fetch(url):
         params = parse_qs(urlsplit(url).query)
@@ -269,7 +269,7 @@ def test_sector_editions_span_linked_companies_and_retain_partial_results():
         calls.append(language)
         if language == "es-419":
             raise OSError("unavailable")
-        if language == "en-US":
+        if language in {"en-US", "ru-RU"}:
             return b"<rss><channel/></rss>"
         if language == "vi-VN":
             assert "phân bón" in params["q"][0]
@@ -281,7 +281,7 @@ def test_sector_editions_span_linked_companies_and_retain_partial_results():
             f"<item><title>{title}</title><source>phân bón</source><link>https://example.test/{language}/{i}</link></item>"
             for i, title in enumerate(titles)) + "</channel></rss>").encode()
     hits, error = check_topic("sector", "fertilizer", lambda b, t, edition: search_topic(b, t, fetch, edition=edition), editions)
-    assert calls == ["en-US", "pt-BR", "es-419", "vi-VN"]
+    assert calls == ["en-US", "pt-BR", "es-419", "ru-RU", "vi-VN"]
     assert "mexico" in error and "unavailable" in error
     assert [item["language"] for item, _ in hits] == ["pt-BR", "vi-VN"]
     assert all(label == "selling prices and margins" for _, label in hits)

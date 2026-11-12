@@ -13,7 +13,7 @@ from pathlib import Path
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from psycopg.errors import UniqueViolation
 
-from . import db, disclosures, governance_roster, keywords, risk_factors, intake_worker, model_store, news_apis, preliminary, worker
+from . import bilingual, i18n, db, disclosures, governance_roster, keywords, risk_factors, intake_worker, model_store, news_apis, preliminary, worker
 from .importer import stage_workbook
 from .exposure import topic_links
 from .company_report import load_report
@@ -39,6 +39,8 @@ def form_company(form) -> dict:
         if len(value) > MAX_FIELD.get(field, 1500):
             raise ValueError(f"{field.replace('_', ' ').title()} is too long")
         data[field] = value
+    country = data["country_registration"]
+    data["country_registration"] = i18n.REGISTRATION_COUNTRIES.get(country.casefold(), country)
     data["aliases"] = validate_aliases(data["aliases"])
     if not data["name"] or not data["country_registration"]:
         raise ValueError("Company name and country of registration are required")
@@ -61,8 +63,50 @@ def create_app() -> Flask:
     app.jinja_env.globals["country_names"] = sorted(country.name for country in pycountry.countries)
     app.jinja_env.filters["week_cutoff"] = lambda start: start + timedelta(days=7)
     app.jinja_env.filters.update(company_label=company_label, alphabetical_companies=alphabetical_companies)
+    app.jinja_env.globals.update(_=i18n.message, ui_language=i18n.language, display_title=i18n.headline,
+                                 display_summary=i18n.summary, display_passage=i18n.passage)
+    app.jinja_env.filters['localdate'] = i18n.localdate
+
+    app.teardown_request(i18n.close_reader)
+
+    @app.post("/api/display-translations/ready")
+    def translations_ready():
+        keys = request.form.getlist('key')
+        if len(keys) > 128 or any(len(key) != 64 for key in keys):
+            abort(400)
+        column = 'russian' if i18n.language() == 'ru' else 'english'
+        with db.connect() as conn:
+            ready = conn.execute(f"SELECT 1 FROM result_translations WHERE key=ANY(%s) AND {column}<>'' LIMIT 1",
+                                 (keys,)).fetchone()
+        return jsonify(ready=bool(ready))
+
+    @app.post("/language")
+    def choose_language():
+        chosen = request.form.get('language')
+        if chosen not in ('en', 'ru'):
+            abort(400)
+        target = request.form.get('next', '/')
+        if not target.startswith('/') or target.startswith('//') or '\\' in target or any(ord(c) < 32 for c in target):
+            target = url_for('dashboard')
+        response = redirect(target)
+        response.set_cookie('ra_language', chosen, max_age=31536000, httponly=True, samesite='Lax', secure=request.is_secure)
+        return response
+
     app.secret_key = os.environ.get("RA_SECRET_KEY") or secrets.token_hex(32)
     app.config["MAX_CONTENT_LENGTH"] = 3 * 1024 * 1024
+
+    from werkzeug.exceptions import HTTPException
+
+    @app.errorhandler(HTTPException)
+    def localized_error(error):
+        if i18n.language() != 'ru':
+            return error
+        title = {400: 'Некорректный запрос', 404: 'Страница не найдена',
+                 409: 'Действие сейчас недоступно', 410: 'Страница больше недоступна'}.get(error.code, 'Ошибка запроса')
+        response = error.get_response()
+        response.set_data(render_template('error.html', title=title,
+                                          detail=i18n.MESSAGES.get(error.description, error.description)))
+        return response
 
     @app.context_processor
     def add_csrf():
@@ -136,17 +180,20 @@ def create_app() -> Flask:
             rows.extend(keywords.active_phrases(rows))
         saved = sum(code in row["translations"] for row in rows for code in codes)
         total = len(rows) * len(codes)
-        return jsonify(**keywords.translation_status(), saved=saved, total=total,
-                       missing=total - saved, model_activity=local_models.activity())
+        status = keywords.translation_status()
+        for field in ('message', 'error'):
+            status[field] = i18n.message(status.get(field, ''))
+        return jsonify(**status, saved=saved, total=total,
+                       missing=total - saved, model_activity=i18n.message(local_models.activity()))
 
     @app.post("/risk-factors/save-all")
     def save_all_risk_factors():
         try:
             count = risk_factors.save_all(request.form)
         except UniqueViolation:
-            return jsonify(error="An English risk factor with that description already exists."), 409
+            return jsonify(error=i18n.message("An English risk factor with that description already exists.")), 409
         except ValueError as exc:
-            return jsonify(error=str(exc)), 400
+            return jsonify(error=i18n.message(str(exc))), 400
         if count:
             keywords.schedule()
             flash("All risk factor edits saved.", "success")
@@ -226,6 +273,13 @@ def create_app() -> Flask:
         if company_id is not None and not db.get_company(company_id):
             abort(404)
         rows = score_store.weekly_history(company_id)
+        if i18n.language() == 'ru':
+            for row in rows:
+                metrics = row['metrics']
+                if 'contributions' in metrics:
+                    row['metrics'] = dict(metrics, contributions=[{
+                        **entry, **{field: i18n.ru(entry[field]) for field in ('title', 'reason') if field in entry}
+                    } for entry in metrics['contributions']])
         return jsonify({"timezone": "Europe/Moscow", "week_starts": "Monday", "version": VERSION,
                         "weeks": [{"company_id": r["company_id"], "company_name": r["name"],
                                    "week_start": r["week_start"].isoformat(), **r["metrics"],
@@ -456,6 +510,7 @@ def create_app() -> Flask:
         view = request.args.get("view", "all")
         if view not in ("events", "developments", "risk", "review", "older", "background", "scored", "exposure", "governance", "factors", "all"):
             abort(400, "Unknown lead view")
+        i18n.prefetch(all_results)
         events = event_analysis.run_events(run, all_results)
         summary_leads = [row for event in events for row in event["sources"]]
         summary_ids = {row["id"] for row in summary_leads}
@@ -503,8 +558,12 @@ def create_app() -> Flask:
         if not run:
             abort(404)
         payload = {key: run[key] for key in ("status", "total_companies", "completed_companies", "result_count", "error_count")}
-        return jsonify(**payload, event_analysis_status=run.get("event_analysis_status", "pending"), discovery=worker.search_progress(run), verification=verification_store.job_summary(run_id),
-                       reviewer=headline_review.readiness())
+        progress, reviewer = worker.search_progress(run), headline_review.readiness()
+        if progress:
+            progress = dict(progress, message=i18n.message(progress['message']))
+        return jsonify(**payload, event_analysis_status=run.get("event_analysis_status", "pending"),
+                       discovery=progress, verification=verification_store.job_summary(run_id),
+                       reviewer=dict(reviewer, message=i18n.message(reviewer['message'])))
 
     @app.get("/runs/<int:run_id>/company-report")
     def download_company_report(run_id):
@@ -520,9 +579,9 @@ def create_app() -> Flask:
             abort(404)
         report = load_report(run, subject)
         if fmt == "pdf":
-            content, mime = company_pdf(report), "application/pdf"
+            content, mime = company_pdf(report, language=i18n.language()), "application/pdf"
         else:
-            content, mime = company_xlsx(report), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            content, mime = company_xlsx(report, language=i18n.language()), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         return send_file(content, mimetype=mime, as_attachment=True,
                          download_name=f"ra-company-{company}-run-{run_id}.{fmt}")
 
@@ -535,9 +594,9 @@ def create_app() -> Flask:
             abort(409, "The search is still running")
         results, errors = db.get_results(run_id), db.get_errors(run_id)
         if format == "xlsx":
-            content, mime = make_xlsx(run, results, errors), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            content, mime = make_xlsx(run, results, errors, language=i18n.language()), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         elif format == "pdf":
-            content, mime = make_pdf(run, results, errors), "application/pdf"
+            content, mime = make_pdf(run, results, errors, language=i18n.language()), "application/pdf"
         else:
             abort(404)
         return send_file(content, mimetype=mime, as_attachment=True, download_name=f"ra-search-{run_id}.{format}")
@@ -587,9 +646,9 @@ def create_app() -> Flask:
             abort(409, "Select and save at least one article before building a report")
         errors = db.get_errors(run_id)
         if format == "xlsx":
-            content, mime = make_xlsx(run, results, errors, selected=True), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            content, mime = make_xlsx(run, results, errors, selected=True, language=i18n.language()), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         elif format == "pdf":
-            content, mime = make_pdf(run, results, errors, selected=True), "application/pdf"
+            content, mime = make_pdf(run, results, errors, selected=True, language=i18n.language()), "application/pdf"
         else:
             abort(404)
         return send_file(content, mimetype=mime, as_attachment=True, download_name=f"ra-selected-report-{run_id}.{format}")
@@ -672,6 +731,7 @@ def main():
     from . import rss_recovery
     rss_recovery.start()
     verification_store.start()
+    bilingual.start()
     worker.start_worker()
     event_analysis.start()
     keywords.schedule(after_runs=True)

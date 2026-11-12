@@ -1,3 +1,5 @@
+const russianRiskList = document.documentElement?.lang === 'ru';
+
 document.querySelectorAll('[data-character-limit]').forEach((input, index) => {
   const limit = Number(input.dataset.characterLimit);
   const counter = document.createElement('small');
@@ -9,9 +11,13 @@ document.querySelectorAll('[data-character-limit]').forEach((input, index) => {
   const update = () => {
     const count = [...input.value.trim().replace(/\s+/gu, ' ')].length;
     const excess = count - limit;
-    counter.textContent = `${count}/${limit} characters` + (excess > 0 ? ` — ${excess} over the limit` : '');
+    counter.textContent = russianRiskList
+      ? `Символов: ${count}/${limit}` + (excess > 0 ? ` — сверх лимита: ${excess}` : '')
+      : `${count}/${limit} characters` + (excess > 0 ? ` — ${excess} over the limit` : '');
     counter.style.color = excess > 0 ? 'var(--danger)' : 'var(--muted)';
-    input.setCustomValidity(excess > 0 ? `Shorten this description by ${excess} characters.` : '');
+    const warning = russianRiskList ? `Сократите описание. Лишних символов: ${excess}.` :
+      `Shorten this description by ${excess} characters.`;
+    input.setCustomValidity(excess > 0 ? warning : '');
   };
   input.addEventListener('input', update);
   update();
@@ -51,23 +57,25 @@ saveAll.addEventListener('click', async () => {
     data.set(id + '.enabled', fields.enabled.checked);
   }
   if (!data.has('id')) {
-    statusText.textContent = 'No changes to save.';
+    statusText.textContent = russianRiskList ? 'Нет изменений для сохранения.' : 'No changes to save.';
     return;
   }
 
-  statusText.textContent = 'Saving edits and checking translations…';
+  statusText.textContent = russianRiskList ? 'Сохраняем изменения и проверяем переводы…' :
+    'Saving edits and checking translations…';
   const controls = list.querySelectorAll('input, select, textarea, button');
   controls.forEach(control => { control.disabled = true; });
   try {
     const response = await fetch(saveAll.dataset.url, {method: 'POST', body: data});
     const result = await response.json();
     if (!response.ok) {
-      statusText.textContent = result.error || 'Could not save edits.';
+      statusText.textContent = result.error || (russianRiskList ? 'Не удалось сохранить изменения.' : 'Could not save edits.');
       return;
     }
     window.location.reload();
   } catch {
-    statusText.textContent = 'Could not confirm the save. Your edits are still on this page.';
+    statusText.textContent = russianRiskList ? 'Не удалось подтвердить сохранение. Ваши изменения по-прежнему на странице.' :
+      'Could not confirm the save. Your edits are still on this page.';
   } finally {
     controls.forEach(control => { control.disabled = false; });
   }

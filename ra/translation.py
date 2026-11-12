@@ -158,6 +158,8 @@ def backfill(force: bool = False, run_id: int | None = None) -> tuple[int, int]:
         result = audit(row["title"], language, title_en)
         publisher_en = row["publisher"]  # Publisher names are brands, not prose.
         with db.connect() as conn:
+            from .bilingual import enqueue
+            enqueue(conn, title_en, subject=db.subject_for(row, row["subjects"]))
             conn.execute(
                 "UPDATE search_results SET title_en = %s, publisher_en = %s, translation_provider = %s, language = %s, headline_review = %s "
                 "WHERE id = %s AND (title_en = '' OR (%s AND translation_provider = 'Argos offline model'))",

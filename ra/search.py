@@ -122,6 +122,8 @@ def governance_searches(subject):
     editions = [("en", "")]
     if lang != "en":
         editions.append((lang, country))
+    if lang != "ru":
+        editions.append(("ru", "russia"))
     if lang in ("az", "uz"):
         editions.append(("ru", country))
     names = [provider_name(subject), *parse_aliases(subject.get("aliases", ""))]
@@ -200,6 +202,8 @@ def adverse_searches(subject):
     country = subject.get("country_registration", "")
     lang = LOCALES.get(normalized(country), ("en",))[0].split("-")[0]
     editions = [("en", "")]
+    if lang != "ru":
+        editions.append(("ru", "russia"))
     codes = set(country_languages(country)) | {lang}
     if lang in ("az", "uz"):
         codes.add("ru")
@@ -234,6 +238,8 @@ def adverse_searches(subject):
 def company_search_plan(subject):
     country = subject.get("country_registration", "")
     editions = [country]
+    if LOCALES.get(normalized(country), ("en",))[0].split("-")[0] != "ru":
+        editions.append("russia")
     if LOCALES.get(normalized(country), ("en",))[0].split("-")[0] != "en":
         editions.append("")
     return list(dict.fromkeys([(q, edition) for q in search_queries(subject) for edition in editions]

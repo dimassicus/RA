@@ -330,3 +330,11 @@ ALTER TABLE search_results ADD COLUMN IF NOT EXISTS filing_attachments JSONB NOT
 
 ALTER TABLE verification_jobs ADD COLUMN IF NOT EXISTS translation_checkpoint JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS completed_subject_keys TEXT[] NOT NULL DEFAULT '{}';
+
+-- Display translations are shared by exact source wording. They never enter scoring or event grouping.
+CREATE TABLE IF NOT EXISTS result_translations (
+    key TEXT PRIMARY KEY, source TEXT NOT NULL, language TEXT NOT NULL,
+    subject JSONB NOT NULL DEFAULT '{}', english TEXT NOT NULL DEFAULT '', russian TEXT NOT NULL DEFAULT '',
+    retry_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS result_translations_pending ON result_translations(retry_at) WHERE english='' OR russian='';

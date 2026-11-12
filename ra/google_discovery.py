@@ -90,7 +90,7 @@ def cited_rows(data, subject, bounds, query):
 
 def lookup(subject, bounds, query):
     prompt = (f"Use Google Search for {subject['name']} ({', '.join(discovery_names(subject))}), "
-              f"{subject.get('country_registration','')}. Search local-language and English sources published "
+              f"{subject.get('country_registration','')}. Search local-language, English and Russian sources published "
               f"between {bounds[0]:%Y-%m-%d} and {bounds[1]:%Y-%m-%d}. {query}. "
               "Return one line per original source with exactly one grounding citation attached to that same line. "
               "Format each line YYYY-MM-DD | original headline | English summary naming the issuer and outcome. "

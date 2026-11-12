@@ -36,3 +36,12 @@
 #analyst-review, #summary-leads, #other-leads { scroll-margin-top: 18px; }
 
 .copy-status { display: block; margin: 4px 0; color: var(--teal-dark); font-size: 12px; font-weight: 600; }
+
+.site-header{gap:16px;min-height:72px;height:auto;flex-wrap:wrap;padding-block:10px}
+.site-header nav{margin-left:auto}
+.language-toggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.language-toggle button{border:0;background:transparent;color:var(--teal-dark);font:inherit;padding:5px 10px;cursor:pointer}
+.language-toggle button[aria-pressed=true]{background:var(--teal-dark);color:white}
+.language-toggle button:focus-visible{outline-offset:-3px}
+html:lang(ru) .switch-state:after{content:"Выкл"}
+html:lang(ru) .search-switch input:checked ~ .switch-state:after{content:"Вкл"}

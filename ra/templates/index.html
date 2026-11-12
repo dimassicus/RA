@@ -1,103 +1,103 @@
 {% extends 'base.html' %}
 {% block content %}
 <section class="hero">
-  <p class="eyebrow">Research workspace</p>
-  <h1>Company watchlist</h1>
-  <p>Search the watchlist or choose one active company. Add new companies through identity review first.</p>
-  <div class="hero-stats"><span><strong>{{ companies|length }}</strong> active companies</span><span><strong>{{ runs|length }}</strong> recent runs</span></div>
+  <p class="eyebrow">{{ _('Research workspace') }}</p>
+  <h1>{{ _('Company watchlist') }}</h1>
+  <p>{{ _('Search the watchlist or choose one active company. Add new companies through identity review first.') }}</p>
+  <div class="hero-stats"><span><strong>{{ companies|length }}</strong> {{ _('active companies') }}</span><span><strong>{{ runs|length }}</strong> {{ _('recent runs') }}</span></div>
 </section>
 
-<p class="callout"><strong>Before searching:</strong> Open LM Studio and start its local server on port 1234. RA loads and switches Gemma and Qwen automatically; you do not need to load models manually. <a href="{{ url_for('setup') }}">Check model readiness in Setup</a>.</p>
-<p class="{{ 'identity-note' if reviewer.ready else 'callout' }}" role="status">{{ reviewer.message }}</p>
+<p class="callout"><strong>{{ _('Before searching:') }}</strong> {{ _('Open LM Studio and start its local server on port 1234. RA loads and switches Gemma and Qwen automatically; you do not need to load models manually.') }} <a href="{{ url_for('setup') }}">{{ _('Check model readiness in Setup') }}</a>.</p>
+<p class="{{ 'identity-note' if reviewer.ready else 'callout' }}" role="status">{{ _(reviewer.message) }}</p>
 
-<p class="identity-note">News API keys: GNews {{ 'configured' if 'gnews' in news_api_providers else 'not configured' }} · Perplexity {{ 'configured' if 'perplexity' in news_api_providers else 'not configured' }} · Google {{ 'configured' if 'google' in news_api_providers else 'not configured' }} · TheNewsAPI {{ 'configured' if 'thenewsapi' in news_api_providers else 'not configured' }}. The page never displays key values.</p>
+<p class="identity-note">{{ _('News API keys: GNews') }} {{ _('configured' if 'gnews' in news_api_providers else 'not configured') }} {{ _('· Perplexity') }} {{ _('configured' if 'perplexity' in news_api_providers else 'not configured') }} {{ _('· Google') }} {{ _('configured' if 'google' in news_api_providers else 'not configured') }} {{ _('· TheNewsAPI') }} {{ _('configured' if 'thenewsapi' in news_api_providers else 'not configured') }}{{ _('. The page never displays key values.') }}</p>
 
 <div class="action-grid">
   <section class="panel action-panel">
-    <span class="step">01 · Portfolio</span>
-    <h2>Search the watchlist</h2>
-    <p>Country includes registration and operating presence. Choose both filters to search their intersection.</p>
+    <span class="step">{{ _('01 · Portfolio') }}</span>
+    <h2>{{ _('Search the watchlist') }}</h2>
+    <p>{{ _('Country includes registration and operating presence. Choose both filters to search their intersection.') }}</p>
     <form method="post" action="{{ url_for('search_all') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       {% for key, label in [('country', 'Country or region'), ('sector', 'Sector')] %}
-      <label>{{ label }}<select name="{{ key }}"><option value="">All</option>
-      {% for branch, topic in topics if branch == key %}<option value="{{ topic }}">{{ topic|title }}</option>{% endfor %}
+      <label>{{ _(label) }}<select name="{{ key }}"><option value="">{{ _('All') }}</option>
+      {% for branch, topic in topics if branch == key %}<option value="{{ topic }}">{{ _(topic|title) }}</option>{% endfor %}
       </select></label>{% endfor %}
-      <label>Search end date (inclusive, optional)<input type="date" name="end_date" max="{{ search_today }}" data-search-end aria-describedby="watchlist-window"><small>Includes the selected date and the preceding six dates, in Moscow time. Today includes news only through launch time.</small></label>
-      <p id="watchlist-window" data-search-window role="status">Blank: rolling seven days ending at launch time.</p>
-      <button class="button primary" {% if not companies %}disabled{% endif %}>Run watchlist search <span aria-hidden="true">↗</span></button>
+      <label>{{ _('Search end date (inclusive, optional)') }}<input type="date" name="end_date" max="{{ search_today }}" data-search-end aria-describedby="watchlist-window"><small>{{ _('Includes the selected date and the preceding six dates, in Moscow time. Today includes news only through launch time.') }}</small></label>
+      <p id="watchlist-window" data-search-window role="status">{{ _('Blank: rolling seven days ending at launch time.') }}</p>
+      <button class="button primary" {% if not companies %}disabled{% endif %}>{{ _('Run watchlist search') }} <span aria-hidden="true">↗</span></button>
     </form>
   </section>
   <section class="panel action-panel">
-    <span class="step">02 · Selected company</span>
-    <h2>Search one watchlist company</h2>
-    <p>Choose a saved company and run a fresh search on demand.</p>
+    <span class="step">{{ _('02 · Selected company') }}</span>
+    <h2>{{ _('Search one watchlist company') }}</h2>
+    <p>{{ _('Choose a saved company and run a fresh search on demand.') }}</p>
     <form method="post" action="{{ url_for('search_selected') }}" class="select-action">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label for="company_id">Company</label>
+      <label for="company_id">{{ _('Company') }}</label>
       <select id="company_id" name="company_id" required {% if not companies %}disabled{% endif %}>
-        <option value="">Select a company</option>
-        {% for company in companies|alphabetical_companies %}<option value="{{ company.id }}">{{ company|company_label }} · {{ company.country_registration }}</option>{% endfor %}
+        <option value="">{{ _('Select a company') }}</option>
+        {% for company in companies|alphabetical_companies %}<option value="{{ company.id }}">{{ company|company_label }} · {{ _(company.country_registration) }}</option>{% endfor %}
       </select>
       {% set range_id = 'selected' %}{% include '_search_range.html' %}
-      <button class="button primary" {% if not companies %}disabled{% endif %}>Run selected search <span aria-hidden="true">↗</span></button>
+      <button class="button primary" {% if not companies %}disabled{% endif %}>{{ _('Run selected search') }} <span aria-hidden="true">↗</span></button>
     </form>
   </section>
 </div>
 
 <section class="panel form-panel" id="new-company">
-  <div class="section-heading"><div><span class="step">03 · New company</span><h2>Add a company to the watchlist</h2></div><span class="pill">Name + country required</span></div>
-  <p>Review the company’s identity before saving it. Once active, it is available for individual searches.</p>
+  <div class="section-heading"><div><span class="step">{{ _('03 · New company') }}</span><h2>{{ _('Add a company to the watchlist') }}</h2></div><span class="pill">{{ _('Name + country required') }}</span></div>
+  <p>{{ _('Review the company’s identity before saving it. Once active, it is available for individual searches.') }}</p>
   <form method="post" action="{{ url_for('add_company') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     {% set company = none %}{% include '_company_fields.html' %}
-    <div class="form-actions"><button class="button primary" type="submit">Research for review &amp; addition</button></div>
+    <div class="form-actions"><button class="button primary" type="submit">{{ _('Research for review & addition') }}</button></div>
   </form>
 </section>
 
 <section class="panel list-panel" id="intake">
-  <div class="section-heading"><div><span class="step">Identity review</span><h2>Pending company drafts</h2></div><span class="pill">{{ intake|length }} awaiting review</span></div>
-  <p>Workbook and manual entries are searched in public identity sources. They enter the watchlist only after you confirm or edit them.</p>
-  {% if intake %}<div class="table-scroll"><table><thead><tr><th>Company</th><th>Country</th><th>Source</th><th>Research</th><th>Action</th></tr></thead><tbody>
-  {% for draft in intake|sort(attribute='draft_data.name') %}<tr><td><strong>{{ draft.draft_data.name }}</strong><span class="subtext">Registration: {{ draft.draft_data.registration_number or '—' }} · Tax ID: {{ draft.draft_data.tax_id or '—' }}</span></td><td>{{ draft.draft_data.country_registration }}</td><td>{{ draft.source }}{% if draft.workbook_row %} · row {{ draft.workbook_row }}{% endif %}</td><td><span class="status status-{{ draft.status }}">{{ draft.status }}</span>{% if draft.matched_company_id %}<span class="subtext">Potential saved record #{{ draft.matched_company_id }}</span>{% endif %}</td><td><a href="{{ url_for('review_intake', intake_id=draft.id) }}">Review draft</a></td></tr>{% endfor %}
-  </tbody></table></div>{% else %}<p class="empty">No drafts awaiting review.</p>{% endif %}
+  <div class="section-heading"><div><span class="step">{{ _('Identity review') }}</span><h2>{{ _('Pending company drafts') }}</h2></div><span class="pill">{{ intake|length }} {{ _('awaiting review') }}</span></div>
+  <p>{{ _('Workbook and manual entries are searched in public identity sources. They enter the watchlist only after you confirm or edit them.') }}</p>
+  {% if intake %}<div class="table-scroll"><table><thead><tr><th>{{ _('Company') }}</th><th>{{ _('Country') }}</th><th>{{ _('Source') }}</th><th>{{ _('Research') }}</th><th>{{ _('Action') }}</th></tr></thead><tbody>
+  {% for draft in intake|sort(attribute='draft_data.name') %}<tr><td><strong>{{ draft.draft_data.name }}</strong><span class="subtext">{{ _('Registration:') }} {{ draft.draft_data.registration_number or '—' }} {{ _('· Tax ID:') }} {{ draft.draft_data.tax_id or '—' }}</span></td><td>{{ _(draft.draft_data.country_registration) }}</td><td>{{ _(draft.source) }}{% if draft.workbook_row %} {{ _('· row') }} {{ draft.workbook_row }}{% endif %}</td><td><span class="status status-{{ draft.status }}">{{ _(draft.status) }}</span>{% if draft.matched_company_id %}<span class="subtext">{{ _('Potential saved record #') }}{{ draft.matched_company_id }}</span>{% endif %}</td><td><a href="{{ url_for('review_intake', intake_id=draft.id) }}">{{ _('Review draft') }}</a></td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="empty">{{ _('No drafts awaiting review.') }}</p>{% endif %}
 </section>
 
 <section class="panel list-panel">
-  <div class="section-heading"><div><span class="step">Saved records</span><h2>Active watchlist</h2></div><span class="pill">{{ companies|length }} monitored</span></div>
+  <div class="section-heading"><div><span class="step">{{ _('Saved records') }}</span><h2>{{ _('Active watchlist') }}</h2></div><span class="pill">{{ companies|length }} {{ _('monitored') }}</span></div>
   {% if companies %}
-  <div class="table-scroll"><table><thead><tr><th>Company and identifiers</th><th>Country</th><th>Industries</th><th>Owner / affiliate</th><th>Actions</th></tr></thead><tbody>
+  <div class="table-scroll"><table><thead><tr><th>{{ _('Company and identifiers') }}</th><th>{{ _('Country') }}</th><th>{{ _('Industries') }}</th><th>{{ _('Owner / affiliate') }}</th><th>{{ _('Actions') }}</th></tr></thead><tbody>
     {% for company in companies|alphabetical_companies %}<tr>
-      <td><strong>{{ company.short_name or company.name }}</strong>{% if company.short_name and company.short_name != company.name %}<span class="subtext">{{ company.name }}</span>{% endif %}<span class="subtext">Registration: {{ company.registration_number or '—' }} · Tax ID: {{ company.tax_id or '—' }}</span>
+      <td><strong>{{ company.short_name or company.name }}</strong>{% if company.short_name and company.short_name != company.name %}<span class="subtext">{{ company.name }}</span>{% endif %}<span class="subtext">{{ _('Registration:') }} {{ company.registration_number or '—' }} {{ _('· Tax ID:') }} {{ company.tax_id or '—' }}</span>
         {% set coverage = company.get('disclosure_sources', {}) %}
-        <details><summary>Disclosures: {{ 'sources found · coverage partial' if coverage.get('status') == 'partial' else 'no source confirmed' if coverage else 'discovery pending' }}</summary>
-          {% for source in coverage.get('sources', []) %}<p><a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.label }}</a> · {{ source.kind }}</p>{% endfor %}
-          {% for gap in coverage.get('gaps', []) %}<p>{{ gap }}</p>{% endfor %}
-          {% if coverage %}<p>Checked {{ coverage.checked_at }}. Individual articles still require verification.</p>{% endif %}
-          <form method="post" action="{{ url_for('discover_disclosures', company_id=company.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="link-button">Retry source discovery</button></form>
+        <details><summary>{{ _('Disclosures:') }} {{ _('sources found · coverage partial' if coverage.get('status') == 'partial' else 'no source confirmed' if coverage else 'discovery pending') }}</summary>
+          {% for source in coverage.get('sources', []) %}<p><a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.label }}</a> · {{ _(source.kind) }}</p>{% endfor %}
+          {% for gap in coverage.get('gaps', []) %}<p>{{ _(gap) }}</p>{% endfor %}
+          {% if coverage %}<p>{{ _('Checked') }} {{ coverage.checked_at }}{{ _('. Individual articles still require verification.') }}</p>{% endif %}
+          <form method="post" action="{{ url_for('discover_disclosures', company_id=company.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="link-button">{{ _('Retry source discovery') }}</button></form>
         </details>
       </td>
-      <td>{{ company.country_registration }}</td><td>{{ company.primary_industries or '—' }}</td><td>{{ company.key_owners or company.affiliates or '—' }}</td>
-      <td class="row-actions"><a href="{{ url_for('edit_company', company_id=company.id) }}">Edit</a><form method="post" action="{{ url_for('remove_company', company_id=company.id) }}" onsubmit="return confirm('Remove this company from the active watchlist? Search history will be kept.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="link-button danger">Remove</button></form></td>
+      <td>{{ _(company.country_registration) }}</td><td>{{ _(company.primary_industries or '—') }}</td><td>{{ company.key_owners or company.affiliates or '—' }}</td>
+      <td class="row-actions"><a href="{{ url_for('edit_company', company_id=company.id) }}">{{ _('Edit') }}</a><form method="post" action="{{ url_for('remove_company', company_id=company.id) }}" onsubmit='return confirm({{ _("Remove this company from the active watchlist? Search history will be kept.")|tojson }});'><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="link-button danger">{{ _('Remove') }}</button></form></td>
     </tr>{% endfor %}
   </tbody></table></div>
-  {% else %}<p class="empty">No active companies yet. Add one above or import the workbook below.</p>{% endif %}
-  <details class="import-box"><summary>Stage the Excel workbook</summary><p>Use the saved <code>companies.xlsx</code> or upload a newer .xlsx file. New files should have separate Registration number and Tax ID columns. Older combined columns remain supported. Each changed row is staged for research and your review; existing records are kept until you confirm an update.</p><form method="post" action="{{ url_for('import_companies') }}" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="file" name="workbook" accept=".xlsx"><button class="button secondary">Stage workbook for review</button></form></details>
-  {% if archived %}<details class="archive-box"><summary>{{ archived|length }} removed compan{{ 'y' if archived|length == 1 else 'ies' }}</summary><div class="archived-list">{% for company in archived|alphabetical_companies %}<div><span>{{ company|company_label }} · {{ company.country_registration }}</span><form method="post" action="{{ url_for('restore_company', company_id=company.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="link-button">Restore</button></form></div>{% endfor %}</div></details>{% endif %}
+  {% else %}<p class="empty">{{ _('No active companies yet. Add one above or import the workbook below.') }}</p>{% endif %}
+  <details class="import-box"><summary>{{ _('Stage the Excel workbook') }}</summary><p>{{ _('Use the saved') }} <code>companies.xlsx</code> {{ _('or upload a newer .xlsx file. New files should have separate Registration number and Tax ID columns. Older combined columns remain supported. Each changed row is staged for research and your review; existing records are kept until you confirm an update.') }}</p><form method="post" action="{{ url_for('import_companies') }}" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="file" name="workbook" accept=".xlsx"><button class="button secondary">{{ _('Stage workbook for review') }}</button></form></details>
+  {% if archived %}<details class="archive-box"><summary>{{ _('Removed companies') }}: {{ archived|length }}</summary><div class="archived-list">{% for company in archived|alphabetical_companies %}<div><span>{{ company|company_label }} · {{ _(company.country_registration) }}</span><form method="post" action="{{ url_for('restore_company', company_id=company.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="link-button">{{ _('Restore') }}</button></form></div>{% endfor %}</div></details>{% endif %}
 </section>
 
 {% if model_coverage %}<section class="panel list-panel">
-  <div class="section-heading"><div><span class="step">Languages</span><h2>Translation model coverage</h2></div></div>
-  <p>Languages are added from each watchlist country, including countries with several local languages. RA detects each headline’s language. When Argos cannot translate it, RA tries MyMemory online, then local Gemma, then Google public translation. Qwen reviews translated headlines.</p>
-  <div class="table-scroll"><table><thead><tr><th>Country</th><th>Language</th><th>Translation to English</th></tr></thead><tbody>
-  {% for item in model_coverage %}<tr><td>{{ item.country }}</td><td>{{ item.language }}</td><td>{{ item.status[0]|upper }}{{ item.status[1:] }}</td></tr>{% endfor %}
+  <div class="section-heading"><div><span class="step">{{ _('Languages') }}</span><h2>{{ _('Translation model coverage') }}</h2></div></div>
+  <p>{{ _('Languages are added from each watchlist country, including countries with several local languages. RA detects each headline’s language. When Argos cannot translate it, RA tries MyMemory online, then local Gemma, then Google public translation. Qwen reviews translated headlines.') }}</p>
+  <div class="table-scroll"><table><thead><tr><th>{{ _('Country') }}</th><th>{{ _('Language') }}</th><th>{{ _('Translation to English') }}</th></tr></thead><tbody>
+  {% for item in model_coverage %}<tr><td>{{ _(item.country) }}</td><td>{{ item.language }}</td><td>{{ _(item.status) }}</td></tr>{% endfor %}
   </tbody></table></div>
 </section>{% endif %}
 
 <section class="panel runs-panel">
-  <div class="section-heading"><div><span class="step">Activity</span><h2>Recent searches</h2></div></div>
-  {% if runs %}<div class="table-scroll"><table><thead><tr><th>Run</th><th>Started</th><th>Scope</th><th>Progress</th><th>Leads</th><th>Status</th></tr></thead><tbody>{% for run in runs %}<tr><td><a href="{{ url_for('run_detail', run_id=run.id) }}">#{{ run.id }}</a></td><td>{{ run.created_at.strftime('%d %b %Y %H:%M %Z') }}</td><td>{{ run.scope|replace('_', ' ')|title }}</td><td>{{ run.completed_companies }}/{{ run.total_companies }}</td><td>{{ run.result_count }}</td><td><span class="status status-{{ run.status }}">{{ 'Summary pending' if run.status == 'completed' and run.event_analysis_status in ('pending', 'waiting_sources') else 'Summary needs retry' if run.status == 'completed' and run.event_analysis_status == 'failed' else run.status }}</span></td></tr>{% endfor %}</tbody></table></div><p class="activity-note">Run numbers are permanent database IDs. Gaps can occur when development test records are removed; IDs are never reused.</p>
-  {% else %}<p class="empty">No searches yet. Start with one company to check the source feed.</p>{% endif %}
+  <div class="section-heading"><div><span class="step">{{ _('Activity') }}</span><h2>{{ _('Recent searches') }}</h2></div></div>
+  {% if runs %}<div class="table-scroll"><table><thead><tr><th>{{ _('Run') }}</th><th>{{ _('Started') }}</th><th>{{ _('Scope') }}</th><th>{{ _('Progress') }}</th><th>{{ _('Leads') }}</th><th>{{ _('Status') }}</th></tr></thead><tbody>{% for run in runs %}<tr><td><a href="{{ url_for('run_detail', run_id=run.id) }}">#{{ run.id }}</a></td><td>{{ run.created_at|localdate('%d %b %Y %H:%M %Z') }}</td><td>{{ _(run.scope|replace('_', ' ')|title) }}</td><td>{{ run.completed_companies }}/{{ run.total_companies }}</td><td>{{ run.result_count }}</td><td><span class="status status-{{ run.status }}">{{ _('Summary pending' if run.status == 'completed' and run.event_analysis_status in ('pending', 'waiting_sources') else 'Summary needs retry' if run.status == 'completed' and run.event_analysis_status == 'failed' else run.status) }}</span></td></tr>{% endfor %}</tbody></table></div><p class="activity-note">{{ _('Run numbers are permanent database IDs. Gaps can occur when development test records are removed; IDs are never reused.') }}</p>
+  {% else %}<p class="empty">{{ _('No searches yet. Start with one company to check the source feed.') }}</p>{% endif %}
 </section>
 <script src="{{ url_for('static', filename='search-window.js') }}" defer></script>
 {% endblock %}

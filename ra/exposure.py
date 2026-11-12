@@ -67,6 +67,9 @@ def topic_editions(subjects):
         for branch, sector in links:
             if branch == "sector":
                 plan.setdefault((branch, sector), set()).update(locations)
+    for editions in plan.values():
+        if not any(LOCALES[place][0].startswith("ru-") for place in editions):
+            editions.add("russia")
     return plan
 
 

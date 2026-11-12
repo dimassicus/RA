@@ -30,6 +30,12 @@ Service waits for PostgreSQL, reads local API keys, keeps stable session secret,
 
 Without LaunchAgent, script keeps dev server running after shell closes. App binds local machine only. Different connection/port: set `RA_DATABASE_URL` (libpq URI) or `RA_PORT` in shell. Keep DB password out of Git. Production needs WSGI server, auth, backups, scheduled worker.
 
+## Interface and result languages
+
+Select **English** or **Русский** in the header. The preference stays in this browser and applies to pages, weekly scores, and PDF/Excel downloads. Both company and watchlist runs search English and Russian news alongside the company's local editions. Publisher names, identifiers, URLs, and original quotations remain available for checking.
+
+Each new run queues English and Russian display text for its leads, discovery summaries, event briefs, and assessments regardless of the selected language. The background worker reuses the exact source wording across runs. Russian uses the local English-to-Russian Argos pair or Gemma in LM Studio; automatic model downloads still require `RA_ALLOW_MODEL_DOWNLOADS=1`. If translation is unavailable, the page labels the original and retries in the background. Opening older results queues missing translations without rerunning discovery. Display translations do not create leads, change analyst decisions, or add weight to an event.
+
 ## News API keys
 
 Under Setup → Search settings, **Use Perplexity API** and **Use Google API** apply independently to new individual and watchlist runs. With both enabled, Perplexity handles routine discovery and Gemini 4 Carbon uses Google Search grounding for missing filing coverage, conflicting earnings comparisons or unresolved rulings. Google alone searches each calendar quarter in the publication window. Disabling both preserves exchange, issuer, RSS and other configured news searches. Google News RSS has its own retrieval path. RA searches the selected publication window with issuer names and local risk terms. Historical searches cover each calendar quarter. A reported court decision or petition triggers a dated follow-up search for its outcome. RA records provider failures and keeps earlier results if a later request fails. The Perplexity search switch requires its configured key. For Gemini use `Google API` or `RA_GOOGLE_API_KEY` in the local environment file. The optional `RA_PERPLEXITY_DAILY_LIMIT` caps requests across the app. A blank limit uses the account limit.

@@ -1,0 +1,4 @@
+{% macro evidence_text(original, code=none) -%}
+{% set localized = display_passage(original, code) -%}
+{{ localized }}{% if original and localized != original %}<small class="subtext">{{ _('Original:') }} {{ original }}</small>{% endif %}
+{%- endmacro %}

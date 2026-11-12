@@ -27,8 +27,8 @@ _backfill_lock = threading.Lock()
 _recent_failures: dict[str, float] = {}
 
 
-def installed(code: str) -> bool:
-    path = MODEL_ROOT / f"{code}_en"
+def installed(code: str, target: str = "en") -> bool:
+    path = MODEL_ROOT / f"{code}_{target}"
     return (path / "model" / "model.bin").is_file() and (path / "sentencepiece.model").is_file()
 
 
@@ -86,39 +86,41 @@ def _download(url: str, path: Path) -> None:
     raise OSError("Model download remained incomplete after retries")
 
 
-def ensure_model(code: str) -> tuple[bool, str]:
-    """Install a direct Argos → English model from the official package index."""
+def ensure_model(code: str, target: str = "en") -> tuple[bool, str]:
+    """Install a direct Argos language pair from the official package index."""
     code = code.lower().split("-", 1)[0]
-    if code == "en":
-        return True, "original English"
-    if len(code) != 2 or not code.isascii() or not code.isalpha():
+    target = target.lower().split("-", 1)[0]
+    if not all(len(c) == 2 and c.isascii() and c.isalpha() for c in (code, target)):
         return False, "unsupported language code"
-    if installed(code):
+    if code == target:
+        return True, "original English" if target == "en" else "original language"
+    pair = f"{code}_{target}"
+    if installed(code, target):
         return True, "offline model installed"
     if os.environ.get("RA_ALLOW_MODEL_DOWNLOADS") != "1":
         return False, "offline model installation requires approval (RA_ALLOW_MODEL_DOWNLOADS=1)"
     with _lock:
-        if installed(code):
+        if installed(code, target):
             return True, "offline model installed"
-        if time.time() - _recent_failures.get(code, 0) < 3600:
+        if time.time() - _recent_failures.get(pair, 0) < 3600:
             return False, "model setup retry scheduled"
         try:
             entry = next((item for item in package_index()
-                          if item.get("from_code") == code and item.get("to_code") == "en"), None)
+                          if item.get("from_code") == code and item.get("to_code") == target), None)
             if not entry:
-                _recent_failures[code] = time.time()
-                return False, f"no direct offline model for {code}"
+                _recent_failures[pair] = time.time()
+                return False, f"no direct offline model for {pair}"
             url = next((link for link in entry.get("links", [])
                         if urlparse(link).scheme == "https" and urlparse(link).hostname == "argos-net.com"), None)
             if not url:
                 raise ValueError("No trusted HTTPS model link in index")
             MODEL_ROOT.mkdir(parents=True, exist_ok=True)
-            archive_path = MODEL_ROOT / f".{code}_en.download"
-            temp_path = MODEL_ROOT / f".{code}_en-{os.getpid()}.tmp"
-            lock_path = MODEL_ROOT / f".{code}_en.lock"
+            archive_path = MODEL_ROOT / f".{pair}.download"
+            temp_path = MODEL_ROOT / f".{pair}-{os.getpid()}.tmp"
+            lock_path = MODEL_ROOT / f".{pair}.lock"
             with lock_path.open("a+b") as lock_file:
                 fcntl.flock(lock_file, fcntl.LOCK_EX)
-                if installed(code):
+                if installed(code, target):
                     return True, "offline model installed"
                 if not archive_path.exists() or not is_zipfile(archive_path):
                     _download(url, archive_path)
@@ -127,10 +129,10 @@ def ensure_model(code: str) -> tuple[bool, str]:
                     members = zipped.infolist()
                     if sum(item.file_size for item in members) > MAX_EXTRACTED_BYTES:
                         raise ValueError("Translation model exceeded extracted size limit")
-                    prefix = f"translate-{code}_en-"
+                    prefix = f"translate-{pair}-"
                     for item in members:
                         parts = Path(item.filename).parts
-                        if not parts or not (parts[0] == f"{code}_en" or parts[0].startswith(prefix)):
+                        if not parts or not (parts[0] == pair or parts[0].startswith(prefix)):
                             continue
                         relative = Path(*parts[1:])
                         if (relative.is_absolute() or ".." in relative.parts or
@@ -146,15 +148,15 @@ def ensure_model(code: str) -> tuple[bool, str]:
                                 shutil.copyfileobj(source, target)
                 if not (temp_path / "model" / "model.bin").is_file() or not (temp_path / "sentencepiece.model").is_file():
                     raise ValueError("Translation package lacks model files")
-                temp_path.rename(MODEL_ROOT / f"{code}_en")
+                temp_path.rename(MODEL_ROOT / pair)
             archive_path.unlink(missing_ok=True)
             shutil.rmtree(temp_path, ignore_errors=True)
             return True, "offline model installed"
         except Exception as exc:
-            shutil.rmtree(MODEL_ROOT / f".{code}_en-{os.getpid()}.tmp", ignore_errors=True)
+            shutil.rmtree(MODEL_ROOT / f".{pair}-{os.getpid()}.tmp", ignore_errors=True)
             if isinstance(exc, BadZipFile):
-                (MODEL_ROOT / f".{code}_en.download").unlink(missing_ok=True)
-            _recent_failures[code] = time.time()
+                (MODEL_ROOT / f".{pair}.download").unlink(missing_ok=True)
+            _recent_failures[pair] = time.time()
             return False, f"model setup failed: {type(exc).__name__}"
 
 

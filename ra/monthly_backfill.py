@@ -60,7 +60,7 @@ def archive_queries(subject, provider):
         if place.strip():
             codes.extend([LOCALES.get(normalized(place.strip()), ("en",))[0].split("-")[0],
                           *sorted(country_languages(place.strip()))])
-    for code in dict.fromkeys([*codes, "en"]):
+    for code in dict.fromkeys([*codes, "en", "ru"]):
         if code in EXCLUDED_LANGUAGES:
             continue
         for terms in (keywords.person_title_terms(code, ROLES), keywords.adverse_search_terms(code, RISKS)):

@@ -69,6 +69,7 @@ def collect(subject, window, seeds=(), progress=None, *, adverse_focus=False):
     if adverse_focus:
         queries[0] = f'{anchor} profit decline debt default liquidity insolvency enforcement court ruling residual restrictions'
         queries.append(f'{anchor} {local_name if local_name != anchor else ""} material exchange filings unusual trading volatility inquiry issuer response audit committee changes')
+    queries.append(f'{anchor} финансовые результаты долговые обязательства кредитные риски существенные события')
     found, errors = {}, []
     def lookup(q, lo, hi, notice=None):
         if progress:

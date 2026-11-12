@@ -3,52 +3,52 @@
 {% set field = 'scope' if factors else 'direction' %}
 {% set field_label = 'Search scope' if factors else 'Sentiment' %}
 {% set limit = risk_factor_limit if factors else 80 %}
-{% block title %}{{ heading }} · RA{% endblock %}
+{% block title %}{{ _(heading) }} {{ _('· RA') }}{% endblock %}
 {% block content %}
-<p class="back"><a href="{{ url_for('setup') }}">← Back to Setup</a></p>
-<h1>{{ heading }}</h1>
-{% if factors %}<p>Describe a theme to watch in company, sector or country news. RA looks for paraphrases, indirect evidence and partial matches. Each match shows the source wording for review.</p>
-{% else %}<p>English keywords flag headlines for review. Choose the expected sentiment. Company scores require evidence of impact.</p>
-<p>Company searches include adverse phrases, named managers and owners, and company-linked titles such as CEO or main shareholder. Related English phrases share the keyword’s switch and sentiment. Approved local-language translations are used when available. Allegations, case outcomes and person-only matches require review.</p>{% endif %}
+<p class="back"><a href="{{ url_for('setup') }}">{{ _('← Back to Setup') }}</a></p>
+<h1>{{ _(heading) }}</h1>
+{% if factors %}<p>{{ _('Describe a theme to watch in company, sector or country news. RA looks for paraphrases, indirect evidence and partial matches. Each match shows the source wording for review.') }}</p>
+{% else %}<p>{{ _('English keywords flag headlines for review. Choose the expected sentiment. Company scores require evidence of impact.') }}</p>
+<p>{{ _('Company searches include adverse phrases, named managers and owners, and company-linked titles such as CEO or main shareholder. Related English phrases share the keyword’s switch and sentiment. Approved local-language translations are used when available. Allegations, case outcomes and person-only matches require review.') }}</p>{% endif %}
 <section class="panel form-panel">
-  <h2>Add a {{ label }}</h2>
+  <h2>{{ _('Add a') }} {{ _(label) }}</h2>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="enabled" value="yes">
-    <div class="form-grid"><label>{{ 'English description (3–' ~ limit ~ ' characters)' if factors else 'English word or phrase' }}<input name="english" required {% if factors %}pattern=".{3,{{ limit }}}" data-character-limit="{{ limit }}" title="Use 3–{{ limit }} characters. Shorten the description before saving; pasted text is kept in full."{% else %}maxlength="{{ limit }}"{% endif %} placeholder="{{ 'e.g. A lender suspends the company’s credit line' if factors else 'e.g. covenant breach' }}"></label>
-    <label>{{ field_label }}<select name="{{ field }}">{% for direction in options %}<option>{{ direction }}</option>{% endfor %}</select></label></div>
-    <div class="form-actions"><button class="button primary">Add and translate</button></div>
+    <div class="form-grid"><label>{{ _('English description (3–' ~ limit ~ ' characters)' if factors else 'English word or phrase') }}<input name="english" required {% if factors %}pattern=".{3,{{ limit }}}" data-character-limit="{{ limit }}" title="{{ _('Use 3–') }}{{ limit }} {{ _('characters. Shorten the description before saving; pasted text is kept in full.') }}"{% else %}maxlength="{{ limit }}"{% endif %} placeholder="{{ _('e.g. A lender suspends the company’s credit line' if factors else 'e.g. covenant breach') }}"></label>
+    <label>{{ _(field_label) }}<select name="{{ field }}">{% for direction in options %}<option value="{{ direction }}">{{ _(direction) }}</option>{% endfor %}</select></label></div>
+    <div class="form-actions"><button class="button primary">{{ _('Add and translate') }}</button></div>
   </form>
 </section>
-<section class="panel list-panel"><h2>{{ label|capitalize }} list</h2>
-  <p>Keywords and risk factors share the same languages, drawn from active companies’ registration countries and operating-country search editions. Missing Argos pairs use free MyMemory, public Google Translate and local models. Local models review candidates before use. Gemma and Qwen independently check each other’s corrections. Both lists share one queue, prioritizing search languages and smaller gaps.</p>
-  <p id="translation-progress" role="status" aria-live="polite" data-url="{{ url_for('translation_status', factors='1' if factors else '0') }}">Checking translation progress…</p>
-  <p>Live progress updates leave your edits untouched. Save any edits before reloading this page to see newly saved wording in the list below.</p>
+<section class="panel list-panel"><h2>{{ _('Risk factor list' if factors else 'Keyword list') }}</h2>
+  <p>{{ _('Keywords and risk factors share the same languages, drawn from active companies’ registration countries and operating-country search editions. Missing Argos pairs use free MyMemory, public Google Translate and local models. Local models review candidates before use. Gemma and Qwen independently check each other’s corrections. Both lists share one queue, prioritizing search languages and smaller gaps.') }}</p>
+  <p id="translation-progress" role="status" aria-live="polite" data-url="{{ url_for('translation_status', factors='1' if factors else '0') }}">{{ _('Checking translation progress…') }}</p>
+  <p>{{ _('Live progress updates leave your edits untouched. Save any edits before reloading this page to see newly saved wording in the list below.') }}</p>
   <script src="{{ url_for('static', filename='translation-progress.js') }}" defer></script>
-  {% if error %}<p role="status">{{ error }}</p>{% endif %}
+  {% if error %}<p role="status">{{ _(error) }}</p>{% endif %}
   {% if factors %}<div class="form-actions">
-    <button type="button" class="button primary" id="save-all" data-url="{{ url_for('save_all_risk_factors') }}" hidden>Save all</button>
+    <button type="button" class="button primary" id="save-all" data-url="{{ url_for('save_all_risk_factors') }}" hidden>{{ _('Save all') }}</button>
     <span id="save-all-status" role="status"></span>
     <script src="{{ url_for('static', filename='risk-factor-list.js') }}" defer></script>
   </div>{% endif %}
-  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary" name="action" value="retry">Retry missing translations</button></form>
-  <div class="table-scroll"><table><thead><tr><th>English {{ label }}</th><th>{{ field_label }}</th><th>Active</th><th>Translations</th><th></th></tr></thead><tbody>
+  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary" name="action" value="retry">{{ _('Retry missing translations') }}</button></form>
+  <div class="table-scroll"><table><thead><tr><th>{{ _('English risk factor' if factors else 'English keyword') }}</th><th>{{ _(field_label) }}</th><th>{{ _('Active') }}</th><th>{{ _('Translations') }}</th><th></th></tr></thead><tbody>
   {% for row in rows %}
     {% set fid = 'keyword-' ~ row.id %}
-    <tr><td><input form="{{ fid }}" aria-label="English {{ label }} {{ row.english }}" name="english" value="{{ row.english }}" required {% if factors %}pattern=".{3,{{ limit }}}" data-character-limit="{{ limit }}" title="Use 3–{{ limit }} characters. Shorten the description before saving; pasted text is kept in full."{% else %}maxlength="{{ limit }}"{% endif %}>
-      {% if not factors and row.phrases %}<details><summary>Related English phrases and translations</summary>
+    <tr><td><input form="{{ fid }}" aria-label="{{ _('English risk factor' if factors else 'English keyword') }} {{ row.english }}" name="english" value="{{ row.english }}" required {% if factors %}pattern=".{3,{{ limit }}}" data-character-limit="{{ limit }}" title="{{ _('Use 3–') }}{{ limit }} {{ _('characters. Shorten the description before saving; pasted text is kept in full.') }}"{% else %}maxlength="{{ limit }}"{% endif %}>
+      {% if not factors and row.phrases %}<details><summary>{{ _('Related English phrases and translations') }}</summary>
         {% for phrase in row.phrases %}<details><summary>{{ phrase.english }} ({{ languages|select('in', phrase.translations)|list|length }}/{{ languages|length }})</summary>
-          {% for code in languages %}<div>{{ language_name(code) }} · <span lang="{{ code }}" dir="auto">{{ phrase.translations.get(code, 'Pending review') }}</span></div>{% endfor %}
+          {% for code in languages %}<div>{{ _(language_name(code)) }} · <span lang="{{ code }}" dir="auto">{{ phrase.translations.get(code) or _('Pending review') }}</span></div>{% endfor %}
         </details>{% endfor %}
       </details>{% endif %}</td>
-      <td><select form="{{ fid }}" name="{{ field }}" aria-label="{{ field_label }} for {{ row.english }}">{% for direction in options %}<option {% if direction == row[field] %}selected{% endif %}>{{ direction }}</option>{% endfor %}</select></td>
-      <td><input form="{{ fid }}" name="enabled" type="checkbox" value="yes" aria-label="Enable {{ row.english }}" {% if row.enabled %}checked{% endif %}></td>
-      <td><details id="translations-{{ row.id }}" {% if editing == row.id %}open{% endif %}><summary>{{ languages|select('in', row.translations)|list|length }}/{{ languages|length }} languages</summary>
+      <td><select form="{{ fid }}" name="{{ field }}" aria-label="{{ _(field_label) }} {{ _('for') }} {{ row.english }}">{% for direction in options %}<option value="{{ direction }}" {% if direction == row[field] %}selected{% endif %}>{{ _(direction) }}</option>{% endfor %}</select></td>
+      <td><input form="{{ fid }}" name="enabled" type="checkbox" value="yes" aria-label="{{ _('Enable') }} {{ row.english }}" {% if row.enabled %}checked{% endif %}></td>
+      <td><details id="translations-{{ row.id }}" {% if editing == row.id %}open{% endif %}><summary>{{ languages|select('in', row.translations)|list|length }}/{{ languages|length }} {{ _('languages') }}</summary>
       {% for code in languages %}
-        <div>{{ language_name(code) }} · <span lang="{{ code }}" dir="auto">{{ row.translations.get(code, 'Pending') }}</span></div>
+        <div>{{ _(language_name(code)) }} · <span lang="{{ code }}" dir="auto">{{ row.translations.get(code) or _('Pending') }}</span></div>
         {% if factors %}
           {% set retrying = editing == row.id and draft.get('language') == code %}
           <details class="translation-edit" {% if retrying %}open{% endif %}>
-            <summary>Edit {{ language_name(code) }} translation</summary>
+            <summary>{{ _('Edit') }} {{ _(language_name(code)) }} {{ _('translation') }}</summary>
             <form method="post">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="action" value="translation">
@@ -56,15 +56,15 @@
               <input type="hidden" name="previous" value="{{ row.english }}">
               <input type="hidden" name="language" value="{{ code }}">
               <input type="hidden" name="original" value="{{ row.translations.get(code, '') }}">
-              <label>{{ language_name(code) }} translation
+              <label>{{ _(language_name(code)) }} {{ _('translation') }}
                 <textarea name="translation" lang="{{ code }}" dir="auto" rows="2" maxlength="500" required>{{ draft.get('translation') if retrying else row.translations.get(code, '') }}</textarea>
               </label>
-              <button class="button secondary">Save translation</button>
+              <button class="button secondary">{{ _('Save translation') }}</button>
             </form>
           </details>
         {% endif %}
       {% endfor %}</details></td>
-      <td><form id="{{ fid }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="previous" value="{{ row.english }}"><button class="button secondary">Save</button></form></td></tr>
+      <td><form id="{{ fid }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ row.id }}"><input type="hidden" name="previous" value="{{ row.english }}"><button class="button secondary">{{ _('Save') }}</button></form></td></tr>
   {% endfor %}</tbody></table></div>
 </section>
 {% endblock %}

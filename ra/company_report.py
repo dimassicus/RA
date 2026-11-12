@@ -108,60 +108,100 @@ def build_report(run, subject, articles, history, errors, previous_runs=None):
     for label, point in periods(end):
         metrics = history.get(label)
         ratings.append((label, (week_start(point) + timedelta(days=7)).isoformat(), metrics))
+    # Keep prior branch counts for rendering either language without reloading history.
+    branches = ("Company", "Sector", "Country / region")
+    prior_coverage = {
+        label: (date, [(branch, sum(branch in item["branches"] for item in previous),
+                        sum(branch in item["branches"] for item in sources)) for branch in branches])
+        for label, (date, previous) in (previous_runs or {}).items()
+    }
+    report = dict(run=run, subject=subject, start=start, end=end, sources=sources, top=top,
+                  ratings=ratings, prior_coverage=prior_coverage, errors=errors, dates=watch_dates.upcoming(subject, end))
+    report["comparisons"] = list(comparison_rows(report))
+    return report
+
+
+def comparison_rows(report, language="en"):
+    russian = language == "ru"
+    if not russian and "comparisons" in report:
+        yield from report["comparisons"]
+        return
+    if russian:
+        from .i18n import ru
+
+    history = {label: metrics for label, _, metrics in report["ratings"]}
     current = history.get("Current")
-    comparisons = []
     for label in ("1 week ago", "1 month ago", "12 months ago"):
         past = history.get(label)
+        prior = report["prior_coverage"].get(label)
+        if not prior and not past:
+            yield label, ("В архиве нет поиска или оценки для сравнения." if russian
+                          else "No archived comparison run or rating snapshot.")
+            continue
         if not past or not current or not past.get("search_count") or not current.get("search_count"):
-            summary = "Insufficient recorded search coverage for comparison."
+            summary = ("Для сравнения недостаточно данных предыдущих поисков." if russian
+                       else "Insufficient recorded search coverage for comparison.")
         else:
             def mix(m):
+                if russian:
+                    return f"негативных — {m['negative_count']}, позитивных — {m['positive_count']}, нейтральных — {m['neutral_count']}"
                 return f"{m['negative_count']} adverse, {m['positive_count']} favourable, {m['neutral_count']} neutral"
-            summary = f"Scored events: {mix(past)} then; {mix(current)} now."
+            summary = (f"Учтённые события. Ранее: {mix(past)}. Сейчас: {mix(current)}." if russian
+                       else f"Scored events: {mix(past)} then; {mix(current)} now.")
             previous_driver = strongest_contribution(past)
             current_driver = strongest_contribution(current)
             if previous_driver and current_driver and previous_driver["reason"] != current_driver["reason"]:
-                summary += f" Earlier driver: {previous_driver['reason']}. Current driver: {current_driver['reason']}."
+                old, new = previous_driver["reason"], current_driver["reason"]
+                summary += (f" Основной фактор ранее: {ru(old)}. Сейчас: {ru(new)}." if russian
+                            else f" Earlier driver: {old}. Current driver: {new}.")
             if scale(past) != scale(current):
-                summary += " Score change omitted: snapshots use different grading scales."
+                summary += (" Изменение оценки не рассчитано: использовались разные шкалы." if russian
+                            else " Score change omitted: snapshots use different grading scales.")
             elif past["score"] is not None and current["score"] is not None:
                 change = current["score"] - past["score"]
-                summary += f" Sentiment moved {change:+d}." if change else " Sentiment held steady."
+                if change:
+                    summary += f" Изменение тональности: {change:+d}." if russian else f" Sentiment moved {change:+d}."
+                else:
+                    summary += " Тональность не изменилась." if russian else " Sentiment held steady."
             else:
-                summary += " A score change cannot be calculated."
-        prior = (previous_runs or {}).get(label)
+                summary += " Недостаточно данных для расчёта изменения оценки." if russian else " A score change cannot be calculated."
         if prior:
-            prior_end, previous = prior
-            counts = []
-            for branch in ("Company", "Sector", "Country / region"):
-                old = sum(branch in item["branches"] for item in previous)
-                new = sum(branch in item["branches"] for item in sources)
-                counts.append(f"{branch.lower()} {old} to {new}")
-            summary = (f"Relevant headlines versus the search ending {prior_end.astimezone(WEEK_TIMEZONE):%d %b %Y}, "
-                       + ", ".join(counts) + ". " + summary)
-        elif not past:
-            summary = "No archived comparison run or rating snapshot."
+            prior_end, branches = prior
+            date = prior_end.astimezone(WEEK_TIMEZONE)
+            if russian:
+                names = {"Company": "компания", "Sector": "отрасль", "Country / region": "страна / регион"}
+                counts = ", ".join(f"{names[branch]} — с {old} до {new}" for branch, old, new in branches)
+                summary = f"Материалы по теме в сравнении с поиском от {date:%d.%m.%Y}: {counts}. " + summary
+            else:
+                counts = ", ".join(f"{branch.lower()} {old} to {new}" for branch, old, new in branches)
+                summary = f"Relevant headlines versus the search ending {date:%d %b %Y}, {counts}. " + summary
         else:
-            summary = "No archived comparison run. " + summary
-        comparisons.append((label, summary))
-    return dict(run=run, subject=subject, start=start, end=end, sources=sources, top=top,
-                ratings=ratings, comparisons=comparisons, errors=errors, dates=watch_dates.upcoming(subject, end))
+            summary = ("В архиве нет поиска для сравнения. " if russian else "No archived comparison run. ") + summary
+        yield label, summary
 
 
-def scale(metrics):
-    return "−1 to +1" if metrics.get("version") == VERSION else "−2 to +2" if metrics.get("version") == "source-credit-v6" else "−3 to +3"
+def scale(metrics, language="en"):
+    limit = {VERSION: 1, "source-credit-v6": 2}.get(metrics.get("version"), 3)
+    return f"от −{limit} до +{limit}" if language == "ru" else f"−{limit} to +{limit}"
 
 
-def rating_rows(report):
+def original_scale(metrics, language):
+    if metrics.get("version") == VERSION:
+        return ""
+    if language == "ru":
+        return " · исходная шкала " + scale(metrics, language)
+    return " · original scale " + scale(metrics)
+
+
+def rating_rows(report, language="en"):
     for label, week, metrics in report["ratings"]:
         if not metrics:
-            yield label, week, "—", "No snapshot", "—"
+            yield label, week, "—", "Нет сохранённой оценки" if language == "ru" else "No snapshot", "—"
             continue
         score = metrics["score"]
-        coverage = f"{metrics['search_count']} searches · {metrics['source_errors']} errors"
-        if metrics.get("version") != VERSION:
-            coverage += " · original scale " + scale(metrics)
-        yield label, week, score if score is not None else "—", coverage, metrics["event_count"]
+        coverage = (f"Поисков: {metrics['search_count']} · ошибок: {metrics['source_errors']}" if language == "ru"
+                    else f"{metrics['search_count']} searches · {metrics['source_errors']} errors")
+        yield label, week, score if score is not None else "—", coverage + original_scale(metrics, language), metrics["event_count"]
 
 
 def evidence_rows(report):
@@ -174,9 +214,14 @@ def strongest_contribution(metrics):
     return max(metrics.get("contributions") or [], key=lambda e: (abs(e["score"]), -e["score"]), default=None)
 
 
-def driver(report):
-    event = strongest_contribution(report["ratings"][0][2] or {})
+def driver(report, language="en"):
+    metrics = report["ratings"][0][2] or {}
+    event = strongest_contribution(metrics)
     if not event:
-        return "No eligible company event contributed to a recorded score for this week.", ""
-    scale_note = " · original scale " + scale(report["ratings"][0][2]) if report["ratings"][0][2].get("version") != VERSION else ""
+        return ("Нет событий компании, учтённых в оценке за эту неделю." if language == "ru"
+                else "No eligible company event contributed to a recorded score for this week."), ""
+    scale_note = original_scale(metrics, language)
+    if language == "ru":
+        from .i18n import ru
+        return f"Наибольший вклад ({event['score']:+d}{scale_note}): {ru(event['reason'])}", event["url"]
     return f"Strongest contribution ({event['score']:+d}{scale_note}): {event['reason']}", event["url"]

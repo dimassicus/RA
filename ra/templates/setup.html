@@ -1,15 +1,15 @@
 {% extends 'base.html' %}
-{% block title %}Setup · RA{% endblock %}
+{% block title %}{{ _('Setup · RA') }}{% endblock %}
 {% block content %}
-<p class="back"><a href="{{ url_for('dashboard') }}">← Back to watchlist</a></p>
-<h1>Setup</h1>
+<p class="back"><a href="{{ url_for('dashboard') }}">{{ _('← Back to watchlist') }}</a></p>
+<h1>{{ _('Setup') }}</h1>
 <div class="form-actions">
-  <a class="button secondary" href="{{ url_for('keyword_settings', factors=false) }}">Keywords</a>
-  <a class="button secondary" href="{{ url_for('keyword_settings', factors=true) }}">Risk factors</a>
+  <a class="button secondary" href="{{ url_for('keyword_settings', factors=false) }}">{{ _('Keywords') }}</a>
+  <a class="button secondary" href="{{ url_for('keyword_settings', factors=true) }}">{{ _('Risk factors') }}</a>
 </div>
 <section class="panel form-panel">
-  <h2>Search settings</h2>
-  <p>Saved settings apply across the app to new watchlist, individual company searches. They remain saved until you change them here.</p>
+  <h2>{{ _('Search settings') }}</h2>
+  <p>{{ _('Saved settings apply across the app to new watchlist, individual company searches. They remain saved until you change them here.') }}</p>
   <form method="post" action="{{ url_for('setup') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     {% for key, label, help in [
@@ -23,47 +23,47 @@
       <label class="search-switch">
         <input type="checkbox" role="switch" name="{{ key }}" value="on" aria-describedby="{{ key }}-help" {% if search_settings[key] %}checked{% endif %}>
         <span class="switch-track" aria-hidden="true"></span>
-        <span>{{ label }}</span>
+        <span>{{ _(label) }}</span>
         <span class="switch-state" aria-hidden="true"></span>
       </label>
       <input type="hidden" name="{{ key }}" value="off">
-      <p id="{{ key }}-help" class="subtext">{{ help }}</p>
+      <p id="{{ key }}-help" class="subtext">{{ _(help) }}</p>
     </div>
     {% endfor %}
-    <p>In-progress and saved runs keep their original settings. Previous results and analyst decisions remain available.</p>
-    <button class="button primary">Save search settings</button>
+    <p>{{ _('In-progress and saved runs keep their original settings. Previous results and analyst decisions remain available.') }}</p>
+    <button class="button primary">{{ _('Save search settings') }}</button>
   </form>
 </section>
 <section class="panel form-panel">
-  <h2>Local models</h2>
-  <p role="status">{{ reviewer.message }}</p>
-  <p>Start the LM Studio server on port 1234. Keep Gemma 31B and Qwen 27B downloaded. RA loads one at a time: Gemma translates when needed, Qwen reviews. Both use reasoning off. Loading and switching appear in the run’s live status.</p>
-  <a href="{{ url_for('setup') }}">Check readiness again</a>
+  <h2>{{ _('Local models') }}</h2>
+  <p role="status">{{ _(reviewer.message) }}</p>
+  <p>{{ _('Start the LM Studio server on port 1234. Keep Gemma 31B and Qwen 27B downloaded. RA loads one at a time: Gemma translates when needed, Qwen reviews. Both use reasoning off. Loading and switching appear in the run’s live status.') }}</p>
+  <a href="{{ url_for('setup') }}">{{ _('Check readiness again') }}</a>
 </section>
 <section class="panel list-panel">
-  <h2>Recover a process</h2>
-  <p>Headline translation retries use saved articles. Source retries also retry incomplete full-article translations and older language-limited checks, reusing saved source text while its cache is valid. Revisiting failed or inaccessible publishers may use API credits. Restarting a search creates a new run using the original company list.</p>
+  <h2>{{ _('Recover a process') }}</h2>
+  <p>{{ _('Headline translation retries use saved articles. Source retries also retry incomplete full-article translations and older language-limited checks, reusing saved source text while its cache is valid. Revisiting failed or inaccessible publishers may use API credits. Restarting a search creates a new run using the original company list.') }}</p>
   <div class="table-scroll"><table>
-    <thead><tr><th>Run</th><th>Progress</th><th>Recovery</th></tr></thead>
+    <thead><tr><th>{{ _('Run') }}</th><th>{{ _('Progress') }}</th><th>{{ _('Recovery') }}</th></tr></thead>
     <tbody>{% for run in runs %}{% set v = run.checks %}
       <tr>
-        <td><a href="{{ url_for('run_detail', run_id=run.id) }}">#{{ run.id }}</a> · {{ run.status }}<br>{{ run.created_at.strftime('%d %b %Y %H:%M %Z') }}</td>
-        <td>{{ v.reviewed }}/{{ v.translation_total }} translation reviews completed<br>{{ v.review_failed }} failed reviews · {{ v.missing }} missing translations<br>{{ v.completed + v.failed }}/{{ v.total }} source checks processed</td>
+        <td><a href="{{ url_for('run_detail', run_id=run.id) }}">#{{ run.id }}</a> · {{ _(run.status) }}<br>{{ run.created_at|localdate('%d %b %Y %H:%M %Z') }}</td>
+        <td>{{ v.reviewed }}/{{ v.translation_total }} {{ _('translation reviews completed') }}<br>{{ v.review_failed }} {{ _('failed reviews ·') }} {{ v.missing }} {{ _('missing translations') }}<br>{{ v.completed + v.failed }}/{{ v.total }} {{ _('source checks processed') }}</td>
         <td>
-          {% if run.status in ('queued','running') %}Search in progress
+          {% if run.status in ('queued','running') %}{{ _('Search in progress') }}
           {% else %}
           <form method="post" action="{{ url_for('retry_run_stage', run_id=run.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="form-actions">
-              <button class="button secondary" name="stage" value="translations" {% if v.reviewed == v.translation_total %}disabled{% endif %}>Retry translations</button>
-              <button class="button secondary" name="stage" value="sources" {% if not v.source_retryable %}disabled{% endif %}>Retry source checks ({{ v.source_retryable }})</button>
-              {% if run.status in ('failed','partial') %}<button class="button secondary" name="stage" value="search">Restart search as new run</button>{% endif %}
+              <button class="button secondary" name="stage" value="translations" {% if v.reviewed == v.translation_total %}disabled{% endif %}>{{ _('Retry translations') }}</button>
+              <button class="button secondary" name="stage" value="sources" {% if not v.source_retryable %}disabled{% endif %}>{{ _('Retry source checks (') }}{{ v.source_retryable }})</button>
+              {% if run.status in ('failed','partial') %}<button class="button secondary" name="stage" value="search">{{ _('Restart search as new run') }}</button>{% endif %}
             </div>
           </form>
           {% endif %}
         </td>
       </tr>
-    {% else %}<tr><td colspan="3">No searches yet.</td></tr>{% endfor %}</tbody>
+    {% else %}<tr><td colspan="3">{{ _('No searches yet.') }}</td></tr>{% endfor %}</tbody>
   </table></div>
 </section>
 {% endblock %}

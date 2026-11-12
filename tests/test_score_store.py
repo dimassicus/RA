@@ -431,12 +431,12 @@ def test_shared_news_only_changes_the_company_with_source_evidence(database):
                   "language": "en", "publisher": "Test", "source_kind": "context", "signal_terms": []},
                  "import costs and access to customers")]
     worker.process_run(run_id, searcher=lambda company: ([], []), topic_searcher=search)
-    assert calls == [("country", "brazil", ""), ("country", "brazil", "brazil"),
-                     ("sector", "fertilizer", ""), ("sector", "fertilizer", "brazil")]
+    assert calls == [(branch, topic, edition) for branch, topic in (("country", "brazil"), ("sector", "fertilizer"))
+                     for edition in ("", "brazil", "russia")]
     # A worker replay uses the saved topics, including their publication dates.
     database.execute("UPDATE search_runs SET status='queued' WHERE id=%s", (run_id,))
     worker.process_run(run_id, searcher=lambda company: ([], []), topic_searcher=search)
-    assert len(calls) == 4
+    assert len(calls) == 6
     leads = db.get_results(run_id)
     assert len(leads) == 2 and all(len(a["exposure_paths"]) == 2 for a in leads)
     assert all(not a["score_included"] and a["score"] == 0 for a in leads)

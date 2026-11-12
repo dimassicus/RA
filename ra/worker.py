@@ -14,7 +14,7 @@ import logging
 from . import local_models, db, governance_roster, search_settings, company_developments, monthly_backfill, rss_recovery
 from .article_content import canonical_url
 from .scoring import WEEK_TIMEZONE
-from . import exposure
+from . import bilingual, exposure
 from .aliases import provider_name
 from .search import feed_url, search_company
 from .governance_sources import notice_source
@@ -148,6 +148,7 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
             )
             count += inserted.rowcount
             if inserted.rowcount:
+                bilingual.enqueue_lead(conn, candidate, subject)
                 if queue_checks:
                     conn.execute("INSERT INTO verification_jobs(result_id) VALUES (%s)", (inserted.fetchone()['id'],))
                 saved.add(canonical_url(article["url"]))

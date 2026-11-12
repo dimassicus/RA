@@ -190,6 +190,8 @@ def languages():
     from .exposure import topic_editions
     codes = set()
     companies = db.list_companies(True)
+    if companies:
+        codes.add("ru")
     for company in companies:
         country = company["country_registration"]
         codes.update(country_languages(country))

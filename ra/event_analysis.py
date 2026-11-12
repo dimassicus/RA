@@ -455,6 +455,9 @@ def process(run_id):
                  max((r['published_at'] for r in members if r['published_at']), default=None))).fetchall()
         try:
             for drafts in draft_company(subject, members, prior, per_document=run["per_document_limit"]):
+                from .bilingual import enqueue_prose
+                with db.connect() as conn:
+                    enqueue_prose(conn, list(drafts.values()), subject)
                 with db.connect() as conn:
                     score_store._lock(conn)
                     for rid, draft in drafts.items():
