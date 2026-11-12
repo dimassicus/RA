@@ -17,6 +17,7 @@
   </details>
   {% endif %}
   {% set settings = run.search_settings or {} %}
+  {% if settings.processing_stopped_at %}<p><strong>{{ _('Run processing stopped by the operator.') }}</strong></p>{% endif %}
   {% if settings.discovery_provider %}<p>{{ _('Discovery provider ·') }} {{ settings.discovery_provider }}</p>{% endif %}
   <p>{{ _('Search settings: country') }} {{ _('on' if settings.get('include_country', true) else 'off') }} {{ _('· industry') }} {{ _('on' if settings.get('include_industry', true) else 'off') }} {{ _('· adverse focus') }} {{ _('on' if settings.get('adverse_only', false) else 'off') }}.</p>
 </section>
@@ -71,7 +72,7 @@
 </details></section>{% endif %}
 <section class="panel list-panel" id="ai-summary"><h2>{{ _('AI summary for search results') }}</h2>
 <p>{{ _('Oldest first across all companies. Events without a documented event date use their first publication date.') }} <a href="#summary-leads">{{ _('Review the leads used in this summary') }}</a>.</p>
-{% if run.error_count and run.status in ('partial', 'failed') %}
+{% if run.error_count and run.status in ('completed', 'partial', 'failed') %}
 <p><strong>{{ _('Incomplete search coverage.') }}</strong> {{ _('Some sources could not be checked. Events may be missing.') }}
 {% if errors %}<a href="#source-errors">{{ _('Source errors and recovery') }}</a>{% endif %}</p>
 {% endif %}
@@ -148,7 +149,7 @@
     <p>{{ _('Only selected, eligible evidence contributes to weekly scores. Excluded leads keep their data and preliminary scores.') }}</p>
   </div>{% endif %}
 </form>
-  <form method="post" action="{{ url_for('verify_run', run_id=run.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary" {% if run.status in ('running','queued') %}disabled{% endif %}>{{ _('Check next sources · up to 8 per company') }}</button><p class="subtext">{{ _('RA checks the publisher’s article for evidence of company impact. Qwen separately reviews headline translations. No action is needed while queued or running.') }}</p></form>
+  {% if not settings.processing_stopped_at %}<form method="post" action="{{ url_for('verify_run', run_id=run.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary" {% if run.status in ('running','queued') %}disabled{% endif %}>{{ _('Check next sources · up to 8 per company') }}</button><p class="subtext">{{ _('RA checks the publisher’s article for evidence of company impact. Qwen separately reviews headline translations. No action is needed while queued or running.') }}</p></form>{% endif %}
 <script src="{{ url_for('static', filename='lead-table.js') }}" defer></script>
 <p class="subtext">{{ _('Disclosure coverage is partial. Exchange filings, unlinked documents and restricted pages may be missing.') }}</p>
 {% if errors %}<section class="panel errors-panel" id="source-errors"><span class="step">{{ _('Source access') }}</span><h2>{{ _('Source errors and recovery') }}</h2><ul>{% for error in errors %}<li><strong>{{ error.subject_name }}:</strong> {{ _(error.message) }}</li>{% endfor %}</ul></section>{% endif %}

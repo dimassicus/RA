@@ -207,6 +207,8 @@ def enqueue_run(run_id, limit_per_company=8):
     run = db.get_run(run_id)
     if not run or run['status'] in ('running', 'queued'):
         raise ValueError('Wait for the search to finish')
+    if run['search_settings'].get('processing_stopped_at'):
+        raise ValueError('This run was closed by the operator.')
     rows = db.get_results(run_id)
     # Prefer accessible publisher sources, then strongest headline cues and recent dates.
     rows.sort(key=lambda a: (a.get('source_kind') == 'context', urlsplit(a['url']).hostname == 'news.google.com',

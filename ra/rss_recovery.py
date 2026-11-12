@@ -53,6 +53,8 @@ def import_legacy(run_id):
     run = db.get_run(run_id)
     if not run:
         raise ValueError("Unknown search run")
+    if run['search_settings'].get('processing_stopped_at'):
+        return 0
     with db.connect() as conn:
         errors = conn.execute("""SELECT id,subject_name,message FROM search_errors WHERE run_id=%s
             AND NOT rss_imported ORDER BY id FOR UPDATE""", (run_id,)).fetchall()
@@ -151,7 +153,7 @@ def save_context_hits(conn, run_id, context, hits):
 
 def append_leads(conn, run, subject, rows):
     from . import score_store, worker
-    if not rows:
+    if not rows or (run.get('search_settings') or {}).get('processing_stopped_at'):
         return 0
     key = subject_key(run['id'], subject)
     from .publisher_lookup import normalized, original_title
@@ -236,7 +238,8 @@ def collect_paid():
         return False
     with db.connect() as conn:
         job = conn.execute("""SELECT j.run_id,j.subject_key FROM rss_recovery j JOIN search_runs s ON s.id=j.run_id
-            WHERE s.status<>'queued' AND j.status<>'recovered' AND NOT EXISTS
+            WHERE s.status<>'queued' AND NOT (s.search_settings ? 'processing_stopped_at')
+            AND j.status<>'recovered' AND NOT EXISTS
             (SELECT FROM rss_brave_attempts b WHERE b.run_id=j.run_id AND b.subject_key=j.subject_key)
             ORDER BY j.id LIMIT 1""").fetchone()
     if not job or not db.remaining_news_api_requests({'brave': recovery_providers.daily_limit('Brave')})['brave']:
@@ -260,7 +263,7 @@ def _recover_one():
         return True
     with db.connect() as conn:
         paid = conn.execute("""SELECT b.* FROM rss_brave_attempts b JOIN search_runs s ON s.id=b.run_id
-            WHERE s.status NOT IN ('running','queued') AND b.staged IS NOT NULL
+            WHERE s.status NOT IN ('running','queued') AND NOT (s.search_settings ? 'processing_stopped_at') AND b.staged IS NOT NULL
             ORDER BY b.run_id,b.subject_key LIMIT 1 FOR UPDATE OF b SKIP LOCKED""").fetchone()
         if paid:
             run = db.get_run(paid['run_id'])
@@ -274,7 +277,7 @@ def _recover_one():
         if time.time() < rss_gate.google.until:
             return False
         job = conn.execute("""SELECT j.* FROM rss_recovery j JOIN search_runs s ON s.id=j.run_id
-            WHERE s.status NOT IN ('running','queued') AND j.status='pending' AND j.next_attempt<=now()
+            WHERE s.status NOT IN ('running','queued') AND NOT (s.search_settings ? 'processing_stopped_at') AND j.status='pending' AND j.next_attempt<=now()
             ORDER BY j.next_attempt,j.id LIMIT 1 FOR UPDATE OF j SKIP LOCKED""").fetchone()
         if not job:
             return False

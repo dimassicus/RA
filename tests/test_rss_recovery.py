@@ -182,3 +182,31 @@ def test_exhausted_feed_timeout_is_deferred_and_shares_outage_counter(monkeypatc
     assert gate.until > 0
     with pytest.raises(rss_gate.Deferred):
         gate.read(lambda _: pytest.fail('unexpected request'), 'fourth', 'issuer')
+
+
+def test_closed_history_cannot_requeue_work_but_new_runs_can(database, monkeypatch):
+    from ra import score_store, translation, verification_store
+    from ra.app import create_app
+    company, rid, article = seed(database)
+    database.execute("UPDATE search_runs SET search_settings=search_settings || %s,event_analysis_status='complete' WHERE id=%s",
+                     (db.Jsonb({'processing_stopped_at': '2026-11-12T18:00:00+03:00'}), rid))
+    database.execute("UPDATE search_results SET language='ru' WHERE id=%s", (article['id'],))
+    run = db.get_run(rid)
+    rss_recovery.record(database, rid, str(company['id']), 'original search', 'Brazil', rss_recovery.bounds(run))
+    monkeypatch.setattr(rss_recovery.recovery_providers, 'configured', lambda _: True)
+    assert not rss_recovery.recover_one()
+    assert '1 stopped by operator' in db.get_errors(rid)[0]['message']
+    monkeypatch.setattr(db, 'init_schema', lambda: None)
+    assert translation.backfill() == (0, 0)
+    with pytest.raises(ValueError, match='closed'):
+        verification_store.enqueue_run(rid)
+    score_store.review_score(article['id'], -1, True, 'Analyst review after closure')
+    assert db.get_run(rid)['event_analysis_status'] == 'complete'
+    client = create_app().test_client()
+    with client.session_transaction() as session:
+        session['csrf_token'] = 'test'
+    for stage in ('translations', 'sources', 'search'):
+        assert client.post(f'/setup/runs/{rid}/retry', data={'csrf_token':'test', 'stage':stage}).status_code == 409
+    assert 'Run processing stopped by the operator.' in client.get(f'/runs/{rid}').text
+    newer = db.create_run('selected', [db.company_snapshot(company)])
+    assert db.get_run(newer)['status'] == 'queued' and 'processing_stopped_at' not in db.get_run(newer)['search_settings']

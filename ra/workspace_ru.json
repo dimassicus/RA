@@ -77,6 +77,7 @@
   "Name + country required": "Обязательные поля: название и страна",
   "Review the company’s identity before saving it. Once active, it is available for individual searches.": "Проверьте реквизиты компании перед сохранением. После добавления по ней можно будет запустить отдельный поиск.",
   "Research for review & addition": "Проверить перед добавлением",
+  "Run processing stopped by the operator.": "Обработка поиска остановлена оператором.",
   "Incomplete search coverage.": "Поиск выполнен с неполным охватом источников.",
   "Some sources could not be checked. Events may be missing.": "Часть источников проверить не удалось. Некоторые события могли не попасть в результаты.",
   "Enforcement leads awaiting a company identity check ({0})": "Сообщения о расследованиях и задержаниях, в которых нужно проверить связь с компанией ({0})",

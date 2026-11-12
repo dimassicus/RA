@@ -224,6 +224,8 @@ def create_app() -> Flask:
             abort(404)
         if run["status"] in ("queued", "running"):
             abort(409, "Wait for the search to finish.")
+        if run["search_settings"].get("processing_stopped_at"):
+            abort(409, "This run was closed by the operator.")
         stage = request.form.get("stage")
         if stage == "translations":
             count = headline_review.request_retry(run_id)

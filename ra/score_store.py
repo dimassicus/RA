@@ -239,8 +239,10 @@ def _review(conn, article, score, included, reason):
     _audit(conn, article, assessment, reason)
     _write(conn, article["id"], assessment)
     if included and score <= 0 and not (article.get("event_draft") or {}).get("event"):
-        conn.execute("UPDATE search_results SET event_draft='{}' WHERE id=%s", (article["id"],))
-        conn.execute("UPDATE search_runs SET event_analysis_status='pending' WHERE id=%s", (article["run_id"],))
+        active = conn.execute("UPDATE search_runs SET event_analysis_status='pending' WHERE id=%s "
+                              "AND NOT (search_settings ? 'processing_stopped_at')", (article["run_id"],))
+        if active.rowcount:
+            conn.execute("UPDATE search_results SET event_draft='{}' WHERE id=%s", (article["id"],))
 
 
 def review_score(result_id, score: int, included: bool, reason: str):

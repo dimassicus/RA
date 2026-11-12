@@ -400,7 +400,8 @@ def list_runs(limit: int = 12):
     with connect() as conn:
         return conn.execute(
             "SELECT id, scope, status, total_companies, completed_companies, "
-            "result_count, error_count, created_at, event_analysis_status FROM search_runs "
+            "result_count, error_count, created_at, event_analysis_status, "
+            "search_settings ? 'processing_stopped_at' AS processing_stopped FROM search_runs "
             "ORDER BY id DESC LIMIT %s", (limit,)
         ).fetchall()
 
@@ -546,16 +547,18 @@ def get_errors(run_id: int):
             from . import recovery_providers
             waiting_for_budget = recovery_providers.configured('Brave') and not remaining_news_api_requests(
                 {'brave': recovery_providers.daily_limit('Brave')})['brave']
-            run = conn.execute("SELECT subjects FROM search_runs WHERE id=%s",(run_id,)).fetchone()
+            run = conn.execute("SELECT subjects, search_settings FROM search_runs WHERE id=%s",(run_id,)).fetchone()
             names = {str(s.get("id") or f"one-off:{run_id}"): s["name"] for s in run["subjects"]}
+            closed = bool(run['search_settings'].get('processing_stopped_at'))
             for gap in gaps:
+                state = "stopped by operator" if closed else "awaiting retry"
                 message = (f"Google News RSS · {gap['total']} deferred searches, {gap['recovered']} recovered, "
-                           f"{gap['total']-gap['recovered']-gap['uncertain']} awaiting retry.")
+                           f"{gap['total']-gap['recovered']-gap['uncertain']} {state}.")
                 if gap['uncertain']:
                     message += f" Original edition could not be confirmed for {gap['uncertain']} legacy searches."
                 if gap['brave']:
                     message += f" Brave Search: {gap['brave']}."
-                elif waiting_for_budget and gap['recovered'] < gap['total']:
+                elif not closed and waiting_for_budget and gap['recovered'] < gap['total']:
                     message += " Brave Search is waiting for daily quota."
                 errors.append(dict(subject_name=names[gap['subject_key']], message=message, created_at=gap['first_seen'],
                                    resolved=gap['recovered'] == gap['total']))

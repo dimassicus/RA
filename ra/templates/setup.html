@@ -58,7 +58,8 @@
         <td><a href="{{ url_for('run_detail', run_id=run.id) }}">#{{ run.id }}</a> · {{ _(run.status) }}<br>{{ run.created_at|localdate('%d %b %Y %H:%M %Z') }}</td>
         <td>{{ v.reviewed }}/{{ v.translation_total }} {{ _('translation reviews completed') }}<br>{{ v.review_failed }} {{ _('failed reviews ·') }} {{ v.missing }} {{ _('missing translations') }}<br>{{ v.completed + v.failed }}/{{ v.total }} {{ _('source checks processed') }}</td>
         <td>
-          {% if run.status in ('queued','running') %}{{ _('Search in progress') }}
+          {% if run.processing_stopped %}{{ _('Run processing stopped by the operator.') }}
+          {% elif run.status in ('queued','running') %}{{ _('Search in progress') }}
           {% else %}
           <form method="post" action="{{ url_for('retry_run_stage', run_id=run.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

@@ -146,8 +146,9 @@ def backfill(force: bool = False, run_id: int | None = None) -> tuple[int, int]:
     with db.connect() as conn:
         rows = conn.execute(
             "SELECT r.id,title,publisher,language,subject_name,company_id,s.subjects FROM search_results r JOIN search_runs s ON s.id=r.run_id "
-            "WHERE (%s::bigint IS NULL OR run_id=%s) AND (title_en = '' OR (%s AND translation_provider = 'Argos offline model')) ORDER BY r.id",
-            (run_id, run_id, force),
+            "WHERE (%s::bigint IS NOT NULL OR NOT (s.search_settings ? 'processing_stopped_at')) "
+            "AND (%s::bigint IS NULL OR run_id=%s) AND (title_en = '' OR (%s AND translation_provider = 'Argos offline model')) ORDER BY r.id",
+            (run_id, run_id, run_id, force),
         ).fetchall()
     from . import local_models
     def translate(row):
