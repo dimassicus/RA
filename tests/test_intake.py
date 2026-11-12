@@ -1,5 +1,6 @@
 from pathlib import Path
 from io import BytesIO
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -117,6 +118,34 @@ def test_name_only_registry_hit_does_not_fill(monkeypatch):
     assert not findings["identity_evidence"]
 
 
+@pytest.mark.parametrize("found_name,jurisdiction,bin_value,verified", [
+    ("Қазақстан темір жолы", "KZ", "020540003431", True),
+    ("Example Mining", "KZ", "020540003431", False),
+    ("Қазақстан темір жолы", "KZ", "20540003431", False),
+    ("Қазақстан темір жолы", "US", "020540003431", False),
+])
+def test_gleif_intake_searches_bin_and_checks_alias_and_country(
+        monkeypatch, found_name, jurisdiction, bin_value, verified):
+    monkeypatch.setattr(db, "list_companies", lambda active=None: [])
+    data = dict(name="Kazakhstan Railways", short_name="KTZ", aliases="Қазақстан темір жолы",
+                country_registration="Kazakhstan", registration_number="020540003431", tax_id="020540003431")
+    queries = []
+    def lookup(url):
+        params = parse_qs(urlsplit(url).query)
+        queries.append(params)
+        return {"data": [{"id": "213800X9NVS4IWFKLS77", "attributes": {"entity": {
+            "legalName": {"name": found_name}, "jurisdiction": jurisdiction, "registeredAs": bin_value}}}]}
+    _, findings, _ = preliminary.research_company(data, lookup, lambda url: b"<rss/>")
+    assert queries[0]["filter[entity.registeredAs]"] == [data["tax_id"]]
+    assert all(q["filter[entity.jurisdiction]"] == ["KZ"] for q in queries)
+    assert bool(findings["identity_evidence"]) == verified
+    assert len(findings["matches"]) <= 1
+    if verified:
+        assert len(queries) == 1
+    else:
+        assert any(q.get("filter[fulltext]") == [data["aliases"]] for q in queries)
+
+
 def test_add_route_stages_before_saving(monkeypatch):
     saved = []
     staged = []
@@ -136,6 +165,20 @@ def test_add_route_stages_before_saving(monkeypatch):
         assert not saved
         assert staged[0]["registration_number"] == "REG-12345"
         assert staged[0]["tax_id"] == "987654321"
+
+
+def test_intake_first_visit_uses_templates_from_server_start(monkeypatch):
+    app = create_app()
+    monkeypatch.setattr(db, "get_intake", lambda intake_id: {
+        "id": intake_id, "status": "ready", "source": "manual", "matched_company_id": None,
+        "draft_data": {"name": "Example", "country_registration": "Greece"}, "findings": {},
+    })
+    # A checkout update introduces a helper the running Python process doesn't have.
+    monkeypatch.setattr(app.jinja_loader, "get_source",
+                        lambda env, name: ("{{ next_release_helper() }}", name, lambda: True))
+    response = app.test_client().get("/intake/21")
+    assert response.status_code == 200
+    assert b"Review Example" in response.data
 
 
 def test_new_country_news_locales():

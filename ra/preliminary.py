@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from . import db, search, search_settings
+from .aliases import parse_aliases
 
 
 COUNTRY_CODES = {
@@ -19,6 +20,7 @@ COUNTRY_CODES = {
 }
 
 MANUAL_REGISTRIES = {
+    "KZ": ("Kazakhstan public procurement participant register", "https://goszakup.gov.kz/ru/registry/supplierreg"),
     "BR": ("Receita Federal CNPJ", "https://www.gov.br/pt-br/servicos/consultar-cadastro-nacional-de-pessoas-juridicas"),
     "EG": ("ITDA Commercial Registry", "https://www.itda.gov.eg/en/registry-inquiry-en.html"),
     "GR": ("GEMI public search", "https://publicity.businessportal.gr/"),
@@ -87,6 +89,26 @@ def address_text(address: dict) -> str:
                                             address.get("postalCode"), address.get("country")] if part)
 
 
+def gleif_records(data, country, ids, names, fetch):
+    # Search the ID as entered first: punctuation and leading zeroes can be significant.
+    identifiers = [data.get("registration_number"), data.get("tax_id"), *sorted(ids)]
+    queries = [("entity.registeredAs", value) for value in identifiers if value]
+    queries.extend(("fulltext", name[:100]) for name in names)
+    seen = set()
+    for field, value in dict.fromkeys(queries):
+        params = {f"filter[{field}]": value, "page[size]": "10"}
+        if country:
+            params["filter[entity.jurisdiction]"] = country
+        url = "https://api.gleif.org/api/v1/lei-records?" + urlencode(params)
+        for row in fetch(url).get("data", [])[:10]:
+            lei = row.get("id")
+            entity = row.get("attributes", {}).get("entity", {})
+            if not lei or lei in seen or (country and entity.get("jurisdiction") != country):
+                continue
+            seen.add(lei)
+            yield lei, entity
+
+
 def research_company(data: dict, json_fetcher=fetch_json, feed_fetcher=search.fetch_feed) -> tuple[dict, dict, str]:
     """Suggest only fields from name+identifier+country matches; keep weak leads separate."""
     proposed = dict(data)
@@ -95,7 +117,7 @@ def research_company(data: dict, json_fetcher=fetch_json, feed_fetcher=search.fe
     country = country_code(data["country_registration"])
     ids = (db.identifier_tokens(data.get("registration_number", ""), data["country_registration"]) |
            db.identifier_tokens(data.get("tax_id", ""), data["country_registration"]))
-    names = [name for name in (data["name"], data.get("short_name", "")) if name]
+    names = [name for name in (data["name"], data.get("short_name"), *parse_aliases(data.get("aliases"))) if name]
     cnpjs = brazil_cnpjs(" ".join((data.get("registration_number", ""), data.get("tax_id", ""))))[:2] if country == "BR" else []
 
     def add_match(source: str, url: str, legal_name: str, identifier: str, source_country: str,
@@ -103,7 +125,7 @@ def research_company(data: dict, json_fetcher=fetch_json, feed_fetcher=search.fe
         score = max((name_score(name, candidate) for name in names
                      for candidate in [legal_name, *extra_names]), default=0)
         same_country = bool(country and source_country == country)
-        same_id = any(id_equal(item, identifier) for item in ids)
+        same_id = identifier in ids if country == "KZ" else any(id_equal(item, identifier) for item in ids)
         verified = same_country and same_id and score >= 0.68
         verdict = "Name, country and identifier match" if verified else (
             "Identifier and country match; name differs—check spelling or entity" if same_country and same_id else
@@ -125,6 +147,8 @@ def research_company(data: dict, json_fetcher=fetch_json, feed_fetcher=search.fe
                     findings["filled"][field] = source
                 elif field in ("name", "legal_address") and name_score(proposed[field], value) < 0.65:
                     findings["conflicts"].append(f"{field.replace('_', ' ').title()} differs from {source}: {value}")
+
+        return verified
 
     if country == "BR":
         for cnpj in cnpjs:
@@ -151,25 +175,19 @@ def research_company(data: dict, json_fetcher=fetch_json, feed_fetcher=search.fe
             except Exception as exc:
                 findings["errors"].append(f"BrasilAPI {cnpj}: {type(exc).__name__}: {exc}")
 
-    query = (data.get("short_name") or data["name"]).strip()[:100]
-    gleif_url = "https://api.gleif.org/api/v1/lei-records?" + urlencode(
-        {"filter[fulltext]": query, "page[size]": "10"})
     try:
-        records = json_fetcher(gleif_url).get("data", [])
-        for item in records[:10]:
-            entity = item.get("attributes", {}).get("entity", {})
-            if country and entity.get("jurisdiction") != country:
-                continue
+        for lei, entity in gleif_records(data, country, ids, names, json_fetcher):
             legal = (entity.get("legalName") or {}).get("name") or ""
             alternate = [v.get("name", "") for v in (entity.get("transliteratedOtherNames") or []) +
                          (entity.get("otherNames") or [])]
             score = max((name_score(n, candidate) for n in names for candidate in [legal, *alternate]), default=0)
-            if score < 0.55:
+            identifier = entity.get("registeredAs") or ""
+            if score < 0.55 and identifier not in ids:
                 continue
-            lei = item.get("id") or item.get("attributes", {}).get("lei", "")
-            add_match("GLEIF LEI", f"https://api.gleif.org/api/v1/lei-records/{lei}", legal,
-                      entity.get("registeredAs") or "", entity.get("jurisdiction") or "", alternate,
-                      {"legal_address": address_text(entity.get("legalAddress") or {})})
+            if add_match("GLEIF LEI", f"https://api.gleif.org/api/v1/lei-records/{lei}", legal,
+                         identifier, entity.get("jurisdiction") or "", alternate,
+                         {"legal_address": address_text(entity.get("legalAddress") or {})}):
+                break
     except Exception as exc:
         findings["errors"].append(f"GLEIF: {type(exc).__name__}: {exc}")
 

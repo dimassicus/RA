@@ -45,16 +45,6 @@
   </section>
 </div>
 
-<section class="panel form-panel" id="new-company">
-  <div class="section-heading"><div><span class="step">{{ _('03 · New company') }}</span><h2>{{ _('Add a company to the watchlist') }}</h2></div><span class="pill">{{ _('Name + country required') }}</span></div>
-  <p>{{ _('Review the company’s identity before saving it. Once active, it is available for individual searches.') }}</p>
-  <form method="post" action="{{ url_for('add_company') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    {% set company = none %}{% include '_company_fields.html' %}
-    <div class="form-actions"><button class="button primary" type="submit">{{ _('Research for review & addition') }}</button></div>
-  </form>
-</section>
-
 <section class="panel list-panel" id="intake">
   <div class="section-heading"><div><span class="step">{{ _('Identity review') }}</span><h2>{{ _('Pending company drafts') }}</h2></div><span class="pill">{{ intake|length }} {{ _('awaiting review') }}</span></div>
   <p>{{ _('Workbook and manual entries are searched in public identity sources. They enter the watchlist only after you confirm or edit them.') }}</p>
@@ -81,7 +71,7 @@
       <td class="row-actions"><a href="{{ url_for('edit_company', company_id=company.id) }}">{{ _('Edit') }}</a><form method="post" action="{{ url_for('remove_company', company_id=company.id) }}" onsubmit='return confirm({{ _("Remove this company from the active watchlist? Search history will be kept.")|tojson }});'><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="link-button danger">{{ _('Remove') }}</button></form></td>
     </tr>{% endfor %}
   </tbody></table></div>
-  {% else %}<p class="empty">{{ _('No active companies yet. Add one above or import the workbook below.') }}</p>{% endif %}
+  {% else %}<p class="empty">{{ _('No active companies yet.') }}</p>{% endif %}
   <details class="import-box"><summary>{{ _('Stage the Excel workbook') }}</summary><p>{{ _('Use the saved') }} <code>companies.xlsx</code> {{ _('or upload a newer .xlsx file. New files should have separate Registration number and Tax ID columns. Older combined columns remain supported. Each changed row is staged for research and your review; existing records are kept until you confirm an update.') }}</p><form method="post" action="{{ url_for('import_companies') }}" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="file" name="workbook" accept=".xlsx"><button class="button secondary">{{ _('Stage workbook for review') }}</button></form></details>
   {% if archived %}<details class="archive-box"><summary>{{ _('Removed companies') }}: {{ archived|length }}</summary><div class="archived-list">{% for company in archived|alphabetical_companies %}<div><span>{{ company|company_label }} · {{ _(company.country_registration) }}</span><form method="post" action="{{ url_for('restore_company', company_id=company.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="link-button">{{ _('Restore') }}</button></form></div>{% endfor %}</div></details>{% endif %}
 </section>

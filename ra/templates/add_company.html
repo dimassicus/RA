@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}{{ _('Add company') }} · RA{% endblock %}
+{% block content %}
+<section class="panel form-panel">
+  <div class="section-heading"><h1>{{ _('Add a company to the watchlist') }}</h1><span class="pill">{{ _('Name + country required') }}</span></div>
+  <p>{{ _('Review the company’s identity before saving it. Once active, it is available for individual searches.') }}</p>
+  <form method="post" action="{{ url_for('add_company') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% include '_company_fields.html' %}
+    <div class="form-actions"><button class="button primary" type="submit">{{ _('Research for review & addition') }}</button></div>
+  </form>
+</section>
+{% endblock %}

@@ -10,7 +10,7 @@
 <body>
   <header class="site-header">
     <a href="{{ url_for('dashboard') }}" class="brand" aria-label="{{ _('RA home') }}"><span class="brand-mark">RA</span><span>{{ _('Credit Monitor') }}</span></a>
-    <nav aria-label="{{ _('Main navigation') }}"><a href="{{ url_for('setup') }}">{{ _('Setup') }}</a> · <a href="{{ url_for('scores') }}">{{ _('Weekly scores') }}</a></nav>
+    <nav aria-label="{{ _('Main navigation') }}"><a href="{{ url_for('new_company') }}">{{ _('Add company') }}</a> · <a href="{{ url_for('setup') }}">{{ _('Setup') }}</a> · <a href="{{ url_for('scores') }}">{{ _('Weekly scores') }}</a></nav>
     <form class="language-toggle" method="post" action="{{ url_for('choose_language') }}" aria-label="English / Русский">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">

@@ -346,6 +346,10 @@ def create_app() -> Flask:
             flash(str(exc), "error")
         return redirect(url_for("run_detail", run_id=run_id, view="review"))
 
+    @app.get("/companies/new")
+    def new_company():
+        return render_template("add_company.html", company=None)
+
     @app.post("/companies")
     def add_company():
         try:
@@ -362,6 +366,7 @@ def create_app() -> Flask:
             flash("This exact draft has already been submitted. Review it in the intake queue.", "warning")
         except (ValueError, UniqueViolation) as exc:
             flash(str(exc), "error")
+            return render_template("add_company.html", company=request.form), 400
         return redirect(url_for("dashboard"))
 
     @app.get("/companies/<int:company_id>/edit")
@@ -718,6 +723,10 @@ def create_app() -> Flask:
         intake_worker.enqueue(intake_id)
         return redirect(url_for("review_intake", intake_id=intake_id))
 
+    # Keep templates paired with this process's Python code across checkout updates.
+    if not app.jinja_env.auto_reload:
+        for template in app.jinja_env.list_templates():
+            app.jinja_env.get_template(template)
     return app
 
 
