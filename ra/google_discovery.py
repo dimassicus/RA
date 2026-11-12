@@ -107,7 +107,7 @@ def lookup(subject, bounds, query):
     return list(cited_rows(data, subject, bounds, query))
 
 
-def searches(articles, coverage, bounds, primary, provider_gaps):
+def searches(articles, coverage, bounds, primary, provider_gaps, adverse_focus=False):
     start, end = bounds
     dated = [(r, news_apis._published(r['published_at']) if isinstance(r.get('published_at'), str)
               else r.get('published_at')) for r in articles]
@@ -148,15 +148,21 @@ def searches(articles, coverage, bounds, primary, provider_gaps):
                 c.get('status') in ('Unavailable','Incomplete','No confirmed dated index','Source discovery pending')
                 or c.get('detail') for c in coverage):
             yield (cursor,stop), 'Locate filings missing from the accessible issuer archive, especially exchange inquiries and material notices', []
+        elif adverse_focus and not any(re.search(r'volatili|unusual trading|exchange inquir|unusual market activity',
+                r.get('title', '') + ' ' + (r.get('summary') or ''), re.I) for r in in_period):
+            yield (cursor, stop), 'Check issuer and exchange archives for unusual trading inquiries and issuer responses', []
         cursor = boundary
 
 
-def collect(subject, span, articles, coverage, *, primary, provider_gaps, progress=None):
+def collect(subject, span, articles, coverage, *, primary, provider_gaps, progress=None, adverse_focus=False):
     if not recovery_providers.configured('Google'):
         return [], ['Google API key unavailable']
     now = datetime.now(timezone.utc)
     found, gaps = {}, []
-    for bounds, query, notices in searches(articles, coverage, span or (now-timedelta(days=7), now), primary, provider_gaps):
+    for bounds, query, notices in searches(articles, coverage, span or (now-timedelta(days=7), now), primary, provider_gaps, adverse_focus):
+        if adverse_focus:
+            query += ('. Prioritise adverse events and material neutral filings, including falling profit despite revenue growth, '
+                      'liquidity pressure, continuing court restrictions, volatility inquiries and audit committee changes. Cite original filings.')
         if progress:
             progress('Searching Google Gemini · ' + query)
         try:

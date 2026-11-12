@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 from psycopg.types.json import Jsonb
 
-from . import article_translation, company_developments, db, risk_factors, score_store, search_settings
+from . import local_models, article_translation, company_developments, db, risk_factors, score_store, search_settings
 from .article_content import READER_VERSION, canonical_url, retrieve, validate_pdf_text
 from .language import detect_language
 from .verification import verify
@@ -23,6 +23,28 @@ _start_lock = threading.Lock()
 
 
 def verify_article(result_id, fetcher=retrieve, source_url=None):
+    with local_models.batch(f"article {result_id}"):
+        flow = _verification(result_id, fetcher, source_url)
+        doc, subject = next(flow)
+        if doc.get('linked_documents'):
+            sources = [doc, *doc['linked_documents']]
+            parent, *children = local_models.run_phases(
+                (article_translation.prepare_steps(source, subject) for source in sources), f"article {result_id}")
+            prepared = dict(parent, linked_documents=children)
+        else:
+            prepared = article_translation.prepare(doc, subject)
+        return _finish(flow, prepared)
+
+
+def _finish(flow, prepared):
+    try:
+        flow.send(prepared)
+    except StopIteration as done:
+        return done.value
+    raise RuntimeError("Unexpected additional verification stage")
+
+
+def _verification(result_id, fetcher, source_url):
     started = stage_started = time.perf_counter()
     stage, seconds = "retrieval_cache", {}
     cache_hit, completed = False, False
@@ -99,10 +121,7 @@ def verify_article(result_id, fetcher=retrieve, source_url=None):
                 saved = previous.get(doc.get('final_url'), {})
                 if saved.get('translation') and saved.get('body') == doc.get('body') and saved.get('language') == doc.get('language'):
                     doc['translation'] = saved['translation']
-        prepared = article_translation.prepare(document, subject)
-        if document.get('linked_documents'):
-            prepared = {**prepared, 'linked_documents': [article_translation.prepare(child, subject)
-                                                         for child in document['linked_documents']]}
+        prepared = yield document, subject
         if not bounded and prepared != document:
             with db.connect() as conn:
                 conn.execute('UPDATE article_documents SET document=%s WHERE url=%s AND document=%s',
@@ -201,6 +220,7 @@ def job_summary(run_id):
     with db.connect() as conn:
         counts = conn.execute("""
             SELECT count(*) AS total,
+              count(DISTINCT (r.subject_key, r.event_draft->>'event')) FILTER (WHERE r.event_draft ? 'event') AS event_briefs,
               max(GREATEST(r.score_updated_at,
                   CASE WHEN j.status IN ('completed','failed') THEN j.updated_at END))::text AS revision,
               count(*) FILTER (WHERE j.status='queued') AS queued,
@@ -214,21 +234,21 @@ def job_summary(run_id):
                                 OR r.verification->'translation'->>'status' IN ('needs_review','unavailable')
                                 OR r.verification->>'reason'='Full-article language is not supported by attribution rules; analyst reading required')
                                 AND COALESCE(j.status,'') NOT IN ('queued','running')) AS source_retryable,
-              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en' AND r.title_en='') AS missing,
-              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en' AND r.title_en<>'') AS translations,
-              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en' AND r.title_en<>''
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1)) NOT IN ('en','zxx') AND r.title_en='') AS missing,
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1)) NOT IN ('en','zxx') AND r.title_en<>'') AS translations,
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1)) NOT IN ('en','zxx') AND r.title_en<>''
                                 AND r.headline_review->>'status' IN ('faithful','material_error','uncertain')) AS reviewed,
-              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en'
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1)) NOT IN ('en','zxx')
                                 AND r.headline_review->>'status' IN ('unavailable','inconclusive')) AS review_failed,
-              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en'
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1)) NOT IN ('en','zxx')
                                 AND (r.title_en='' OR COALESCE(r.headline_review->>'status','pending')
                                      IN ('pending','unavailable','inconclusive'))
                                 AND COALESCE((r.headline_review->>'retry_count')::integer,0)<3) AS review_pending,
-              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en'
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1)) NOT IN ('en','zxx')
                                 AND (r.title_en='' OR COALESCE(r.headline_review->>'status','pending')
                                      IN ('pending','unavailable','inconclusive'))
                                 AND COALESCE((r.headline_review->>'retry_count')::integer,0)>=3) AS review_exhausted,
-              count(*) FILTER (WHERE lower(split_part(r.language,'-',1))<>'en'
+              count(*) FILTER (WHERE lower(split_part(r.language,'-',1)) NOT IN ('en','zxx')
                                 AND r.headline_review->>'status' IN ('material_error','uncertain')) AS review_attention
             FROM search_results r LEFT JOIN verification_jobs j ON j.result_id=r.id
             WHERE r.run_id=%s""", (run_id,)).fetchone()
@@ -330,26 +350,94 @@ def start():
         _thread.start()
 
 
+def process_jobs(run_id):
+    """Take a single queue snapshot. Late discoveries remain queued for the next pass."""
+    from . import headline_review
+    with local_models.batch(f"run {run_id}"):
+        with db.connect() as conn:
+            jobs = conn.execute("""UPDATE verification_jobs j SET status='running',updated_at=now()
+                FROM search_results r WHERE j.result_id=r.id AND r.run_id=%s AND j.status='queued'
+                RETURNING j.result_id,j.source_url,j.translation_checkpoint""", (run_id,)).fetchall()
+        if not jobs:
+            return
+        flows, documents, failed = {}, {}, set()
+
+        def prepare_source(key, index, doc, subject, saved):
+            def checkpoint(value):
+                with db.connect() as conn:
+                    conn.execute("""UPDATE verification_jobs SET translation_checkpoint=translation_checkpoint || %s
+                        WHERE result_id=%s AND status='running'""", (Jsonb({str(index): value}), key))
+            try:
+                if saved and saved.get('source_hash') == article_translation.fingerprint(doc.get('body') or ''):
+                    doc = dict(doc, translation=saved)
+                documents[key][index] = yield from article_translation.prepare_steps(doc, subject, checkpoint=checkpoint)
+            except Exception:
+                logger.exception("Source preparation failed for lead %s", key)
+                failed.add(key)
+
+        def headline_checks():
+            yield local_models.QWEN
+            headline_review.review_saved(run_id)
+
+        def tasks():
+            yield headline_checks()
+            for job in jobs:
+                key = job['result_id']
+                try:
+                    flow = _verification(key, retrieve, job['source_url'])
+                    parent, subject = next(flow)
+                    flows[key] = flow
+                    sources = [parent, *parent.get('linked_documents', [])]
+                    documents[key] = list(sources)
+                    for index, source in enumerate(sources):
+                        yield prepare_source(key, index, source, subject, job['translation_checkpoint'].get(str(index)))
+                except Exception:
+                    logger.exception("Source retrieval failed for lead %s", key)
+                    failed.add(key)
+
+        try:
+            local_models.run_phases(tasks(), f"run {run_id}")
+            for job in jobs:
+                key = job['result_id']
+                if key not in failed:
+                    try:
+                        parent, *children = documents[key]
+                        _finish(flows[key], dict(parent, linked_documents=children) if children else parent)
+                    except Exception:
+                        logger.exception("Source verification failed for lead %s", key)
+                        failed.add(key)
+                status = 'failed' if key in failed else 'completed'
+                error = 'Verification could not finish; retry after checking the source' if key in failed else ''
+                with db.connect() as conn:
+                    conn.execute("UPDATE verification_jobs SET status=%s,error=%s,translation_checkpoint='{}',updated_at=now() WHERE result_id=%s",
+                                 (status,error,key))
+        finally:
+            for flow in flows.values():
+                flow.close()
+            with db.connect() as conn:
+                conn.execute("UPDATE verification_jobs SET status='queued' WHERE result_id=ANY(%s) AND status='running'",
+                             ([job['result_id'] for job in jobs],))
+
+
+def next_run():
+    with db.connect() as conn:
+        row = conn.execute("""SELECT r.run_id FROM verification_jobs j JOIN search_results r ON r.id=j.result_id
+            JOIN search_runs s ON s.id=r.run_id WHERE j.status='queued' AND s.status IN ('completed','partial')
+            ORDER BY j.updated_at,j.result_id LIMIT 1""").fetchone()
+    return row['run_id'] if row else None
+
+
 def _loop():
     while True:
         try:
-            with db.connect() as conn:
-                job = conn.execute("SELECT * FROM verification_jobs WHERE status='queued' ORDER BY updated_at,result_id "
-                                   "LIMIT 1 FOR UPDATE SKIP LOCKED").fetchone()
-                if job:
-                    conn.execute("UPDATE verification_jobs SET status='running',updated_at=now() WHERE result_id=%s", (job['result_id'],))
-            if not job:
-                _wake.wait(5)
-                _wake.clear()
+            run_id = next_run()
+            if run_id is not None:
+                from . import event_analysis
+                with local_models.batch(f"run {run_id}"):
+                    process_jobs(run_id)
+                    event_analysis.finish_pending(run_id)
                 continue
-            try:
-                verify_article(job['result_id'], source_url=job['source_url'])
-                status, error = 'completed', ''
-            except Exception:
-                status, error = 'failed', 'Verification could not finish; retry after checking the source'
-            with db.connect() as conn:
-                conn.execute('UPDATE verification_jobs SET status=%s,error=%s,updated_at=now() WHERE result_id=%s',
-                             (status, error, job['result_id']))
         except Exception:
-            _wake.wait(5)
-            _wake.clear()
+            logger.exception("Could not process queued source verification")
+        _wake.wait(5)
+        _wake.clear()

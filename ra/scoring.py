@@ -76,6 +76,10 @@ def input_hash(article: dict, subject: dict, now: datetime | None = None) -> str
     if quote := (article.get("event_draft") or {}).get("profit_decline_quote"):
         values["profit_decline_quote"] = quote
     values["draft_sentiment"] = (article.get("event_draft") or {}).get("sentiment")
+    draft = article.get("event_draft") or {}
+    if article.get("report_selected") and draft.get("event") and draft.get("sentiment") in (-1, 0) and not draft.get("excluded"):
+        values["selected_event"] = True
+        values["exposure_paths"] = article.get("exposure_paths") or []
     values["subject"] = subject
     published = article.get("published_at")
     if published and published.tzinfo is None:
@@ -140,12 +144,19 @@ def score_article(article: dict, subject: dict, now: datetime | None = None) -> 
     if (article.get("event_draft") or {}).get("profit_decline_quote") and verification.get("status") == "supported" and verification["score"] >= 0:
         result.update(score=-1, score_auto=-1, score_included=False, score_status="needs_review",
                       score_reason="Reported profit decline in mixed results; confirm adverse evidence before weekly inclusion")
+    draft = article.get("event_draft") or {}
     published = article.get("published_at")
     if published and published.tzinfo is None:
         published = published.replace(tzinfo=timezone.utc)
     if not published or published > now:
         result.update(score_included=False, score_status="needs_review",
                       score_reason=result["score_reason"] + "; missing or future publication date")
+    elif (article.get("report_selected") and draft.get("event") and draft.get("sentiment") in (-1, 0) and not draft.get("excluded")
+            and result["score"] in (-1, 0) and not result["score_included"]
+            and article.get("source_kind") != "context" and not article.get("exposure_paths")
+            and verification.get("status") != "unmatched"):
+        result.update(score_included=True, score_reason="Current lead score accepted in saved event selection; "
+                      + result["score_reason"])
     return sentiment_assessment(dict(result, score_auto=sentiment(result["score_auto"]),
                                      score_evidence=sentiment_assessment({"evidence": result["score_evidence"]})["evidence"]))
 
@@ -158,7 +169,7 @@ def aggregate_week(articles: list[dict]) -> dict:
         by_event[row.get("event_group") or row["url"]].append(row)
     contributions, groups, included, excluded, duplicates = [], [], [], [], []
     for key, members in sorted(by_event.items()):
-        result = event_assessment(members, saved=True)
+        result = event_assessment([r for r in members if (r.get("event_draft") or {}).get("event")], saved=True)
         first = min(result["sources"] or members, key=lambda a: a["id"])
         ids = sorted(a["id"] for a in members)
         groups.append({"id": key, "representative_id": first["id"], "article_ids": ids})
@@ -196,7 +207,7 @@ def weekly_groups(articles: list[dict]) -> dict:
         if article.get("company_id"):
             by_event[article["company_id"], article.get("event_group") or article["url"]].append(article)
     for (company, _), members in by_event.items():
-        sources = event_assessment(members, saved=True)["sources"]
+        sources = event_assessment([r for r in members if (r.get("event_draft") or {}).get("event")], saved=True)["sources"]
         date = min(a.get("published_at") or a["created_at"] for a in sources or members)
         groups[company, week_start(date)].extend(members)
     return groups

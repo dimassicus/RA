@@ -14,7 +14,7 @@ def test_switches_route_company_search(monkeypatch,p,g):
     monkeypatch.setattr(search.news_apis,'configured_providers',lambda: [])
     monkeypatch.setattr(search,'planned_feeds',lambda *a: [])
     monkeypatch.setattr(perplexity.recovery_providers,'configured',lambda name:True)
-    monkeypatch.setattr(perplexity,'collect',lambda *a: (calls.append('P') or [],[]))
+    monkeypatch.setattr(perplexity,'collect',lambda *a,**kw: (calls.append('P') or [],[]))
     monkeypatch.setattr(google,'collect',lambda *a,primary,**kw: (calls.append('G primary' if primary else 'G gaps') or [],[]))
     search.search_company(ISSUER,provider_window=SPAN,settings=dict(use_perplexity=p,use_google=g))
     assert calls == (['P'] if p else []) + (['G gaps' if p else 'G primary'] if g else [])
@@ -43,3 +43,18 @@ def test_google_targets_missing_statements_conflicting_figures_or_unresolved_ord
     assert 'conflicting' in plan([fiscal,fiscal|dict(summary='Net profit rose 9%.')])[0]
     assert 'operative ruling' in plan([fiscal,dict(title='Isi Penetapan Pengadilan dan Permohonan Keberatan',
                                                     published_at=SPAN[1],url='https://issuer.test/notice')])[0]
+
+
+def test_focus_changes_discovery_queries_and_preserves_favourable_finds(monkeypatch):
+    queries = []
+    positive = dict(title='Acme Chemical returns to profit', url='https://issuer.test/profit',
+                    published_at=SPAN[0], summary='Acme Chemical earnings increased.')
+    monkeypatch.setattr(perplexity.recovery_providers, 'configured', lambda _: True)
+    monkeypatch.setattr(perplexity, 'search', lambda q, s, lo, hi: queries.append((q, lo, hi)) or [positive.copy()])
+    found, _ = perplexity.collect(ISSUER, SPAN, adverse_focus=True)
+    assert found == [positive] and any('volatility inquiry' in q for q, _, _ in queries)
+    queries.clear()
+    monkeypatch.setattr(google, 'lookup', lambda s, span, q: queries.append((q, *span)) or [positive.copy()])
+    google.collect(ISSUER, SPAN, [positive], [], primary=False, provider_gaps=[], adverse_focus=True)
+    assert queries and all('material neutral filings' in q for q, _, _ in queries)
+    assert min(lo for _, lo, _ in queries) == SPAN[0] and max(hi for _, _, hi in queries) == SPAN[1]

@@ -48,7 +48,7 @@ def resolve_spans(text,quotes,*,allow_empty=False):
         needle=canonical(quote)[0].strip()
         if not needle:raise ValueError('Empty normalized evidence')
         start=normalized.find(needle)
-        found_inside_word = start >= 0
+        first_match = start
         while start>=0:
             end=start+len(needle)
             left=start>0 and needle[0].isalnum() and normalized[start-1].isalnum()
@@ -56,8 +56,14 @@ def resolve_spans(text,quotes,*,allow_empty=False):
             if not left and not right:break
             start=normalized.find(needle,start+1)
         if start<0:
-            if found_inside_word:
-                raise ValueError('Evidence must include complete words, including attached prefixes; copy the full word from the original text')
+            if first_match >= 0:
+                lo, hi = first_match, first_match + len(needle)
+                while lo > 0 and normalized[lo-1].isalnum() and normalized[lo].isalnum():
+                    lo -= 1
+                while hi < len(normalized) and normalized[hi-1].isalnum() and normalized[hi].isalnum():
+                    hi += 1
+                raise ValueError('Evidence must include complete words, including attached prefixes. Copy the whole span or choose another: '
+                                 + repr(normalized[lo:hi][:140]))
             raise ValueError('Evidence does not match an original text span')
         raw_start,raw_end=offsets[start][0],offsets[end-1][1]
         if (raw_start, raw_end) in seen:

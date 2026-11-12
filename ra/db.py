@@ -493,6 +493,8 @@ def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, 
                 "translation_provider = 'analyst edited' WHERE id = %s",
                 (changed, Jsonb(qa), title_en, publisher_en, result_id),
             )
+        selected = conn.execute("UPDATE search_results SET report_selected=(%s OR id=ANY(%s)) WHERE run_id=%s "
+                                "RETURNING report_selected", (save_all, selected_ids, run_id)).fetchall()
         score_store._assess(conn, run_id)
         for rid, value in (scores or {}).items():
             article = conn.execute("SELECT * FROM search_results WHERE id=%s AND run_id=%s FOR UPDATE", (rid, run_id)).fetchone()
@@ -500,10 +502,9 @@ def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, 
             supported = not article["exposure_paths"] or article["verification"].get("status") == "supported"
             score_store._review(conn, article, value, bool(dated and supported),
                                 "Analyst confirmed article sentiment on the run report")
-        conn.execute("UPDATE search_results SET report_selected=(id=ANY(%s)) WHERE run_id=%s", (selected_ids, run_id))
         conn.execute("UPDATE search_runs SET selection_saved=TRUE WHERE id=%s", (run_id,))
         score_store._weekly(conn)
-        return len(set(selected_ids))
+        return sum(row["report_selected"] for row in selected)
 
 
 

@@ -317,6 +317,11 @@ def record_translation_attempts(rows, code, factors, feedback):
 
 
 def translate_batch(rows, code, *, factors=False):
+    from . import local_models
+    return local_models.run_phases([_translation_steps(rows, code, factors=factors)], "keyword translations")[0]
+
+
+def _translation_steps(rows, code, *, factors=False):
     from .headline_review import GEMMA, QWEN
     terms = [r["english"] for r in rows]
     from .translation import installed_keyword_translations
@@ -369,6 +374,7 @@ def translate_batch(rows, code, *, factors=False):
             if attempt or feedback:
                 prompt += " Correct the specific review errors; do not repeat rejected wording."
                 data = {term: {"previous": proposed.get(term, ""), "review": feedback.get(term, {})} for term in needed}
+            yield GEMMA
             proposed.update(model_json(prompt, {"terms": data, "intended_meanings": meanings},
                                        object_schema({term: {"type": "string"} for term in needed}), model=GEMMA))
         candidates = {term: proposed[term].strip() for term in terms if term not in accepted
@@ -381,6 +387,7 @@ def translate_batch(rows, code, *, factors=False):
         record_translation_attempts(rows, code, factors, feedback)
         if candidates:
             _report(f"Checking {len(candidates)} {label} translations · {language}")
+            yield reviewer
             checked = review_translations(candidates, code, factors, meanings, feedback=feedback, model=reviewer)
             for term in candidates:
                 feedback[term]["reviewer"] = reviewer
@@ -434,7 +441,7 @@ def translation_status():
                 "elapsed_seconds": int(time.monotonic() - updated), "error": last_error}
 
 
-def schedule():
+def schedule(*, after_runs=False):
     global _requested, _running
     with _sync_lock:
         _requested = True
@@ -442,12 +449,22 @@ def schedule():
             return
         _running = True
         _report("Translation pass queued.")
-    threading.Thread(target=_work, daemon=True, name="ra-keyword-translations").start()
+    threading.Thread(target=_work, args=(after_runs,), daemon=True, name="ra-keyword-translations").start()
 
 
-def _work():
+def _work(after_runs=False):
     global _running, last_error
     try:
+        if after_runs:
+            import time
+            while True:
+                with db.connect() as conn:
+                    busy = conn.execute("""SELECT EXISTS(SELECT FROM search_runs WHERE status IN ('queued','running'))
+                        OR EXISTS(SELECT FROM search_runs WHERE status IN ('partial','completed') AND event_analysis_status='pending')
+                        OR EXISTS(SELECT FROM verification_jobs WHERE status IN ('queued','running')) AS busy""").fetchone()['busy']
+                if not busy:
+                    break
+                time.sleep(5)
         _run_passes()
     except Exception as exc:
         logging.getLogger(__name__).exception("Translation worker stopped")
@@ -490,13 +507,13 @@ def _run_passes():
             except (ValueError, OSError, KeyError, TypeError, db.psycopg.Error) as exc:
                 last_error = f"Translation interrupted ({type(exc).__name__}). Retry missing translations."
         # Fill small gaps in search languages before large regional-language backlogs.
-        for code, factors, missing in sorted(jobs, key=lambda job: (job[0] not in primary, len(job[2]), job[0], not job[1])):
-            batch_size = 8 if factors else 16
-            batches = [missing[i:i + batch_size] for i in range(0, len(missing), batch_size)]
+        def translate_chunks(code, factors, first_batch):
+            global last_error
+            batches = [first_batch]
             while batches:
                 batch = batches.pop(0)
                 try:
-                    translate_batch(batch, code, factors=factors)
+                    yield from _translation_steps(batch, code, factors=factors)
                 except (ValueError, OSError, KeyError, TypeError, db.psycopg.Error) as exc:
                     label = "Risk factors" if factors else "Keywords"
                     if isinstance(exc, (TimeoutError, ValueError)) and len(batch) > 1:
@@ -516,6 +533,12 @@ def _run_passes():
                         risk_factors.reload()
                     else:
                         reload_rules()
+        from . import local_models
+        tasks = []
+        for code, factors, missing in sorted(jobs, key=lambda job: (job[0] not in primary, len(job[2]), job[0], not job[1])):
+            size = 8 if factors else 16
+            tasks.extend(translate_chunks(code, factors, missing[i:i + size]) for i in range(0, len(missing), size))
+        local_models.run_phases(tasks, "keyword translations")
         for code in ["en", *risk_factors.languages()]:
             try:
                 _report(f"Preparing risk-factor search phrases · {language_name(code)}")

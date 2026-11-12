@@ -327,3 +327,6 @@ ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS per_document_limit BOOLEAN NOT 
 ALTER TABLE search_runs ALTER COLUMN per_document_limit SET DEFAULT TRUE;
 ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS filing_coverage JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE search_results ADD COLUMN IF NOT EXISTS filing_attachments JSONB NOT NULL DEFAULT '[]';
+
+ALTER TABLE verification_jobs ADD COLUMN IF NOT EXISTS translation_checkpoint JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE search_runs ADD COLUMN IF NOT EXISTS completed_subject_keys TEXT[] NOT NULL DEFAULT '{}';

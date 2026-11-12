@@ -48,7 +48,7 @@ def search(query, subject, start, end):
     return rows
 
 
-def collect(subject, window, seeds=(), progress=None):
+def collect(subject, window, seeds=(), progress=None, *, adverse_focus=False):
     if not recovery_providers.configured('Perplexity'):
         return [], []
     from .search import LOCALES, normalized
@@ -66,6 +66,9 @@ def collect(subject, window, seeds=(), progress=None):
     terms = [*keywords.adverse_search_terms(locale, {'profit decline','asset seizure','bankruptcy'})[:3], *local_terms[:2]]
     queries = list(dict.fromkeys([f'{anchor} financial results debt credit risk issuer disclosures',
                                  f'{anchor} {local_name if local_name != anchor else ""} {subject.get("country_registration","")} {" ".join(terms) or "court ruling appeal enforcement outcome"}']))
+    if adverse_focus:
+        queries[0] = f'{anchor} profit decline debt default liquidity insolvency enforcement court ruling residual restrictions'
+        queries.append(f'{anchor} {local_name if local_name != anchor else ""} material exchange filings unusual trading volatility inquiry issuer response audit committee changes')
     found, errors = {}, []
     def lookup(q, lo, hi, notice=None):
         if progress:

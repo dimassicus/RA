@@ -9,7 +9,7 @@ NOTICE = 'Isi Penetapan Pengadilan dan Permohonan Keberatan - Lautan Luas'
 
 def test_company_search_reaches_perplexity_despite_other_provider_rotation(monkeypatch):
     calls = []
-    def collect(subject,window,seeds,progress):
+    def collect(subject,window,seeds,progress,**options):
         calls.append((subject['name'],window))
         return [dict(url='https://issuer.test/doc',title='Issuer filing')], []
     monkeypatch.setattr(perplexity,'collect',collect)
@@ -47,6 +47,50 @@ def test_inaccessible_decision_never_implies_still_pending():
     draft,=event_analysis.draft_company(SUBJECT,[row],model=model)
     assert draft[1]['decision']['status']=='unconfirmed' and 'pending' not in draft[1]['summary']
     assert not company_developments.decision_notice({'title':'Lautan Luas awaits a court ruling'})
+
+
+def test_material_notices_on_separate_dates_survive_neutral_triage(monkeypatch):
+    rows = [dict(id=i, score=0, title='Penjelasan atas Volatilitas Transaksi', discovery_service='IDX issuer announcements',
+                 published_at=DAY + timedelta(days=i*30), url=f'https://issuer.test/{i}') for i in (1, 2)]
+    def model(instruction, payload, schema):
+        if 'leads' in payload:
+            return {'assignments':[dict(id=r['id'], event=0, sentiment=0, title='Inquiry') for r in payload['leads']]}
+        return dict(title='Lautan Luas inquiry', summary='Lautan Luas ' + 'issuer ' * 155, favourable_only=True)
+    drafts = list(event_analysis.draft_company(SUBJECT, rows, model=model))
+    assert [(rid,d['event'],d['sentiment']) for group in drafts for rid,d in group.items()] == [(1,1,0),(2,2,0)]
+
+
+def test_favourable_only_summary_is_archived():
+    row = dict(id=5, score=0, title='New company campaign', published_at=DAY, url='https://issuer.test/5')
+    def model(instruction, payload, schema):
+        if 'leads' in payload:
+            return {'assignments':[dict(id=5,event=5,sentiment=0,title='Campaign')]}
+        return dict(title='Lautan Luas campaign', summary='Lautan Luas campaign', favourable_only=True)
+    assert list(event_analysis.draft_company(SUBJECT, [row], model=model)) == [{5:{'excluded':True,'sentiment':1}}]
+
+
+def test_calendar_listing_cannot_inherit_an_older_adverse_title():
+    row = dict(id=5, score=0, title='IPO calendar', published_at=DAY, url='https://issuer.test/5')
+    prior = dict(event=3, title='Issuer IPO suspended', date='2026-07-01')
+    def model(instruction, payload, schema):
+        if 'leads' in payload:
+            return {'assignments':[dict(id=5,event=3,sentiment=0,title='Prior IPO')]}
+        assert payload['event'] == {'event':3}
+        return dict(title='IPO calendar', summary='No newly dated development.', background_only=True)
+    assert list(event_analysis.draft_company(SUBJECT, [row], [prior], model=model)) == [
+        {5:{'excluded':True,'sentiment':0}}]
+
+
+def test_material_leadership_change_survives_favourable_coverage(monkeypatch):
+    from ra import relevance
+    monkeypatch.setattr(relevance, 'governance_cues', lambda row, subject: ['Leadership'])
+    row = dict(id=5, score=0, title='Lautan Luas appoints a new CEO', published_at=DAY, url='https://issuer.test/5')
+    def model(instruction, payload, schema):
+        if 'leads' in payload:
+            return {'assignments':[dict(id=5,event=0,sentiment=1,title='Appointment')]}
+        return dict(title='Lautan Luas appoints a new CEO', summary='Lautan Luas ' + 'evidence ' * 160, favourable_only=True)
+    draft, = event_analysis.draft_company(SUBJECT, [row], model=model)
+    assert (draft[5]['event'],draft[5]['sentiment']) == (5,0)
 
 
 def test_only_verbatim_disposition_and_remaining_exposure_accepted():

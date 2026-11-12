@@ -75,7 +75,8 @@ def test_batch_timeout_does_not_skip_other_languages_or_keywords(monkeypatch):
         calls.append((code, factors, len(batch)))
         if code == "ce" and batch[0]["id"] == 0:
             raise TimeoutError("timed out")
-    monkeypatch.setattr(keywords, "translate_batch", translate)
+        return iter(())
+    monkeypatch.setattr(keywords, "_translation_steps", translate)
     keywords._work()
     assert calls[0][:2] == ("ru", False)
     assert ("ru", True, 8) in calls and ("ru", True, 1) in calls
@@ -111,7 +112,8 @@ def test_large_keyword_batch_retries_only_unchanged_unsaved_items(monkeypatch, f
             rows[2]["enabled"] = False
             rows.pop(3)
             raise failure("Large request failed")
-    monkeypatch.setattr(keywords, "translate_batch", translate)
+        return iter(())
+    monkeypatch.setattr(keywords, "_translation_steps", translate)
     keywords._work()
     assert [len(batch) for batch in calls] == [16, 8, 4, 3]
     assert [row_id for batch in calls[1:] for row_id in batch] == list(range(4, 19))

@@ -1,6 +1,9 @@
 """Run RA's local models one at a time within the Mac's memory budget."""
 import fcntl
 import json
+import logging
+from collections import deque
+from contextlib import contextmanager
 from pathlib import Path
 import shutil
 import subprocess
@@ -17,6 +20,7 @@ CONTEXT = 16384
 LOCK_PATH = Path(__file__).resolve().parents[1] / ".local" / "lmstudio.lock"
 _lock = threading.Lock()
 _activity = ""
+_owner = threading.local()
 
 
 def activity():
@@ -56,7 +60,7 @@ def _wait_idle():
         time.sleep(0.5)
 
 
-def _ensure(model, port):
+def _ensure(model, port, *, retry=True):
     global _activity
     available = raw_request(port, "/api/v0/models", timeout=3)["data"]
     if not any(row["id"] == model for row in available):
@@ -80,11 +84,67 @@ def _ensure(model, port):
         if model == GEMMA:
             args.extend(["--gpu", "max"])
         _command(*args)
+        logging.getLogger(__name__).info("local_model_load batch=%s model=%s", _owner.label, model)
+    deadline = time.monotonic() + 30
     models = raw_request(port, "/api/v0/models", timeout=3)["data"]
+    while (any(row["id"] == model and row["state"] == "loading" for row in models)
+           and time.monotonic() < deadline):
+        time.sleep(0.5)
+        models = raw_request(port, "/api/v0/models", timeout=3)["data"]
     active = [row for row in models if row["id"] in MODELS and row["state"] == "loaded"]
     if (len(active) != 1 or active[0]["id"] != model
             or active[0].get("loaded_context_length", 0) < CONTEXT):
+        if retry:
+            return _ensure(model, port, retry=False)
         raise OSError(f"{MODELS[model]} did not finish loading. Retry from Setup.")
+
+
+@contextmanager
+def batch(label):
+    """Own the runtime across an entire set of dependent model passes, including CLI workers."""
+    if getattr(_owner, 'label', None):
+        yield
+        return
+    with _lock:
+        LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with LOCK_PATH.open("a") as lock_file:
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            _owner.label = label
+            try:
+                yield
+            finally:
+                global _activity
+                _activity = ""
+                _owner.label = None
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+
+def run_phases(tasks, label):
+    """Each task yields the model it needs next. Drain all ready work before switching."""
+    waiting = {GEMMA: deque(), QWEN: deque()}
+    results = []
+    def advance(index, task):
+        try:
+            model = next(task)
+        except StopIteration as done:
+            results[index] = done.value
+        else:
+            waiting[model].append((index, task))
+    with batch(label):
+        for task in tasks:
+            index = len(results)
+            results.append(None)
+            advance(index, task)
+        phase = 0
+        while any(waiting.values()):
+            for model in (GEMMA, QWEN):
+                if waiting[model]:
+                    phase += 1
+                    logging.getLogger(__name__).info("model_phase batch=%s phase=%s model=%s tasks=%s",
+                                                     label, phase, model, len(waiting[model]))
+                while waiting[model]:
+                    advance(*waiting[model].popleft())
+    return results
 
 
 def local_request(port, path, body=None, timeout=300):
@@ -96,24 +156,7 @@ def local_request(port, path, body=None, timeout=300):
         raise ValueError("Unsupported RA local model or port")
     body = dict(body, reasoning_effort="none", chat_template_kwargs={
         **body.get("chat_template_kwargs", {}), "enable_thinking": False})
-    # Hold both locks through inference: web requests and CLI retries share the models.
-    with _lock:
-        LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with LOCK_PATH.open("a") as lock_file:
-            try:
-                deadline = time.monotonic() + 600
-                while True:
-                    try:
-                        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                        break
-                    except BlockingIOError:
-                        _activity = "Waiting for another RA local-model task to finish."
-                        if time.monotonic() >= deadline:
-                            raise TimeoutError("Another RA process is using the local models; retry shortly.")
-                        time.sleep(0.5)
-                _ensure(model, port)
-                _activity = f"{MODELS[model]} processing · reasoning off."
-                return raw_request(port, path, body, timeout)
-            finally:
-                _activity = ""
-                fcntl.flock(lock_file, fcntl.LOCK_UN)
+    with batch("individual request"):
+        _ensure(model, port)
+        _activity = f"{_owner.label} · {MODELS[model]} processing · reasoning off."
+        return raw_request(port, path, body, timeout)

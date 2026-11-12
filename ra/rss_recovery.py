@@ -73,7 +73,7 @@ def import_legacy(run_id):
             if not failed:
                 continue
             plans = defaultdict(list)
-            for q, edition, span in search.planned_feeds(subject, bounds(run)):
+            for q, edition, span in search.planned_feeds(subject, bounds(run), search_settings.for_run(run)["adverse_only"]):
                 if q in failed:
                     plans[q].append((edition,span))
             key = subject_key(run_id, subject)
@@ -248,6 +248,13 @@ def collect_paid():
 
 
 def recover_one():
+    from . import local_models
+    # Take the model lease before opening a transaction that can translate recovered leads.
+    with local_models.batch("RSS recovery"):
+        return _recover_one()
+
+
+def _recover_one():
     # Save paid discoveries while Google is paused, then merge once the foreground writer finishes.
     if collect_paid():
         return True

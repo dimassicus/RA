@@ -254,7 +254,8 @@ def test_worker_schedules_each_enabled_phrase_for_each_missing_language(database
     def collect(rows, code, *, factors):
         assert not factors
         work.extend((row["english"], code) for row in rows)
-    monkeypatch.setattr(keywords, "translate_batch", collect)
+        return iter(())
+    monkeypatch.setattr(keywords, "_translation_steps", collect)
     keywords._run_passes()
     expected = {(term, code) for term in ("accounting fraud", *RELATED_PHRASES["accounting fraud"])
                 for code in ("pt", "ru")} - {("falsified accounts", "pt")}

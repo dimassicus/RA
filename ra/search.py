@@ -392,7 +392,7 @@ def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None, 
     return articles
 
 
-def planned_feeds(subject, window):
+def planned_feeds(subject, window, adverse_focus=False):
     # Split broad name searches: one capped RSS feed cannot cover months of news.
     name_queries = set(search_queries(subject))
     windows = [window]
@@ -404,7 +404,12 @@ def planned_feeds(subject, window):
             stop = min(start + step, end)
             windows.append((start, stop))
             start = stop
-    return [(query, edition, bounds) for query, edition in company_search_plan(subject)
+    plan = company_search_plan(subject)
+    if adverse_focus:
+        filing_query = search_queries(subject)[0] + ' ("exchange inquiry" OR "unusual trading" OR "material disclosure" OR "audit committee change")'
+        plan = [(filing_query, subject.get("country_registration", "")), *plan]
+        plan.sort(key=lambda item: item[0] in name_queries)
+    return [(query, edition, bounds) for query, edition in plan
                for bounds in (windows if query in name_queries else [window])]
 
 
@@ -469,7 +474,10 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
             if article["url"] not in seen_urls:
                 seen_urls.add(article["url"])
                 articles.append(article)
-    queries = planned_feeds(subject, window)
+    from . import google_discovery, perplexity, search_settings
+    settings = settings or search_settings.for_run({})
+    adverse_focus = settings.get("adverse_only", False)
+    queries = planned_feeds(subject, window, adverse_focus)
     for index, (query, edition, bounds) in enumerate(queries):
         if progress:
             progress(f"Searching company news · query {index + 1} of {len(queries)}", index, len(queries))
@@ -488,15 +496,13 @@ def search_company(subject: dict, fetcher=fetch_feed, official_fetcher=fetch_jso
                 errors.append(str(exc))
         except Exception as exc:
             errors.append(f"{query}: {type(exc).__name__}: {exc}")
-    from . import google_discovery, perplexity, search_settings
     from .article_content import canonical_url
-    settings = settings or search_settings.for_run({})
-    extra, gaps = (perplexity.collect(subject, span, articles, progress)
+    extra, gaps = (perplexity.collect(subject, span, articles, progress, adverse_focus=adverse_focus)
                    if settings["use_perplexity"] else ([], []))
     if settings["use_google"]:
         google_hits, google_gaps = google_discovery.collect(subject, span, [*articles, *extra], coverage,
             primary=not settings["use_perplexity"] or not perplexity.recovery_providers.configured("Perplexity"),
-            provider_gaps=gaps, progress=progress)
+            provider_gaps=gaps, progress=progress, adverse_focus=adverse_focus)
         extra.extend(google_hits)
         gaps.extend(google_gaps)
     known = {canonical_url(a['url']): a for a in articles}

@@ -15,6 +15,12 @@ def test_article_language_overrides_feed_edition():
     assert detect_language("Fato Relevante - Renúncia do Sr. Daniil Bazdyrev", "pt-BR") == "pt"
 
 
+def test_short_english_filing_titles_do_not_require_translation():
+    assert detect_language("FinancialStatement 2025 II LTLS | PDF - Scribd") == "en"
+    assert detect_language("Annual_Report_2025.pdf", "id") == "en"
+    assert detect_language("Financial Statement ini memuat laporan keuangan perusahaan", "id") == "id"
+
+
 def test_multilingual_countries_expand_expected_model_list():
     assert {"uz", "ru"} <= set(country_languages("Uzbekistan"))
     assert {"kk", "ru"} <= set(country_languages("Kazakhstan"))

@@ -256,6 +256,7 @@ def test_duplicate_event_grouping_is_company_scoped_and_conservative():
     assert same_event(second, later)
     for row in (first, second, unrelated):
         row['event_group'] = groups[row['id']]
+        row['event_draft'] = {'event': row['event_group']}
     result = aggregate_week([first, second, unrelated])
     assert result['event_count'] == 2 and result['article_count'] == 3
     assert result['mean_score'] == -1
@@ -269,6 +270,7 @@ def test_positive_sources_never_contribute_and_review_takes_precedence():
     second = event(2, 'Acme Manufacturing returns to profit.')
     for row in (first, second):
         row['event_group'] = 'manual:1'
+        row['event_draft'] = {'event': 1}
     result = aggregate_week([first, second])
     assert result['score'] == -1 and result['article_ids'] == [1]
     first.update(score_status='reviewed', score=1)

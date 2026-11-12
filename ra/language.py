@@ -8,6 +8,13 @@ import threading
 
 _detector_lock = threading.Lock()
 
+# Short filing filenames give the statistical detector little prose to identify.
+_ENGLISH_FILING_TITLE = re.compile(
+    r"(?i:(?:financial[ _-]*statements?|annual[ _-]*report))"
+    r"(?:[ _-]+(?:[0-9]{2,4}|[IV]{1,3}|Q[1-4]|H[12]|[A-Z]{2,6})){0,4}"
+    r"(?:\.pdf|\s*\|\s*PDF(?:\s+-\s+[^\n]+)?)?"
+)
+
 
 def _detected(text: str) -> tuple[str, float]:
     from langdetect import DetectorFactory, detect_langs
@@ -24,10 +31,14 @@ def _detected(text: str) -> tuple[str, float]:
 
 
 def detect_language(title: str, feed_locale: str = "") -> str:
-    """Use script plus local detection; return ISO 639-1 or an empty string."""
+    """Return a language code, zxx for ticker lists, or an empty string if unknown."""
     text = re.sub(r"\s+-\s+[^-]{2,60}$", "", title or "").strip()
     if not text:
         return ""
+    if re.fullmatch(r"\*+[A-Z0-9]{2,12}\*+(?:\s+\*+[A-Z0-9]{2,12}\*+)+", text):
+        return "zxx"  # An exchange ticker list contains no linguistic content.
+    if _ENGLISH_FILING_TITLE.fullmatch(title.strip()):
+        return "en"
     hint = feed_locale.split("-", 1)[0].lower()
     if re.match(r"^(fato relevante|comunicado ao mercado)\b", text, re.I):
         return "pt"

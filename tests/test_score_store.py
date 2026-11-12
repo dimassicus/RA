@@ -19,12 +19,16 @@ from ra.scoring import week_start
 
 
 @pytest.fixture
-def database(monkeypatch):
-    from ra import disclosures, headline_review, online_translation
+def database(monkeypatch, tmp_path):
+    from ra import disclosures, headline_review, local_models, online_translation
     monkeypatch.setattr(disclosures, "schedule", lambda *args, **kwargs: None)
     def offline_translation(*args):
         raise online_translation.ProviderError("Offline test")
     monkeypatch.setattr(online_translation, "translate_public", offline_translation)
+    def offline_model(*args, **kwargs):
+        raise OSError("Offline database test")
+    monkeypatch.setattr(local_models, "raw_request", offline_model)
+    monkeypatch.setattr(local_models, "LOCK_PATH", tmp_path / "lmstudio.lock")
     monkeypatch.setattr(headline_review, "readiness", lambda: {"ready": False, "message": "Offline test"})
     url = os.environ.get("RA_TEST_DATABASE_URL")
     if not url:
@@ -58,6 +62,14 @@ def seed(conn, title="Acme Manufacturing files for bankruptcy", status="complete
     return company, run_id, row
 
 
+def save_event_fixture(conn, *articles):
+    """Attach the same completed brief before testing its weekly contribution."""
+    for article in articles:
+        conn.execute("UPDATE search_results SET event_draft=jsonb_build_object("
+                     "'event', %s::bigint, 'title', title, 'summary', 'Test event brief') WHERE id=%s",
+                     (articles[0]['id'], article['id']))
+
+
 def test_backfill_is_idempotent_and_saves_no_data_weeks(database):
     company, run_id, article = seed(database)
     empty = database.execute("INSERT INTO companies (name,country_registration) VALUES ('Empty Ltd','Brazil') RETURNING id").fetchone()
@@ -72,6 +84,7 @@ def test_backfill_is_idempotent_and_saves_no_data_weeks(database):
 
 def test_review_and_repeat_discovery_preserve_decision_and_weekly_audit(database):
     company, run_id, article = seed(database)
+    save_event_fixture(database, article)
     seed(database)  # Same URL discovered in another run.
     score_store.refresh_scores()
     start = week_start(article["published_at"])
@@ -135,6 +148,7 @@ def test_worker_scores_new_articles_without_network(database, monkeypatch):
 
 def test_scoring_pages_api_and_csrf_protected_correction(database):
     company, run_id, article = seed(database)
+    save_event_fixture(database, article)
     score_store.refresh_scores()
     with create_app().test_client() as client:
         score_page = client.get('/scores')
@@ -227,6 +241,7 @@ def test_source_cache_weekly_dedup_review_and_grouping_corrections(database):
     for row in (first, second):
         assert verification_store.verify_article(row['id'], fetcher=fetcher)['status'] == 'supported'
     assert len(calls) == 2
+    save_event_fixture(database, first, second)
     for item in [first, second]:
         db.set_report_selection(item["run_id"], [item["id"]])
     assert score_store.week_detail(company['id'], start)[0]['metrics']['event_count'] == 1
@@ -408,6 +423,7 @@ def test_shared_news_only_changes_the_company_with_source_evidence(database):
     scored = {a["subject_name"]: a for a in db.get_results(run_id)}
     assert scored["Acme Manufacturing"]["score_included"] and scored["Acme Manufacturing"]["score"] == -1
     assert not scored["Other Industries"]["score_included"]
+    save_event_fixture(database, scored['Acme Manufacturing'])
     db.set_report_selection(run_id, [], save_all=True)
     assert score_store.weekly_history(subjects[0]["id"])[0]["score"] == -1
     assert score_store.weekly_history(subjects[1]["id"])[0]["score"] is None
@@ -424,6 +440,7 @@ def test_backfilled_company_report_uses_later_reviewed_scores(database):
     from pypdf import PdfReader
     from openpyxl import load_workbook
     company, run_id, article = seed(database)
+    save_event_fixture(database, article)
     end = datetime.now(timezone.utc) - timedelta(weeks=2)
     database.execute('UPDATE search_runs SET window_start=%s,window_end=%s WHERE id=%s',
                      (end-timedelta(days=6),end,run_id))
@@ -500,8 +517,9 @@ def test_progress_measures_entire_run_and_separates_translation_from_source(data
 
 def test_translation_retries_resume_after_reconnection_and_preserve_user_edits(database, monkeypatch):
     from ra import headline_review as qa, translation
-    _, run_id, article = seed(database)
-    database.execute("UPDATE search_results SET language='es',title_en='English',headline_review='{\"status\":\"unavailable\"}' WHERE id=%s", (article['id'],))
+    _, run_id, article = seed(database, title='Acme Manufacturing anuncia sus resultados')
+    database.execute("UPDATE search_results SET language='es',title_en='Acme Manufacturing reports results',"
+                     "headline_review='{\"status\":\"unavailable\"}' WHERE id=%s", (article['id'],))
     database.execute("UPDATE search_runs SET retry_translations=FALSE WHERE id=%s", (run_id,))
     calls = []
     def audit(*args, **kwargs):
@@ -527,6 +545,20 @@ def test_translation_retries_resume_after_reconnection_and_preserve_user_edits(d
     monkeypatch.setattr(translation, "translate_text", translate)
     qa.retry_pending()
     assert db.get_results(run_id)[0]['title_en'] == 'User correction'
+
+
+def test_exchange_ticker_list_does_not_need_a_headline_review(database, monkeypatch):
+    from ra import headline_review as qa, verification_store
+    title = '***DNFIN* *TAMFA* *GRYAT*'
+    _, run_id, article = seed(database, title=title)
+    database.execute("UPDATE search_results SET language='' WHERE id=%s", (article['id'],))
+    monkeypatch.setattr(qa, 'readiness', lambda: {'ready':True})
+    qa.request_retry(run_id)
+    qa.retry_pending()
+    saved = score_store.get_article(article['id'])
+    assert (saved['language'], saved['title_en'], saved['headline_review']) == ('zxx', title, {})
+    counts = verification_store.job_summary(run_id)
+    assert (counts['translation_total'], counts['missing'], counts['review_pending']) == (0,0,0)
 
 
 def test_translation_retry_limits_and_backoff(database, monkeypatch):
@@ -973,6 +1005,7 @@ def test_historical_run_route_validates_and_preserves_window_on_retry(database, 
 
 def test_weekly_cutoff_labels_do_not_move_or_rewrite_reviewed_articles(database):
     company, _, article = seed(database)
+    save_event_fixture(database, article)
     published = datetime(2026, 10, 13, 12, tzinfo=timezone.utc)
     database.execute("UPDATE search_results SET published_at=%s WHERE id=%s", (published, article["id"]))
     score_store.review_score(article["id"], -1, True, "Preserved analyst decision")
@@ -1181,6 +1214,15 @@ def test_company_events_save_selection_and_keep_original_briefs(database, monkey
     db.set_report_selection(run_id, [ids[0]], scores={ids[0]: 0})
     assert [(e['score'], e['article_ids']) for e in metrics()['contributions']] == [(0, [ids[0]])]
     assert db.set_report_selection(run_id, [], scores={ids[4]: -1}, save_all=True) == 11
-    assert sorted(e['score'] for e in metrics()['contributions']) == [-1, 0]
-    assert metrics()['event_count'] == 2 and metrics()['article_count'] == 2
+    assert sorted(e['score'] for e in metrics()['contributions']) == [-1, -1]
+    assert metrics()['event_count'] == 2 and metrics()['article_count'] == 10
+    assert sorted(e['score'] for e in events()) == [-1, -1]
+    assert score_store.get_article(ids[0])['score'] == 0
+    assert score_store.get_article(ids[1])['score_status'] == 'needs_review'
     assert {e['key']: e['summary'] for e in events()} == summaries
+    score_store.review_score(ids[2], -1, False, "Analyst excluded this source")
+    db.set_report_selection(run_id, [], save_all=True)
+    assert ids[2] not in metrics()['article_ids']
+    db.set_report_selection(run_id, [ids[0]])
+    assert [(e['score'], e['article_ids']) for e in metrics()['contributions']] == [(0, [ids[0]])]
+    assert not score_store.get_article(ids[1])['score_included']

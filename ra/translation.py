@@ -68,6 +68,8 @@ def argos_translate(text: str, language: str, company_name: dict | str = "", pub
         return "", "Article passage exceeds offline translation limit"
     if source_code == "en":
         return text, "original English"
+    if source_code == "zxx":
+        return text, "Original identifiers"
     if source_code == "pt":
         for portuguese_prefix, english_prefix in (
             ("Fato Relevante - ", "Material Fact — "),
@@ -147,10 +149,12 @@ def backfill(force: bool = False, run_id: int | None = None) -> tuple[int, int]:
             "WHERE (%s::bigint IS NULL OR run_id=%s) AND (title_en = '' OR (%s AND translation_provider = 'Argos offline model')) ORDER BY r.id",
             (run_id, run_id, force),
         ).fetchall()
-    updated = 0
-    for row in rows:
+    from . import local_models
+    def translate(row):
+        yield local_models.GEMMA
         language = detect_language(row["title"], row["language"])
         title_en, provider = translate_text(row["title"], language, db.subject_for(row, row["subjects"]), row["publisher"])
+        yield local_models.QWEN
         result = audit(row["title"], language, title_en)
         publisher_en = row["publisher"]  # Publisher names are brands, not prose.
         with db.connect() as conn:
@@ -159,7 +163,8 @@ def backfill(force: bool = False, run_id: int | None = None) -> tuple[int, int]:
                 "WHERE id = %s AND (title_en = '' OR (%s AND translation_provider = 'Argos offline model'))",
                 (title_en, publisher_en, provider, language, Jsonb(result), row["id"], force),
             )
-        updated += bool(title_en)
+        return bool(title_en)
+    updated = sum(local_models.run_phases((translate(row) for row in rows), "headline backfill"))
     return updated, len(rows)
 
 

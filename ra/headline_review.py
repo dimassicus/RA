@@ -13,7 +13,7 @@ from scripts.translation_review.reasoning import parse_final
 from . import db, online_translation, local_models, translation_names
 from .local_models import PORT, QWEN, GEMMA, local_request
 from .news_apis import ProviderError
-from .language import _detected
+from .language import _detected, detect_language
 
 def readiness():
     if local_models.activity():
@@ -41,7 +41,7 @@ def _audit(source, language, candidate, retry_reason=''):
 
 
 def audit(source, language, candidate, *, retry_reason=''):
-    if not candidate or language.split("-")[0] == "en":
+    if not candidate or language.split("-")[0] in ("en", "zxx"):
         return {}
     try:
         return _audit(source, language, candidate, retry_reason)
@@ -120,7 +120,7 @@ def fallback(source, language, publisher, argos_status, company_name="", *, arti
 
 
 def review_note(article):
-    if (article.get("language") or "").split("-")[0] == "en":
+    if (article.get("language") or "").split("-")[0] in ("en", "zxx"):
         return ""
     if not article.get("title_en"):
         return "English translation unavailable"
@@ -134,7 +134,7 @@ def review_saved(run_id, *, progress=None):
     with db.connect() as conn:
         rows = conn.execute(
             "SELECT id,title,language,title_en FROM search_results WHERE run_id=%s AND title_en<>'' "
-            "AND lower(split_part(language,'-',1)) <> 'en' AND COALESCE(headline_review->>'status','unavailable')='unavailable' "
+            "AND lower(split_part(language,'-',1)) NOT IN ('en','zxx') AND COALESCE(headline_review->>'status','unavailable')='unavailable' "
             "ORDER BY id", (run_id,)).fetchall()
     for index, row in enumerate(rows):
         if progress:
@@ -153,35 +153,38 @@ def retry_pending():
         rows = conn.execute("""
             SELECT r.*,s.subjects FROM search_results r JOIN search_runs s ON s.id=r.run_id
             WHERE s.retry_translations AND s.status IN ('completed','partial','failed')
-              AND lower(split_part(r.language,'-',1))<>'en'
+              AND lower(split_part(r.language,'-',1)) NOT IN ('en','zxx')
               AND (r.title_en='' OR COALESCE(r.headline_review->>'status','pending')
                    IN ('pending','unavailable','inconclusive'))
               AND COALESCE((r.headline_review->>'retry_count')::integer,0)<3
               AND COALESCE((r.headline_review->>'retry_after')::timestamptz,'-infinity')<=now()
-            ORDER BY r.run_id DESC,r.id LIMIT 5
+            ORDER BY r.run_id DESC,r.id
         """).fetchall()
     if not rows or not readiness()["ready"]:
         return
     from .translation import translate_text
-    for row in rows:
+    def retry(row):
+        yield GEMMA
         english, provider = row["title_en"], row["translation_provider"]
+        language = row["language"] or detect_language(row["title"])
         subject = db.subject_for(row, row["subjects"])
         if not english or (provider != "analyst edited" and not translation_names.preserved(row["title"], english, subject)):
-            english, provider = translate_text(row["title"], row["language"], subject, row["publisher"])
-        result = dict(audit(row["title"], row["language"], english,
+            english, provider = translate_text(row["title"], language, subject, row["publisher"])
+        yield QWEN
+        result = dict(audit(row["title"], language, english,
                             retry_reason=row["headline_review"].get("reason", ""))) if english else {
             "status": "inconclusive", "reason": "English translation unavailable", "reasoning": "off"}
         # Service outages wait for reconnection without consuming model-output retries.
-        result["retry_count"] = row["headline_review"].get("retry_count", 0) + (result["status"] != "unavailable")
-        result["retry_after"] = (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat()
+        if result:
+            result["retry_count"] = row["headline_review"].get("retry_count", 0) + (result["status"] != "unavailable")
+            result["retry_after"] = (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat()
         with db.connect() as conn:
             conn.execute("""
-                UPDATE search_results SET title_en=%s,translation_provider=%s,headline_review=%s
+                UPDATE search_results SET title_en=%s,translation_provider=%s,headline_review=%s,language=%s
                 WHERE id=%s AND title=%s AND title_en=%s AND language=%s AND headline_review=%s
-            """, (english, provider, Jsonb(result), row["id"], row["title"], row["title_en"],
+            """, (english, provider, Jsonb(result), language, row["id"], row["title"], row["title_en"],
                   row["language"], Jsonb(row["headline_review"])))
-        if result["status"] == "unavailable":
-            break
+    local_models.run_phases((retry(row) for row in rows), "headline retries")
 
 
 def request_retry(run_id):
@@ -192,7 +195,7 @@ def request_retry(run_id):
         conn.execute("UPDATE search_runs SET retry_translations=TRUE WHERE id=%s", (run_id,))
         return conn.execute("""
             UPDATE search_results SET headline_review=(headline_review-'retry_count')-'retry_after'
-            WHERE run_id=%s AND lower(split_part(language,'-',1))<>'en'
+            WHERE run_id=%s AND lower(split_part(language,'-',1)) NOT IN ('en','zxx')
               AND (title_en='' OR COALESCE(headline_review->>'status','pending')
                    IN ('pending','unavailable','inconclusive'))
         """, (run_id,)).rowcount

@@ -79,6 +79,24 @@ def test_missing_model_does_not_unload_working_model(runtime):
     assert calls == []
 
 
+def test_model_listing_can_lag_cli_readiness(runtime, monkeypatch):
+    _, calls, _ = runtime
+    raw = lm.raw_request
+    reads = 0
+    def request(port, path, body=None, timeout=300):
+        nonlocal reads
+        response = raw(port, path, body, timeout)
+        if path == '/api/v0/models':
+            reads += 1
+            if reads == 2:
+                next(r for r in response['data'] if r['id'] == lm.QWEN)['state'] = 'loading'
+        return response
+    monkeypatch.setattr(lm, 'raw_request', request)
+    monkeypatch.setattr(lm.time, 'sleep', lambda seconds: None)
+    assert infer(lm.QWEN)['model'] == lm.QWEN
+    assert reads == 3 and not any(c[0] == 'load' for c in calls)
+
+
 def test_load_failure_never_sends_inference_and_allows_retry(runtime, monkeypatch):
     loaded, calls, _ = runtime
     command = lm._command
@@ -142,3 +160,32 @@ def test_get_requests_do_not_load_models(runtime):
     _, calls, _ = runtime
     assert lm.local_request(lm.PORT, "/api/v0/models")["data"]
     assert calls == []
+
+
+def test_whole_run_drains_each_model_before_corrections_or_competing_workers(runtime):
+    _, calls, _ = runtime
+    halfway, competing = threading.Event(), threading.Event()
+    def work(i):
+        yield lm.GEMMA
+        infer(lm.GEMMA)
+        if i == 0:
+            halfway.set()
+            assert competing.wait(5)
+        yield lm.QWEN
+        infer(lm.QWEN)
+        if i % 4 == 0:
+            yield lm.GEMMA
+            infer(lm.GEMMA)
+            yield lm.QWEN
+            infer(lm.QWEN)
+        return i
+    def background():
+        assert halfway.wait(5)
+        competing.set()
+        infer(lm.GEMMA)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        other = pool.submit(background)
+        assert lm.run_phases((work(i) for i in range(24)), 'run 44') == list(range(24))
+        other.result()
+    assert [c[1] for c in calls if c[0]=='load'] == [lm.GEMMA,lm.QWEN,lm.GEMMA,lm.QWEN,lm.GEMMA]
+    assert [c[1] for c in calls if c[0]=='infer'] == [lm.GEMMA]*24+[lm.QWEN]*24+[lm.GEMMA]*6+[lm.QWEN]*6+[lm.GEMMA]

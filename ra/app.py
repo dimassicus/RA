@@ -453,7 +453,7 @@ def create_app() -> Flask:
         if not run:
             abort(404)
         all_results = classify_results(run, db.get_results(run_id))
-        view = request.args.get("view", "risk" if (run.get("search_settings") or {}).get("adverse_only") else "events")
+        view = request.args.get("view", "events")
         if view not in ("events", "developments", "risk", "review", "older", "background", "scored", "exposure", "governance", "factors", "all"):
             abort(400, "Unknown lead view")
         ordinary = [item for item in all_results if (item.get("score") or 0) <= 0]
@@ -652,14 +652,14 @@ def main():
     db.init_schema()
     keywords.reload_rules()
     risk_factors.reload()
-    keywords.schedule()
     score_store.refresh_scores()
     intake_worker.start()
     from . import rss_recovery
     rss_recovery.start()
-    worker.start_worker()
     verification_store.start()
+    worker.start_worker()
     event_analysis.start()
+    keywords.schedule(after_runs=True)
     disclosures.schedule()
     model_store.schedule_countries([company["country_registration"] for company in db.list_companies(True)])
     app = create_app()

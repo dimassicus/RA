@@ -210,8 +210,9 @@ def test_source_budget_and_drafts_use_run_policy(database, monkeypatch, per_docu
     lengths = []
     def prepare(doc, subject):
         lengths.append(len(doc['body']))
+        yield from ()
         return doc
-    monkeypatch.setattr(article_translation, 'prepare', prepare)
+    monkeypatch.setattr(article_translation, 'prepare_steps', prepare)
     monkeypatch.setattr(verification_store.risk_factors, 'records', lambda: [])
     check = verification_store.verify_article(article['id'], fetcher=lambda _: parent)
     expected = 5000 + (len('Short cover.') if per_document else 0)
@@ -227,3 +228,35 @@ def test_source_budget_and_drafts_use_run_policy(database, monkeypatch, per_docu
     evidence = event_analysis.source_texts(parent, check, company)
     assert sum(len(s['text']) for s in evidence) == expected
     assert 'excerpt' in evidence[1]['kind']
+
+
+def test_queue_batches_primary_sources_and_attachments_across_leads(database, monkeypatch):
+    from itertools import groupby
+    from ra import article_translation, headline_review, local_models, translation
+    issuer, run, article = seed(database)
+    for i in range(6):
+        database.execute("""INSERT INTO search_results (run_id,company_id,subject_key,subject_name,title,url,query,language,published_at)
+            SELECT run_id,company_id,subject_key,subject_name,title,url||%s,query,language,published_at FROM search_results WHERE id=%s""",
+            (str(i),article['id']))
+    events=[]
+    def retrieve(url,hint):
+        def source(u,body):
+            return dict(status='available', final_url=u, body=body, sha256=article_translation.fingerprint(body), language='id')
+        return dict(source(url, 'first '+url),linked_documents=[source(url+'/pdf','replacement '+url)])
+    monkeypatch.setattr(verification_store,'retrieve',retrieve)
+    monkeypatch.setattr(headline_review,'readiness',lambda:{'ready':True})
+    monkeypatch.setattr(translation,'argos_translate',lambda body,*a,**kw: (('reject','Argos test') if body.startswith('replacement') else ('','missing')))
+    def fallback(body,*args,**kwargs):
+        events.append('Gemma')
+        return 'Acme Manufacturing supplied a statement.', 'Gemma test'
+    def audit(src,lang,en,**kwargs):
+        events.append('Qwen')
+        return dict(model=local_models.QWEN,reasoning='off',issues=[],status='material_error' if en=='reject' else 'faithful')
+    monkeypatch.setattr(headline_review,'fallback',fallback)
+    monkeypatch.setattr(headline_review,'audit',audit)
+    monkeypatch.setattr(verification_store.risk_factors,'records',lambda:[])
+    assert verification_store.enqueue_run(run,limit_per_company=None)==7
+    verification_store.process_jobs(run)
+    assert [name for name,_ in groupby(events)]==['Gemma','Qwen','Gemma','Qwen']
+    assert verification_store.job_summary(run)['completed']==7
+    assert not database.execute("SELECT 1 FROM verification_jobs WHERE translation_checkpoint<>'{}'").fetchone()

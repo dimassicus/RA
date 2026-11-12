@@ -4,7 +4,7 @@ import re
 import threading
 from collections import defaultdict
 
-from . import article_translation, db, headline_review, keywords, translation_names, company_developments, decision_review
+from . import local_models, article_translation, db, headline_review, keywords, translation_names, company_developments, decision_review
 from .events import event_assessment
 from .scoring import WEEK_TIMEZONE
 from .article_content import canonical_url
@@ -16,7 +16,26 @@ _STRING = {"type": "string"}
 _INT = {"type": "integer"}
 _GROUPS = keywords.object_schema({"assignments": {"type": "array", "items": keywords.object_schema({
     "id": _INT, "event": _INT, "title": _STRING, "profit_decline_quote": _STRING, "sentiment": {"type": "integer", "enum": [-1, 0, 1]}})}})
-_DRAFT = keywords.object_schema({"title": _STRING, "summary": _STRING, "event_day": _STRING})
+_DRAFT = keywords.object_schema({"title": _STRING, "summary": _STRING, "event_day": _STRING,
+                                "favourable_only": {"type": "boolean"}, "background_only": {"type": "boolean"}})
+
+
+def material_notice(row, subject=None):
+    from .relevance import governance_cues
+    if subject and 'Leadership' in governance_cues(row, subject):
+        return 'Leadership change'
+    filing = (row.get('source_kind') == 'official' or row.get('discovery_service') in
+              ('IDX issuer announcements', 'IDX filings via JejakSaham', 'Discovered company disclosures'))
+    if not filing:
+        return ''
+    title = row.get('title', '') + ' ' + (row.get('title_en') or '')
+    if re.search(r'unusual (?:trading|market activity)|(?:trading|transaction|price) volatility|'
+                 r'volatilitas transaksi|exchange inquir|stock exchange.{0,20}clarification', title, re.I):
+        return 'Exchange inquiry or issuer response'
+    if re.search(r'audit committee (?:change|appointment|resignation)|(?:changes? (?:to|in)|appointment to) (?:the )?audit committee|'
+                 r'perubahan komite audit', title, re.I):
+        return 'Audit committee change'
+    return ''
 
 
 def candidate(row):
@@ -80,6 +99,7 @@ def source_sample(sources, budget):
 def evidence(row, subject=None):
     check = row.get("verification") or {}
     return {"id": row["id"], "published": str(row.get("published_at") or "")[:10],
+            "material_notice": material_notice(row, subject),
             "decision_notice": company_developments.decision_notice(row), "petition": company_developments.petition_notice(row), "url": row.get("url", ""),
             "publisher": row.get("publisher", ""), "title": row["title"][:500],
             "english": (row.get("title_en", "")[:500] if (row.get("headline_review") or {}).get("status") == "faithful" and
@@ -165,7 +185,7 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             sources = ([dict(s, text=excerpt(s["text"], limit)) for s in r["sources"]] if per_document
                        else source_sample(r["sources"], limit))
             leads.append(dict(r, sources=sources, corroboration=[]))
-        response = model("Group coverage by concrete company incident, across languages and publishers. "
+        instruction = ("Group coverage by concrete company incident, across languages and publishers. "
             "Use the supplied company name verbatim or its original ticker. Never translate a proper name. "
             "Return every input id once. Use an existing event ID for the same incident, otherwise use the first "
             "article ID of the incident in this batch. Score each standalone story -1 negative, 0 neutral, +1 positive. Distinguish different sites, cases, periods and subsequent "
@@ -177,13 +197,29 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             "Read the native headline, summary and source passages. Exclude forecasts, peers, incidental older comparisons "
             "and changes in profit growth rates alone. Keep reported profit declines as adverse events even when revenue "
             "rose. Group by issuer and reporting period; annual and quarterly earnings releases are distinct events. "
-            "Never infer corporate wrongdoing from an owner's case. Give each event a specific English title.",
-            {"company": company, "company_names": labels, "existing": anchors, "leads": leads},
-            _GROUPS)["assignments"]
-        if (len(response) != len(batch) or {a['id'] for a in response} != allowed or
-                any(type(a["sentiment"]) is not int or a["sentiment"] not in (-1, 0, 1) or type(a['event']) is not int or a['event'] not in allowed | {e['event'] for e in anchors} | {0}
-                    or not isinstance(a['title'], str) for a in response)):
-            raise ValueError("Incomplete event grouping")
+            "Keep dated material exchange inquiries, issuer responses and governance changes including executive appointments even when coverage is favourable. "
+            "A listing in a generic calendar or directory does not establish a new event or confirm a previously reported incident. "
+            "Separate repeated inquiries on different dates unless the source identifies the same inquiry. Classify purely favourable announcements as positive and archive them. "
+            "Never infer corporate wrongdoing from an owner's case. Give each event a specific English title.")
+        payload = {"company": company, "company_names": labels, "existing": anchors, "leads": leads}
+        response = model(instruction, payload, _GROUPS)["assignments"]
+        event_ids = allowed | {e['event'] for e in anchors} | {0}
+        def consistent(assignments):
+            ids = {a['id']: a['event'] for a in assignments}
+            return (len(assignments) == len(batch) and ids.keys() == allowed and all(
+                type(a['event']) is int and a['event'] in event_ids and type(a['sentiment']) is int
+                and a['sentiment'] in (-1,0,1) and isinstance(a['title'],str)
+                and (a['event'] not in allowed or ids[a['event']] == a['event']) for a in assignments))
+        if not consistent(response):
+            properties = dict(_GROUPS['properties']['assignments']['items']['properties'])
+            del properties['id']
+            properties['event'] = {"type": "integer", "enum": sorted(event_ids)}
+            shape = keywords.object_schema({str(i):keywords.object_schema(properties) for i in sorted(allowed)})
+            retry = model(instruction + " Fill the required entry for each lead. A lead chosen as the event "
+                          "representative must point to its own ID.", payload, shape)
+            response = [dict(id=i, **retry[str(i)]) for i in sorted(allowed)]
+            if not consistent(response):
+                raise ValueError("Incomplete or inconsistent event grouping")
         by_id = {a['id']: a for a in response}
         profit_quotes = reported_profit_declines(leads, by_id, company, model)
         for r in batch:
@@ -198,6 +234,11 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
                 key = r['id']
             protected = r["status"] == "supported" or r["reviewed"]
             direction = r['score'] if protected else assignment['sentiment']
+            if r['material_notice'] and not r['reviewed']:
+                key = key or r['id']
+                direction = min(direction, 0)
+                if r['material_notice'] == 'Exchange inquiry or issuer response' and key != r['id'] and anchor.get('date', anchor.get('published')) != r['published']:
+                    key = r['id']
             quote = profit_quotes.get(r['id'], '').strip()
             if quote:
                 r['profit_decline_quote'] = quote
@@ -246,8 +287,13 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             "Do not invent facts, assume that silence means safety, or treat repeated coverage as greater damage. "
             "Do not claim that a filing omits details on the basis of excerpts. Identify the company’s role. "
             "Separate when the company learned of the event from when it disclosed it. Attribute contested facts. "
+            "For a petition describe the procedural status as of the filing date. Omit claims that it remains pending today. "
+            "Set favourable_only true for purely favourable developments, including promotions and positive earnings news without a material risk. "
+            "Set background_only true if the evidence only lists the company or repeats a calendar with no dated development. "
+            "Write the title and summary from the current evidence. Never import an older incident solely because the issuer appears again. "
+            "Keep an issuer response to an exchange inquiry neutral when no adverse impact was established. "
             "Describe uncertainty where needed. Return title and summary.")
-        payload = {"company": company, "company_names": labels, "event": catalog[key], "coverage": len(members),
+        payload = {"company": company, "company_names": labels, "event": {"event": key}, "coverage": len(members),
                    "publication_dates": sorted({r['published'] for r in members}), "evidence": facts}
         earnings = any(r.get('profit_decline_quote') for r in members)
         if earnings:
@@ -263,8 +309,12 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             payload["decision"] = ruling
             instruction += (" Describe the latest dated disposition and any residual exposure, attributing it to the document. "
                             "State the decision_day and notice publication date separately. If decision_day is unknown, never equate the two dates. "
-                            "Never present the original application as still awaiting that same ruling.")
+                            "Never present the original application as still awaiting that same ruling. Continued seizure does not establish permanence.")
         draft = model(instruction, payload, _DRAFT)
+        if ((draft.get("favourable_only") is True or draft.get("background_only") is True) and not earnings and not ruling and
+                not any(r['reviewed'] or r['material_notice'] or (r['status'] == 'supported' and r['score'] < 0) for r in members)):
+            yield {r['id']: {"excluded": True, "sentiment": 1 if draft.get("favourable_only") else 0} for r in members}
+            continue
         def valid(draft):
             title, summary = draft.get("title"), draft.get("summary")
             return (isinstance(title, str) and isinstance(summary, str) and
@@ -273,7 +323,10 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
                                          for field in (title, summary))) and
                     150 <= len(summary.split()) <= 250 and matcher and
                     matcher.search(title[:250]) and matcher.search(summary) and
+                    (not any(r['petition'] for r in members) or not decision_review.PENDING.search(summary)) and
                     (not ruling or (not decision_review.PENDING.search(summary) and
+                     (not re.search(r'\bpermanent(?:ly)?\b', summary, re.I) or
+                      re.search(r'\bpermanent(?:ly)?\b', ruling['outcome']+' '+ruling['remaining'], re.I)) and
                      (not ruling.get('decision_day') or decision_review.mentions_day(summary, ruling['decision_day'])))))
         if not valid(draft):
             draft = model(instruction + " Rewrite to 180–210 words. Copy the supplied issuer name or ticker into both fields.", payload, _DRAFT)
@@ -383,6 +436,22 @@ def process(run_id):
             WHERE id=%s""", (run_id, max((r['id'] for r in rows), default=0), run_id))
 
 
+def finish_pending(run_id):
+    with local_models.batch(f"run {run_id}"):
+        with db.connect() as conn:
+            ready = conn.execute("""SELECT 1 FROM search_runs s WHERE id=%s AND event_analysis_status='pending'
+                AND status IN ('completed','partial') AND NOT EXISTS (SELECT 1 FROM search_results r
+                JOIN verification_jobs j ON j.result_id=r.id WHERE r.run_id=s.id AND j.status IN ('queued','running'))""",
+                (run_id,)).fetchone()
+        if ready and headline_review.readiness()['ready']:
+            try:
+                process(run_id)
+            except Exception:
+                _log.exception("Company event drafting failed for run %s", run_id)
+                with db.connect() as conn:
+                    conn.execute("UPDATE search_runs SET event_analysis_status='failed' WHERE id=%s", (run_id,))
+
+
 def _loop():
     while True:
         run_id = None
@@ -394,7 +463,7 @@ def _loop():
                     ORDER BY id DESC LIMIT 1""").fetchone()
             if row and headline_review.readiness()['ready']:
                 run_id = row['id']
-                process(run_id)
+                finish_pending(run_id)
                 continue
         except Exception:
             _log.exception("Company event drafting failed for run %s", run_id)

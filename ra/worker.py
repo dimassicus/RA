@@ -11,7 +11,7 @@ import threading
 import time
 import logging
 
-from . import db, governance_roster, search_settings, company_developments, monthly_backfill, rss_recovery
+from . import local_models, db, governance_roster, search_settings, company_developments, monthly_backfill, rss_recovery
 from .article_content import canonical_url
 from .scoring import WEEK_TIMEZONE
 from . import exposure
@@ -88,7 +88,16 @@ def _work_loop():
                 logging.exception("Saved translation retry failed; will retry next minute")
             continue
         try:
-            process_run(run_id)
+            from . import verification_store, event_analysis
+            # Finish older reviews before a new run starts using the same two models.
+            while (prior := verification_store.next_run()) is not None:
+                with local_models.batch(f"run {prior}"):
+                    verification_store.process_jobs(prior)
+                    event_analysis.finish_pending(prior)
+            with local_models.batch(f"run {run_id}"):
+                process_run(run_id)
+                verification_store.process_jobs(run_id)
+                event_analysis.finish_pending(run_id)
         except Exception as exc:
             with db.connect() as conn:
                 conn.execute(
@@ -153,13 +162,20 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
     if run is None or run["status"] not in ("queued", "running"):
         return
     settings = search_settings.for_run(run)
+    finished = set(run.get("completed_subject_keys") or [])
+    # Recover checkpoints from runs started before subject IDs were recorded.
+    names = [s["name"] for s in run["subjects"]]
+    if not finished and len(names) == len(set(names)):
+        finished.update(str(s.get("id") or f"one-off:{run_id}") for s in run["subjects"]
+                        if s["name"] in (run.get("filing_coverage") or {}))
     with db.connect() as conn:
-        conn.execute(
-            "UPDATE search_runs SET status = 'running', event_analysis_status = 'waiting_sources', started_at = COALESCE(started_at, now()), "
-            "completed_companies = 0, result_count = 0, candidates_in_window = 0, monthly_backfill = '{}', filing_coverage = '{}', error_count = 0, retry_translations = TRUE WHERE id = %s", (run_id,)
-        )
-        conn.execute("DELETE FROM search_results WHERE run_id = %s", (run_id,))
-        conn.execute("DELETE FROM search_errors WHERE run_id = %s", (run_id,))
+        conn.execute("UPDATE search_runs SET status='running',event_analysis_status='waiting_sources', "
+                     "started_at=COALESCE(started_at,now()),completed_subject_keys=%s,retry_translations=TRUE WHERE id=%s", (list(finished),run_id))
+        if not finished:
+            conn.execute("UPDATE search_runs SET completed_companies=0,result_count=0,candidates_in_window=0,"
+                         "monthly_backfill='{}',error_count=0 WHERE id=%s",(run_id,))
+            conn.execute("DELETE FROM search_results WHERE run_id=%s",(run_id,))
+            conn.execute("DELETE FROM search_errors WHERE run_id=%s",(run_id,))
     report = partial(_report, run_id)
     report("Preparing company searches")
     window_end = run.get("window_end") or run["created_at"]
@@ -187,6 +203,12 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
     for subject in plan_subjects(run["subjects"], run_id):
         subject_key = str(subject.get("id") or f"one-off:{run_id}")
         name = subject["name"]
+        if subject_key in finished:
+            continue
+        if finished:
+            # Results may have committed immediately before an interrupted company's checkpoint.
+            with db.connect() as conn:
+                conn.execute("DELETE FROM search_results WHERE run_id=%s AND subject_key=%s", (run_id,subject_key))
 
         def company_progress(message, done=None, total=None):
             report(f"{name} · {message}", done, total)
@@ -259,8 +281,8 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
                 )
             conn.execute(
                 "UPDATE search_runs SET completed_companies = completed_companies + 1, "
-                "result_count = result_count + %s, candidates_in_window = candidates_in_window + %s, error_count = error_count + %s, monthly_backfill = %s, filing_coverage = filing_coverage || %s WHERE id = %s",
-                (saved_count, len(retained), len(errors), db.Jsonb(notes), db.Jsonb({name: filing_coverage}), run_id),
+                "result_count = result_count + %s, candidates_in_window = candidates_in_window + %s, error_count = error_count + %s, monthly_backfill = %s, filing_coverage = filing_coverage || %s, completed_subject_keys=array_append(completed_subject_keys,%s) WHERE id = %s",
+                (saved_count, len(retained), len(errors), db.Jsonb(notes), db.Jsonb({name: filing_coverage}), subject_key, run_id),
             )
             if conn.execute("SELECT 1 FROM rss_recovery WHERE run_id=%s LIMIT 1",(run_id,)).fetchone():
                 # Include one outstanding coverage gap per company in live progress.
@@ -268,9 +290,6 @@ def process_run(run_id: int, searcher=search_company, topic_searcher=None, roste
                     + (SELECT count(DISTINCT subject_key) FROM rss_recovery WHERE run_id=%s AND status<>'recovered')
                     WHERE id=%s""",(run_id,run_id,run_id))
         time.sleep(0.25)
-    from .headline_review import review_saved
-    report("Checking headline translations with Qwen")
-    review_saved(run_id, progress=report)
     with db.connect() as conn:
         counts = conn.execute(
             "SELECT result_count, error_count FROM search_runs WHERE id = %s", (run_id,)

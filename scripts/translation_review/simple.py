@@ -130,6 +130,7 @@ def review(source,source_lang,target_lang,candidates,model,port,*,enabled,shadow
         request['messages'][0]['content'] += (
             '\nThe previous response failed validation: ' + retry_reason[:250] +
             '. Recheck the original source and candidate. Copy evidence fragments exactly from each respective text. '
+            'For a short headline you may quote the entire original headline and the entire candidate to avoid cutting a word. '
             'If you cannot substantiate an error with valid quotations, return uncertain with issues:[].')
     envelope=(request_fn or local_request)(port,'/v1/chat/completions',request,timeout=120 if shadow_only else 600)
     try:

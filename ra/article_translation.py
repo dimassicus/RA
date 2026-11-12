@@ -4,7 +4,7 @@ import re
 
 from scripts.translation_review.simple import review_content
 
-from . import filing_evidence, headline_review, translation, translation_names
+from . import filing_evidence, headline_review, local_models, translation, translation_names
 
 VERSION = "article-translation-v1"
 SOURCE_REVIEW_LIMIT = 5000
@@ -111,6 +111,10 @@ def group_replacements(parts, replacements, language):
 
 def prepare(document, subject=None):
     """Reuse reviewed passages on retry; translate first, then review to limit model switching."""
+    return local_models.run_phases([prepare_steps(document, subject)], "source translation")[0]
+
+
+def prepare_steps(document, subject=None, *, checkpoint=None):
     language = document.get('language', '').lower().split('-')[0]
     if document.get('status') != 'available' or document.get('review_only') or language in ('en', 'pt'):
         return document
@@ -144,6 +148,7 @@ def prepare(document, subject=None):
         if not readiness['ready']:
             result.update(status='unavailable', reason=readiness['message'])
             return document
+    yield local_models.GEMMA
     for part in parts:
         if faithful(part):
             continue
@@ -152,6 +157,9 @@ def prepare(document, subject=None):
             if not english:
                 english, provider = headline_review.fallback(part['source'], language, '', provider, article=True, **identity)
             part.update(english=english, provider=provider, review={})
+    if checkpoint:
+        checkpoint(result)
+    yield local_models.QWEN
     for part in parts:
         if faithful(part) or not part.get('english'):
             continue
@@ -160,24 +168,34 @@ def prepare(document, subject=None):
         if part['review'].get('status') == 'unavailable':
             break
     # A rejected Argos output must not be retried forever with the same translation engine.
+    rejected = [p for p in parts if p.get('provider', '').startswith('Argos')
+                and p.get('review', {}).get('status') in ('material_error', 'uncertain')]
+    if rejected:
+        if checkpoint:
+            checkpoint(result)
+        yield local_models.GEMMA
     replacements = []
-    for part in parts:
-        if (part.get('provider', '').startswith('Argos')
-                and part.get('review', {}).get('status') in ('material_error', 'uncertain')):
-            english, provider = headline_review.fallback(part['source'], language, '',
-                                                         'Argos translation rejected by Qwen', article=True, **identity)
-            if english:
-                part['rejected_translation'] = {k: part[k] for k in ('english', 'provider', 'review')}
-                part.update(english=english, provider=provider, review={})
-                replacements.append(part)
+    for part in rejected:
+        english, provider = headline_review.fallback(part['source'], language, '',
+                                                     'Argos translation rejected by Qwen', article=True, **identity)
+        if english:
+            part['rejected_translation'] = {k: part[k] for k in ('english', 'provider', 'review')}
+            part.update(english=english, provider=provider, review={})
+            replacements.append(part)
     parts, replacements = group_replacements(parts, replacements, language)
     result['parts'] = parts
+    if replacements:
+        if checkpoint:
+            checkpoint(result)
+        yield local_models.QWEN
     for part in replacements:
         part['review'] = headline_review.audit(part['source'], language, part['english'])
     checked = sum(faithful(p) for p in parts)
     scope = 'Source excerpt' if document.get('excerpt') else 'Full-article'
     result.update(status='faithful' if checked == len(parts) else 'needs_review',
                   reason=f'{scope} translation: {checked}/{len(parts)} passages approved by Qwen (reasoning off)')
+    if checkpoint:
+        checkpoint(result)
     return document
 
 
