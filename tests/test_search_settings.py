@@ -196,3 +196,16 @@ def test_role_only_enforcement_hits_reach_source_review(database, monkeypatch):
     assert not scoring.score_article(row, company)["score_included"]
     row["verification"] = verification.verify(dict(doc, body="The chairman of another railway was arrested."), company, row)
     assert not event_analysis.triage_candidate(row)
+
+
+def test_partial_run_shows_coverage_and_unresolved_enforcement_in_summary(database):
+    company, run_id, row = seed(database, title="Railway chief detained")
+    database.execute("UPDATE search_runs SET status='partial',error_count=1,event_analysis_status='complete' WHERE id=%s", (run_id,))
+    database.execute("INSERT INTO search_errors(run_id,subject_name,message) VALUES (%s,%s,'Provider timed out')", (run_id, company['name']))
+    database.execute("UPDATE search_results SET source_kind='identity_review' WHERE id=%s", (row['id'],))
+    page = create_app().test_client().get(f"/runs/{run_id}").text
+    summary = page.split('id="ai-summary"', 1)[1].split('</section>', 1)[0]
+    assert 'Incomplete search coverage.' in summary and 'href="#source-errors"' in summary
+    assert 'Enforcement leads awaiting a company identity check (1)' in summary
+    assert '#source-evidence' in summary and 'Railway chief detained' in summary
+    assert 'No negative or neutral company events found' not in summary

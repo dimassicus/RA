@@ -571,6 +571,9 @@ def create_app() -> Flask:
         return render_template(
             "run.html", run=run, results=results, errors=db.get_errors(run_id), view=view,
             events=events, summary_leads=summary_leads, other_count=len(other_leads),
+            enforcement_review=[r for r in other_leads if r["source_kind"] == "identity_review"
+                                and r.get("score_status") != "reviewed"
+                                and (r.get("verification") or {}).get("status") not in ("supported", "unmatched")],
             company_labels={s["name"]: company_label(s) for s in run["subjects"]},
             country_leads=[item for item in all_results if (item.get("score") or 0) <= 0 and
                            any(p.startswith("Country ·") for p in item.get("exposure_paths", []))],

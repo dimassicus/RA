@@ -71,6 +71,12 @@
 </details></section>{% endif %}
 <section class="panel list-panel" id="ai-summary"><h2>{{ _('AI summary for search results') }}</h2>
 <p>{{ _('Oldest first across all companies. Events without a documented event date use their first publication date.') }} <a href="#summary-leads">{{ _('Review the leads used in this summary') }}</a>.</p>
+{% if run.error_count and run.status in ('partial', 'failed') %}
+<p><strong>{{ _('Incomplete search coverage.') }}</strong> {{ _('Some sources could not be checked. Events may be missing.') }}
+{% if errors %}<a href="#source-errors">{{ _('Source errors and recovery') }}</a>{% endif %}</p>
+{% endif %}
+{% if enforcement_review %}<details><summary><strong>{{ _('Enforcement leads awaiting a company identity check ({0})').format(enforcement_review|length) }}</strong></summary>
+<ul>{% for item in enforcement_review %}<li><a href="{{ url_for('article_score', result_id=item.id, _anchor='source-evidence') }}">{{ display_title(item) }}</a> · {{ item.publisher }}</li>{% endfor %}</ul></details>{% endif %}
 {% if run.event_analysis_status == 'failed' %}<form method="post" action="{{ url_for('retry_events', run_id=run.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><p>{{ _('AI drafting did not finish. Available evidence remains below.') }}</p><button class="button secondary">{{ _('Retry event drafts') }}</button></form>
 {% elif run.event_analysis_status != 'complete' %}<p class="subtext" id="brief-progress" role="status">{{ progress_copy.brief.format(v.get('event_briefs',0)) }}</p>{% endif %}
 {% for event in events %}<article class="company-event"><p class="subtext">{% if event.day %}{{ _(event.date_label) }} · <time datetime="{{ event.day.isoformat() }}">{{ event.day|localdate('%d %b %Y') }}</time>{% else %}{{ _('Date unknown') }}{% endif %} · {{ _(event.country) }} · {{ event.company }}</p><strong>{{ _(event.title) }}</strong>
@@ -86,7 +92,7 @@
 {{ source.published_at|localdate('%d %b %Y') if source.published_at else _('Publication date unknown') }} · <a href="{{ url_for('article_score', result_id=source.id) }}#source-evidence">{{ display_title(source) }}</a> · {{ source.publisher }} {{ copy_status(source) }}
 {% set quote = (source.event_draft or {}).get('profit_decline_quote') %}{% if quote %}<blockquote>{{ evidence_text(quote) }}</blockquote>{% endif %}
 </li>{% endfor %}</ul></details></article>
-{% else %}<p>{{ _('No negative or neutral company events found.' if run.event_analysis_status == 'complete' else 'No completed event briefs yet.') }}</p>{% endfor %}</section>
+{% else %}<p>{{ _('No completed event briefs yet.' if run.event_analysis_status != 'complete' else 'No event briefs from the available evidence.' if run.error_count or enforcement_review else 'No negative or neutral company events found.') }}</p>{% endfor %}</section>
 {% if country_leads %}<section class="panel"><details><summary>{{ _('Country risk leads (') }}{{ country_leads|length }})</summary><ul>{% for item in country_leads %}<li>{{ item.subject_name }} · <a href="{{ url_for('article_score', result_id=item.id) }}">{{ display_title(item) }}</a></li>{% endfor %}</ul></details></section>{% endif %}
 <h2 id="analyst-review">{{ _('Analyst review') }}</h2>
 <form method="post" action="{{ url_for('review_run', run_id=run.id, view=view) }}" id="review-form">
@@ -145,7 +151,7 @@
   <form method="post" action="{{ url_for('verify_run', run_id=run.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button secondary" {% if run.status in ('running','queued') %}disabled{% endif %}>{{ _('Check next sources · up to 8 per company') }}</button><p class="subtext">{{ _('RA checks the publisher’s article for evidence of company impact. Qwen separately reviews headline translations. No action is needed while queued or running.') }}</p></form>
 <script src="{{ url_for('static', filename='lead-table.js') }}" defer></script>
 <p class="subtext">{{ _('Disclosure coverage is partial. Exchange filings, unlinked documents and restricted pages may be missing.') }}</p>
-{% if errors %}<section class="panel errors-panel"><span class="step">{{ _('Source access') }}</span><h2>{{ _('Source errors and recovery') }}</h2><ul>{% for error in errors %}<li><strong>{{ error.subject_name }}:</strong> {{ _(error.message) }}</li>{% endfor %}</ul></section>{% endif %}
+{% if errors %}<section class="panel errors-panel" id="source-errors"><span class="step">{{ _('Source access') }}</span><h2>{{ _('Source errors and recovery') }}</h2><ul>{% for error in errors %}<li><strong>{{ error.subject_name }}:</strong> {{ _(error.message) }}</li>{% endfor %}</ul></section>{% endif %}
 <script>
   const progressCopy = {{ progress_copy|tojson }};
   const progressText = (key, ...values) => progressCopy[key].replace(/\{(\d+)\}/g, (_, index) => values[index] ?? 0);
