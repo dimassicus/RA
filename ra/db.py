@@ -567,6 +567,15 @@ def subject_for(article, subjects):
         (s for s in subjects if s['name'] == article['subject_name']), {'name': article['subject_name']})
 
 
+def evidence_subject(article, run):
+    """Supplement a frozen search profile only with aliases documented during source recovery."""
+    subject = subject_for(article, run["subjects"])
+    aliases = (run.get("search_settings") or {}).get("evidence_aliases", {}).get(str(subject.get("id")), [])
+    if not aliases:
+        return subject
+    return dict(subject, aliases="\n".join([subject.get("aliases", ""), *(a["name"] for a in aliases)]))
+
+
 def company_snapshot(company: dict):
     return {field: company.get(field, "") for field in FIELDS} | {
         "id": company.get("id"), "disclosure_sources": company.get("disclosure_sources", {})}

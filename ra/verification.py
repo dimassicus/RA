@@ -75,7 +75,7 @@ def _verify(document, subject, article):
         return {**result, 'reason': 'Possible clone warning; analyst must identify the affected legal entity'}
     # An English headline is not a translation of the full article.
     translated = base_language(document.get('language')) != 'en'
-    if article.get('source_kind') == 'identity_review' and headline_identity(normalized(body), subject):
+    if (translated or article.get('source_kind') == 'identity_review') and headline_identity(normalized(body), subject):
         result['source_company_match'] = True
     if translated:
         result['translation'] = article_translation.summary(document)

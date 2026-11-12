@@ -112,7 +112,7 @@ def _verification(result_id, fetcher, source_url):
                 conn.execute('INSERT INTO article_documents (url,document) VALUES (%s,%s) ON CONFLICT (url) '
                              'DO UPDATE SET document=EXCLUDED.document,fetched_at=now()', (url, Jsonb(document)))
         next_stage("translation_review")
-        subject = db.subject_for(article, run["subjects"])
+        subject = db.evidence_subject(article, run)
         original = document
         document = article_translation.bounded_source(original, subject, company_developments.decision_notice(article),
                                                       per_document=run['per_document_limit'])

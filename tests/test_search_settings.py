@@ -210,3 +210,14 @@ def test_partial_run_shows_coverage_and_unresolved_enforcement_in_summary(databa
     assert 'Enforcement leads awaiting a company identity check (1)' in summary
     assert '#source-evidence' in summary and 'Railway chief detained' in summary
     assert 'No negative or neutral company events found' not in summary
+
+
+def test_recovered_source_alias_is_scoped_to_evidence_and_one_issuer():
+    profile = dict(id=13, name="Company in the original register", aliases="Original Alias")
+    other = dict(id=14, name="Another company", aliases="")
+    run = dict(subjects=[profile, other], search_settings={"evidence_aliases": {
+        "13": [{"name": "Confirmed English Name", "url": "https://issuer.test/about"}]}})
+    evidence = db.evidence_subject(dict(company_id=13), run)
+    assert evidence["aliases"] == "Original Alias\nConfirmed English Name"
+    assert profile["aliases"] == "Original Alias"
+    assert db.evidence_subject(dict(company_id=14), run) == other

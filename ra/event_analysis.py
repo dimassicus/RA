@@ -437,7 +437,7 @@ def process(run_id):
             documents = {r['url']: r['document'] for r in conn.execute(
                 "SELECT url,document FROM article_documents WHERE url=ANY(%s)",
                 ([r['verification'].get('requested_url') for r in members if r.get('verification')],))}
-            subject = db.subject_for(members[0], run["subjects"])
+            subject = db.evidence_subject(members[0], run)
             for row in members:
                 check = row.get('verification') or {}
                 row['event_sources'] = source_texts(documents.get(check.get('requested_url'), {}), check, subject)
