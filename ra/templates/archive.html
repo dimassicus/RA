@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% from '_copy_status.html' import copy_status %}
+{% block title %}{{ _('Archive search') }} · RA{% endblock %}
+{% block content %}
+<h1>{{ _('Archive search') }}</h1>
+<form class="panel form-panel" method="get" action="{{ url_for('archive_search') }}">
+  <div class="form-grid">
+    <label>{{ _('Company') }}<select name="company_id" required>
+      <option value="">{{ _('Choose a company') }}</option>
+      {% for c in companies|alphabetical_companies %}<option value="{{ c.id }}" {% if company and company.id == c.id %}selected{% endif %}>{{ c|company_label }}</option>{% endfor %}
+    </select></label>
+    <label>{{ _('Show') }}<select name="view">
+      <option value="leads" {% if view == 'leads' %}selected{% endif %}>{{ _('Individual leads') }}</option>
+      <option value="events" {% if view == 'events' %}selected{% endif %}>{{ _('Company events') }}</option>
+    </select></label>
+    <label>{{ _('From date') }}<input type="date" name="start" value="{{ request.args.get('start','') }}"></label>
+    <label>{{ _('To date') }}<input type="date" name="end" value="{{ request.args.get('end','') }}"></label>
+    <label>{{ _('Words in the headline, summary, or publisher') }}<input type="search" name="q" maxlength="300" value="{{ query }}"></label>
+    <label>{{ _('Report selection') }}<select name="accepted">
+      <option value="" {% if not accepted %}selected{% endif %}>{{ _('All saved records') }}</option>
+      <option value="1" {% if accepted %}selected{% endif %}>{{ _('With accepted leads') }}</option>
+    </select></label>
+  </div>
+  <p class="subtext">{{ _('Both dates are inclusive in Moscow time. Leads use publication dates. Events use the recorded event date or their first publication date.') }}</p>
+  <button class="button primary">{{ _('Search saved records') }}</button>
+</form>
+{% macro lead_link(r) %}
+  <a href="{{ url_for('article_score', result_id=r.id, _anchor='source-evidence') }}">{{ display_title(r) }}</a>
+  <span class="subtext">#{{ r.id }} · {{ r.publication_day|localdate('%d %b %Y') if r.publication_day else _('Date unknown') }} · {{ r.publisher or _('Unknown publisher') }}
+  · <a href="{{ url_for('run_detail', run_id=r.run_id) }}">{{ _('Search #') }}{{ r.run_id }}</a>
+  · {{ _('Accepted') if r.report_selected else _('Unselected') }}{% if r.score is not none %} · {{ _('Score') }} {{ '%+d'|format(r.score) if r.score else '0' }}{% endif %}</span>
+  {{ copy_status(r) }}
+{% endmacro %}
+{% if error %}<p role="alert">{{ _(error) }}</p>
+{% elif company %}<section class="panel list-panel"><h2>{{ company|company_label }} · {{ _('Individual leads') if view == 'leads' else _('Company events') }} ({{ total }})</h2>
+  {% if total %}<a class="button secondary" href="{{ url_for('archive_search', **dict(request.args, download='xlsx', page=1)) }}">{{ _('Download all results as Excel') }} (.xlsx)</a>{% endif %}
+  {% if not rows %}<p>{{ _('No matching records on this page.') }}</p>
+  {% elif view == 'leads' %}<ul class="archive-results">{% for r in rows %}<li>{{ lead_link(r) }}</li>{% endfor %}</ul>
+  {% else %}{% for event in rows %}<details class="review-event"><summary><strong>{{ _(event.title) }}</strong>
+    <span class="subtext">{{ event.day|localdate('%d %b %Y') if event.day else _('Date unknown') }} · {{ _(event.date_label) }} · {{ _('Source leads') }} ({{ event.sources|length }})</span></summary>
+    <div class="archive-evidence">{% if event.summary %}<p>{{ _(event.summary) }}</p>{% endif %}
+      <ul class="archive-results">{% for r in event.sources %}<li>{{ lead_link(r) }}</li>{% endfor %}</ul></div>
+  </details>{% endfor %}{% endif %}
+  {% if pages > 1 or page > 1 %}<nav class="review-toolbar" aria-label="{{ _('Archive result pages') }}">
+    {% if page > 1 %}<a href="{{ url_for('archive_search', **dict(request.args,page=page-1)) }}">{{ _('Previous page') }}</a>{% endif %}
+    {{ _('Page') }} {{ page }} / {{ pages }}
+    {% if page < pages %}<a href="{{ url_for('archive_search', **dict(request.args,page=page+1)) }}">{{ _('Next page') }}</a>{% endif %}
+  </nav>{% endif %}
+</section>{% endif %}
+{% endblock %}

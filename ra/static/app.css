@@ -45,3 +45,7 @@
 .language-toggle button:focus-visible{outline-offset:-3px}
 html:lang(ru) .switch-state:after{content:"Выкл"}
 html:lang(ru) .search-switch input:checked ~ .switch-state:after{content:"Вкл"}
+
+.archive-results { padding-inline-start: 1.3rem; }
+.archive-results li { margin: 0.8rem 0; }
+.archive-evidence { padding: 0 1rem; }

@@ -183,11 +183,11 @@ def research_company(data: dict, json_fetcher=fetch_json, feed_fetcher=search.fe
                     record.get("logradouro"), record.get("numero"), record.get("bairro"),
                     record.get("municipio"), record.get("uf"), record.get("cep")) if part)
                 qsa = record.get("qsa") or []
-                managers = ", ".join(f"{person.get('nome_socio')} ({person.get('qualificacao_socio')})"
+                managers = "; ".join(f"{person.get('nome_socio')} ({person.get('qualificacao_socio')})"
                                     for person in qsa if person.get("nome_socio") and
                                     any(term in folded(person.get("qualificacao_socio") or "")
                                         for term in ("diretor", "administrador", "presidente")))
-                owners = ", ".join(f"{person.get('nome_socio')} ({person.get('qualificacao_socio')})"
+                owners = "; ".join(f"{person.get('nome_socio')} ({person.get('qualificacao_socio')})"
                                   for person in qsa if person.get("nome_socio") and
                                   any(term in folded(person.get("qualificacao_socio") or "")
                                       for term in ("socio", "acionista")))

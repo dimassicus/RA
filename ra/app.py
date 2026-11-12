@@ -13,7 +13,7 @@ from pathlib import Path
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from psycopg.errors import UniqueViolation
 
-from . import bilingual, i18n, db, disclosures, governance_roster, keywords, risk_factors, intake_worker, model_store, news_apis, preliminary, worker
+from . import archive, bilingual, i18n, db, disclosures, governance_roster, keywords, risk_factors, intake_worker, model_store, news_apis, preliminary, worker
 from .importer import stage_workbook
 from .exposure import topic_links
 from .company_report import load_report
@@ -128,12 +128,15 @@ def create_app() -> Flask:
         topics = sorted({topic for company in companies for topic in topic_links(company)})
         return render_template(
             "index.html", companies=companies, topics=topics,
-            archived=db.list_companies(False), runs=db.list_runs(), intake=db.list_intake(),
-            model_coverage=model_store.coverage([company["country_registration"] for company in companies]),
+            runs=db.list_runs(), intake=db.list_intake(),
             news_api_providers=news_apis.configured_providers() + [name for name in ("perplexity", "google") if os.environ.get(f"RA_{name.upper()}_API_KEY")],
             search_today=datetime.now(WEEK_TIMEZONE).date().isoformat(),
             reviewer=headline_review.readiness(),
         )
+
+    @app.get("/watchlist")
+    def watchlist():
+        return render_template("watchlist.html", companies=db.list_companies(True), archived=db.list_companies(False))
 
     @app.route("/risk-factors", defaults={"factors": True}, methods=["GET", "POST"])
     @app.route("/keywords", defaults={"factors": False}, methods=["GET", "POST"])
@@ -210,7 +213,8 @@ def create_app() -> Flask:
         runs = db.list_runs()
         for run in runs:
             run["checks"] = verification_store.job_summary(run["id"])
-        return render_template("setup.html", runs=runs, reviewer=headline_review.readiness(),
+        countries = [c["country_registration"] for c in db.list_companies(True)]
+        return render_template("setup.html", runs=runs, reviewer=headline_review.readiness(), model_coverage=model_store.coverage(countries),
                                search_settings=search_settings.read())
 
     @app.post("/setup/runs/<int:run_id>/retry")
@@ -242,6 +246,41 @@ def create_app() -> Flask:
         else:
             abort(400, "Unknown process.")
         return redirect(url_for("setup"))
+
+    @app.get("/archive")
+    def archive_search():
+        companies = db.list_companies(None)
+        company_id = request.args.get('company_id', type=int)
+        company = next((c for c in companies if c['id'] == company_id), None)
+        view = request.args.get('view', 'leads')
+        query = request.args.get('q', '').strip()
+        accepted = request.args.get('accepted') == '1'
+        excel = request.args.get('download') == 'xlsx'
+        page = request.args.get('page', 1, type=int)
+        if view not in ('leads', 'events') or not 1 <= page <= 2**31 or len(query) > 300:
+            abort(400)
+        rows, total, error = [], 0, None
+        try:
+            start, end = [date.fromisoformat(value) if value else None for value in
+                          (request.args.get('start'), request.args.get('end'))]
+        except ValueError:
+            error = 'Enter valid dates.'
+        else:
+            if start and end and start > end:
+                error = 'End date must be on or after start date.'
+            elif request.args.get('company_id') and not company:
+                error = 'Choose a company from the list.'
+            elif company:
+                rows, total = archive.search(company, view, start, end, query, accepted, None if excel else page)
+                i18n.prefetch(rows if view == 'leads' else [r for event in rows for r in event['sources']])
+                if excel:
+                    from .archive_export import workbook
+                    return send_file(workbook(company, view, rows),
+                                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                     as_attachment=True, download_name=f"ra-archive-{company_id}-{view}.xlsx")
+        return render_template('archive.html', companies=companies, company=company, view=view,
+                               query=query, accepted=accepted, rows=rows, total=total, error=error,
+                               page=page, pages=(total + archive.PAGE_SIZE - 1) // archive.PAGE_SIZE)
 
     @app.get("/scores")
     def scores():
@@ -395,7 +434,7 @@ def create_app() -> Flask:
             keywords.schedule()
             model_store.schedule_countries([data["country_registration"]])
             flash("Company details saved.", "success")
-            return redirect(url_for("dashboard"))
+            return redirect(url_for("watchlist"))
         except (ValueError, UniqueViolation) as exc:
             flash(str(exc), "error")
             return redirect(url_for("edit_company", company_id=company_id))
@@ -405,7 +444,7 @@ def create_app() -> Flask:
         if not db.set_active(company_id, False):
             abort(404)
         flash("Company removed from the active watchlist. Its search history was kept.", "success")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("watchlist"))
 
     @app.post("/companies/<int:company_id>/disclosures")
     def discover_disclosures(company_id):
@@ -413,7 +452,7 @@ def create_app() -> Flask:
             abort(404)
         disclosures.schedule(company_id, force=True)
         flash("Disclosure discovery queued. Saved news searches and scores remain unchanged.", "success")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("watchlist"))
 
     @app.post("/companies/<int:company_id>/restore")
     def restore_company(company_id: int):
@@ -422,7 +461,7 @@ def create_app() -> Flask:
         keywords.schedule()
         disclosures.schedule(company_id)
         flash("Company restored to the active watchlist.", "success")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("watchlist"))
 
     @app.post("/companies/import")
     def import_companies():

@@ -1325,3 +1325,52 @@ def test_company_events_save_selection_and_keep_original_briefs(database, monkey
     db.set_report_selection(run_id, [ids[0]])
     assert [(e['score'], e['article_ids']) for e in metrics()['contributions']] == [(0, [ids[0]])]
     assert not score_store.get_article(ids[1])['score_included']
+
+
+def test_archive_dates_filter_events_after_grouping_and_link_all_sources(database):
+    company, _, first = seed(database, title='First filing', url='https://issuer.test/one')
+    _, _, second = seed(database, title='Coverage of first filing', url='https://news.test/two')
+    save_event_fixture(database, first, second)
+    for row, stamp in [(first, '2026-01-31 21:00+00'), (second, '2026-02-01 21:00+00')]:
+        database.execute("""UPDATE search_results SET published_at=%s,score=0,score_status='provisional',
+            event_group='event:one',event_draft=event_draft || '{"event_day":"2026-01-25"}'
+            WHERE id=%s""", (stamp, row['id']))
+    database.execute("UPDATE search_results SET report_selected=true WHERE id=%s", (first['id'],))
+    client = create_app().test_client()
+    def search(**filters):
+        return client.get('/archive', query_string={'company_id': company['id'], **filters}).get_data(as_text=True)
+    def link(row):
+        return f"/articles/{row['id']}/score#source-evidence"
+    leads = search(start='2026-02-01', end='2026-02-01')
+    assert link(first) in leads and link(second) not in leads
+    assert link(second) not in search(accepted='1')
+    assert link(first) not in search(q='absent')
+    events = search(view='events', start='2026-01-25', end='2026-01-25', q='Coverage', accepted='1')
+    assert events.count('<details class="review-event">') == 1
+    assert link(first) in events and link(second) in events
+    assert link(first) not in search(view='events', start='2026-02-01')
+    assert 'End date must be on or after start date.' in search(start='2026-02-01', end='2026-01-01')
+
+
+def test_archive_xlsx_uses_all_matching_rows_and_links_evidence(database, monkeypatch):
+    from io import BytesIO
+    from openpyxl import load_workbook
+    from ra import archive
+    monkeypatch.setattr(archive, 'PAGE_SIZE', 1)
+    company, _, a = seed(database, title='=1+2', url='https://issuer.test/first')
+    _, _, b = seed(database, title='Second filing', url='https://news.test/other')
+    save_event_fixture(database, a, b)
+    database.execute("UPDATE search_results SET score=0,event_group='event:one', title_en=title")
+    client = create_app().test_client()
+    def export(**args):
+        response = client.get('/archive', query_string=dict(company_id=company['id'], download='xlsx', **args))
+        assert response.status_code == 200 and 'attachment;' in response.headers['Content-Disposition']
+        return load_workbook(BytesIO(response.data))
+    ws = export(page=2).active
+    assert ws.max_row == 3 and {ws['A2'].value,ws['A3'].value} == {a['id'], b['id']}
+    first = next(cell for cell in ws['D'] if cell.value == '=1+2')
+    assert first.data_type == 's' and f"/articles/{a['id']}/score" in first.hyperlink.target
+    assert export(q='Second').active.max_row == 2
+    book = export(view='events')
+    assert book.sheetnames == ['Company events', 'Source leads']
+    assert book.worksheets[0]['G2'].value == 2 and book.worksheets[1].max_row == 3

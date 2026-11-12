@@ -40,6 +40,14 @@
   <p>{{ _('Start the LM Studio server on port 1234. Keep Gemma 31B and Qwen 27B downloaded. RA loads one at a time: Gemma translates when needed, Qwen reviews. Both use reasoning off. Loading and switching appear in the run’s live status.') }}</p>
   <a href="{{ url_for('setup') }}">{{ _('Check readiness again') }}</a>
 </section>
+{% if model_coverage %}<section class="panel list-panel" id="languages">
+  <div class="section-heading"><div><span class="step">{{ _('Languages') }}</span><h2>{{ _('Translation model coverage') }}</h2></div></div>
+  <p>{{ _('Languages are added from each watchlist country, including countries with several local languages. RA detects each headline’s language. When Argos cannot translate it, RA tries MyMemory online, then local Gemma, then Google public translation. Qwen reviews translated headlines.') }}</p>
+  <div class="table-scroll"><table><thead><tr><th>{{ _('Country') }}</th><th>{{ _('Language') }}</th><th>{{ _('Translation to English') }}</th></tr></thead><tbody>
+  {% for item in model_coverage %}<tr><td>{{ _(item.country) }}</td><td>{{ item.language }}</td><td>{{ _(item.status) }}</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>{% endif %}
+
 <section class="panel list-panel">
   <h2>{{ _('Recover a process') }}</h2>
   <p>{{ _('Headline translation retries use saved articles. Source retries also retry incomplete full-article translations and older language-limited checks, reusing saved source text while its cache is valid. Revisiting failed or inaccessible publishers may use API credits. Restarting a search creates a new run using the original company list.') }}</p>
