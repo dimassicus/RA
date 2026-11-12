@@ -35,7 +35,8 @@ def test_discovery_windows_and_targeted_ruling_query(monkeypatch):
     monkeypatch.setattr(perplexity.recovery_providers,'request',request)
     rows,gaps=perplexity.collect(SUBJECT,(DAY-timedelta(days=10),DAY+timedelta(days=6)))
     assert not gaps and [r['url'] for r in rows]==['https://issuer.test/court']
-    assert len(calls)==7 and 'Isi Penetapan' in calls[-1]['query']
+    assert len(calls)==8 and 'Isi Penetapan' in calls[-1]['query']
+    assert 'arrest' in calls[0]['query'] and 'corruption' in calls[0]['query']
     assert sum('кредитные риски' in call['query'] for call in calls) == 2
     assert calls[-1]['search_before_date_filter']=='07/10/2026'
 

@@ -43,9 +43,21 @@ def search(query, subject, start, end):
             continue
         row = dict(url=url, title=title, summary=summary, publisher=parts.hostname, published_at=stamp,
                    discovery_service='Perplexity', source_kind='news', language='', query=query, signal_terms=[])
-        if title and not excluded_story(title,url,publisher=parts.hostname,summary=summary) and search_settings.company_lead(row, subject):
+        if title and not excluded_story(title,url,publisher=parts.hostname,summary=summary) and (
+                search_settings.company_lead(row, subject) or search_settings.enforcement_candidate(row)):
             rows.append(row)
     return rows
+
+
+def enforcement_queries(subject, locale):
+    from . import keywords
+    from .search import query_groups
+    concepts = {'arrest', 'corruption', 'criminal investigation'}
+    terms = keywords.adverse_search_terms('en', concepts)
+    if terms:
+        native = keywords.adverse_search_terms(locale, concepts) if locale != 'en' else []
+        for group in query_groups([f'"{n}"' for n in discovery_names(subject, limit=None)], limit=4):
+            yield f"{group} {subject.get('country_registration', '')} executive chairman {' '.join(terms + native)}"
 
 
 def collect(subject, window, seeds=(), progress=None, *, adverse_focus=False):
@@ -86,6 +98,10 @@ def collect(subject, window, seeds=(), progress=None, *, adverse_focus=False):
             return False
         return True
 
+    # Reserve a short, recent enforcement search even for a long historical window.
+    for query in enforcement_queries(subject, locale):
+        if not lookup(query, max(start, end - timedelta(days=7)), end):
+            return list(found.values()), errors
     lo = start
     while lo <= end:
         next_quarter = (lo.month - 1) // 3 * 3 + 4

@@ -56,5 +56,6 @@ def test_focus_changes_discovery_queries_and_preserves_favourable_finds(monkeypa
     queries.clear()
     monkeypatch.setattr(google, 'lookup', lambda s, span, q: queries.append((q, *span)) or [positive.copy()])
     google.collect(ISSUER, SPAN, [positive], [], primary=False, provider_gaps=[], adverse_focus=True)
-    assert queries and all('material neutral filings' in q for q, _, _ in queries)
+    assert any('corruption investigations' in q for q, _, _ in queries)
+    assert any('material neutral filings' in q for q, _, _ in queries)
     assert min(lo for _, lo, _ in queries) == SPAN[0] and max(hi for _, _, hi in queries) == SPAN[1]

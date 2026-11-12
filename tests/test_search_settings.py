@@ -166,3 +166,33 @@ def test_adverse_view_retains_positive_source_and_analyst_decision(database, mon
     score_store.review_score(article['id'], 1, True, 'Analyst confirms recovery despite misleading headline')
     assert score_store.refresh_scores(run_id)['articles_updated'] == 0
     assert score_store.get_article(article['id'])['score_included']
+
+
+def test_role_only_enforcement_hits_reach_source_review(database, monkeypatch):
+    from ra import event_analysis, news_apis, scoring, verification
+    company, run_id, _ = seed(database)
+    monkeypatch.setattr(worker, "translate_text", lambda *args: ("", "unavailable"))
+    data = dict(title="В Казахстане задержали глав железной дороги и фонда", language="ru",
+                description="По обвинению в коррупции", snippet="Следствие продолжается.",
+                keywords="Казахстан, КТЖ", url="https://news.test/arrest", source="news.test",
+                published_at="2026-11-12T07:28:13Z")
+    ordinary = dict(data, title="Railway timetable", keywords="", description="", snippet="",
+                    url="https://news.test/timetable")
+    hits = news_apis.parse_articles("thenewsapi", {"data": [data, ordinary]}, "company query")
+    count = worker._save_leads(run_id, company, str(company['id']), hits,
+                               dict(include_country=False, include_industry=False), lambda *args: None,
+                               set(), {}, connection=database, queue_checks=True)
+    assert count == 1
+    row = database.execute("SELECT * FROM search_results WHERE url=%s", (data["url"],)).fetchone()
+    assert row["source_kind"] == "identity_review"
+    assert all(data[k] in row["discovery_summary"] for k in ("description", "snippet", "keywords"))
+    assert database.execute("SELECT status FROM verification_jobs WHERE result_id=%s", (row["id"],)).fetchone()
+    row.update(event_draft=dict(event=1, sentiment=-1), report_selected=True)
+    row.update(scoring.score_article(row, company))
+    assert not row["score_included"] and not event_analysis.triage_candidate(row)
+    doc = dict(status="available", language="en", body=f"The chairman of {company['name']} was arrested.")
+    row["verification"] = verification.verify(doc, company, row)
+    assert row["verification"]["status"] == "needs_review" and event_analysis.triage_candidate(row)
+    assert not scoring.score_article(row, company)["score_included"]
+    row["verification"] = verification.verify(dict(doc, body="The chairman of another railway was arrested."), company, row)
+    assert not event_analysis.triage_candidate(row)

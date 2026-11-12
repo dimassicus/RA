@@ -166,6 +166,9 @@ def governance_searches(subject):
         "EG": ("egx.com.eg", "fra.gov.eg"), "GR": ("businessportal.gr", "athexgroup.gr", "athens.euronext.com"),
         "VN": ("hsx.vn", "hnx.vn"), "UZ": ("openinfo.uz", "uzse.uz"), "TR": ("kap.org.tr", "ticaretsicil.gov.tr"),
     }
+    if region == "KZ":
+        for names in query_groups([f'"{name}"' for name in discovery_names(subject, limit=None)], limit=4):
+            plans.append((f"{names} site:gov.kz/org/knb", country))
     if region in domains:
         expr = " OR ".join("site:" + site for site in domains[region])
         plans.append((f'"{local_anchor}" ({expr})', country))
@@ -215,7 +218,7 @@ def adverse_searches(subject):
             editions.append((code, place))
     quote = lambda text: '"' + text.replace('"', '').strip() + '"'
     companies = [quote(name) + (" " + quote(country) if ambiguous(name) and country else "")
-                 for name in discovery_names(subject) if not ambiguous(name) or country]
+                 for name in discovery_names(subject, limit=None) if not ambiguous(name) or country]
     people = [quote(name) for name in related_names(subject)]
     anchors = list(query_groups([*companies, *people], limit=6))
     plans = []

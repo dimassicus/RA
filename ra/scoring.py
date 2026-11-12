@@ -116,6 +116,8 @@ def score_article(article: dict, subject: dict, now: datetime | None = None) -> 
     problem = ""
     if article.get("source_kind") == "context":
         problem = "Potential exposure requires source evidence of an impact on this company"
+    elif article.get("source_kind") == "identity_review":
+        problem = "Enforcement report requires source confirmation of the company and its role"
     elif not identity:
         problem = "Company identity is not supported by the headline"
     elif article.get("discovery_service") == "FCA Warning RSS":
@@ -156,7 +158,7 @@ def score_article(article: dict, subject: dict, now: datetime | None = None) -> 
                       score_reason=result["score_reason"] + "; missing or future publication date")
     elif (article.get("report_selected") and draft.get("event") and draft.get("sentiment") in (-1, 0) and not draft.get("excluded")
             and result["score"] in (-1, 0) and not result["score_included"]
-            and article.get("source_kind") != "context" and not article.get("exposure_paths")
+            and article.get("source_kind") not in ("context", "identity_review") and not article.get("exposure_paths")
             and verification.get("status") != "unmatched"):
         result.update(score_included=True, score_reason="Current lead score accepted in saved event selection; "
                       + result["score_reason"])

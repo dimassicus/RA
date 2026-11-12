@@ -58,6 +58,21 @@ def company_lead(article, subject):
                    (headline(article, "title"), headline(article, "title_en"), article.get("summary", ""))))
 
 
+def enforcement_candidate(article):
+    """Keep serious hits from company-specific searches for a source identity check."""
+    from .keywords import matches
+    if article.get("discovery_service") not in {
+            "GNews", "TheNewsAPI", "Perplexity", "Google Gemini 4 Carbon", "Google News RSS", "Brave Search"
+    } or article.get("exposure_paths") or article.get("source_kind") == "context":
+        return False
+    text = " ".join(str(article.get(field) or "") for field in
+                    ("title", "title_en", "summary", "publisher_keywords"))
+    if re.search(r"\b(?:detained|arrested|задержа\w*|арестова\w*|коррупц\w*)\b", text, re.I):
+        return True
+    return any(term in {"arrest", "criminal investigation", "corruption", "embezzlement"}
+               and direction == "adverse" for term, _, direction in matches(text, article.get("language")))
+
+
 def adverse_lead(article, subject):
     """Use company-linked discovery evidence; only source verification can support a score."""
     from .idx_filings import ARCHIVE_SERVICE

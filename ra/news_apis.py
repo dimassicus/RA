@@ -171,14 +171,15 @@ def parse_articles(provider: str, payload: dict, query: str) -> list[dict]:
             continue
         source = record.get("source")
         publisher = str(source.get("name") or "") if isinstance(source, dict) else str(source or "")
-        if excluded_story(title, url, publisher=publisher, categories=record.get("categories") or (),
-                          summary=str(record.get("description") or record.get("snippet") or "")):
+        snippets = dict.fromkeys(str(record[k]).strip() for k in ('description', 'snippet', 'content') if record.get(k))
+        summary = '\n'.join(snippets)[:2500]
+        if excluded_story(title, url, publisher=publisher, categories=record.get("categories") or (), summary=summary):
             continue
         published = record.get("publishedAt") if provider == "gnews" else record.get("published_at")
         articles.append({
             "title": title, "url": url, "publisher": publisher,
             "published_at": _published(published), "query": query,
-            "summary": str(record.get("description") or record.get("snippet") or "")[:1500],
+            "summary": summary, "publisher_keywords": record.get("keywords") or "",
             "language": record.get("lang" if provider == "gnews" else "language") or "",
             "signal_terms": signal_terms(title), "source_kind": "news",
             "discovery_service": "GNews" if provider == "gnews" else "TheNewsAPI",

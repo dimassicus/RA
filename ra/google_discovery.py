@@ -15,6 +15,9 @@ from .news_topics import excluded_story
 
 MODEL = 'gemini-4-carbon'
 GOOGLE = 'generativelanguage.googleapis.com'
+ENFORCEMENT_QUERY = ('Check regulator statements and dated local reporting for arrests, detention, or corruption '
+                     'investigations involving the company or its current executives. Identify the executive, '
+                     'employer, role and procedural stage. Omit unrelated cases.')
 REDIRECTORS = {'vertexaisearch.cloud.google.com', 'grounding-api-redirect.googleusercontent.com'}
 LINE = re.compile(r'^\s*(?:[-*•]|\d+[.)])?\s*\**(\d{4}-\d\d-\d\d)\**\s*\|\s*([^|\n]+?)\s*\|\s*([^\n]+)', re.M)
 FINANCIAL = re.compile(r'financial statement|financial results|laporan keuangan|earnings|net profit|laba bersih', re.I)
@@ -84,12 +87,12 @@ def cited_rows(data, subject, bounds, query):
                 row = dict(title=title, summary=summary, url=url, publisher=urlsplit(url).hostname,
                            source_kind='news', published_at=day, discovery_service='Google Gemini 4 Carbon',
                            query=query, signal_terms=[], language='')
-                if search_settings.company_lead(row, subject):
+                if search_settings.company_lead(row, subject) or search_settings.enforcement_candidate(row):
                     yield row
 
 
 def lookup(subject, bounds, query):
-    prompt = (f"Use Google Search for {subject['name']} ({', '.join(discovery_names(subject))}), "
+    prompt = (f"Use Google Search for {subject['name']} ({', '.join(discovery_names(subject, limit=None))}), "
               f"{subject.get('country_registration','')}. Search local-language, English and Russian sources published "
               f"between {bounds[0]:%Y-%m-%d} and {bounds[1]:%Y-%m-%d}. {query}. "
               "Return one line per original source with exactly one grounding citation attached to that same line. "
@@ -131,6 +134,10 @@ def searches(articles, coverage, bounds, primary, provider_gaps, adverse_focus=F
     for (period, year), values in amounts.items():
         if max(values) - min(values) > 1:
             yield bounds, f"Resolve conflicting reported net profit changes for {period} {year} against the issuer filing", []
+    recent = max(start, end - timedelta(days=7))
+    if (primary or provider_gaps or adverse_focus) and not any(
+            day and recent <= day <= end and search_settings.enforcement_candidate(row) for row, day in dated):
+        yield (recent, end), ENFORCEMENT_QUERY, []
     cursor = start
     while cursor <= end:
         month = (cursor.month-1)//3*3+4
@@ -160,14 +167,15 @@ def collect(subject, span, articles, coverage, *, primary, provider_gaps, progre
     now = datetime.now(timezone.utc)
     found, gaps = {}, []
     for bounds, query, notices in searches(articles, coverage, span or (now-timedelta(days=7), now), primary, provider_gaps, adverse_focus):
-        if adverse_focus:
+        enforcement = query == ENFORCEMENT_QUERY
+        if adverse_focus and not enforcement:
             query += ('. Prioritise adverse events and material neutral filings, including falling profit despite revenue growth, '
                       'liquidity pressure, continuing court restrictions, volatility inquiries and audit committee changes. Cite original filings.')
         if progress:
             progress('Searching Google Gemini · ' + query)
         try:
             hits = lookup(subject, bounds, query)
-            if not hits:
+            if not hits and not enforcement:
                 gaps.append('Google found no admissible dated citation for ' + query)
             for row in hits:
                 found.setdefault(row['url'], row)

@@ -42,13 +42,14 @@ def material_notice(row, subject=None):
 def candidate(row):
     return (row.get('score') in (-1, 0) and (row.get('score_included') or
             (row.get('source_kind') != 'context' and not row.get('exposure_paths') and
+             (row.get('source_kind') != 'identity_review' or (row.get('verification') or {}).get('source_company_match')) and
              (row.get('verification') or {}).get('status') != 'unmatched' and row.get('score_status') != 'reviewed')))
 
 
 def triage_candidate(row):
     # A favourable headline can still introduce mixed results in the underlying report.
     return candidate(row) or (row.get('score') == 1 and row.get('score_status') != 'reviewed'
-                              and row.get('source_kind') != 'context' and not row.get('exposure_paths')
+                              and row.get('source_kind') not in ('context', 'identity_review') and not row.get('exposure_paths')
                               and (row.get('verification') or {}).get('status') != 'unmatched')
 
 
@@ -230,7 +231,8 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             "Keep dated material exchange inquiries, issuer responses and governance changes including executive appointments even when coverage is favourable. "
             "A listing in a generic calendar or directory does not establish a new event or confirm a previously reported incident. "
             "Separate repeated inquiries on different dates unless the source identifies the same inquiry. Classify purely favourable announcements as positive and archive them. "
-            "Never infer corporate wrongdoing from an owner's case. Give each event a specific English title.")
+            "Retain a sourced detention of a current company executive as a governance event. Name the person, role and reported procedural stage. "
+            "Never infer corporate wrongdoing or financial loss from a person's detention. Never infer corporate wrongdoing from an owner's case. Give each event a specific English title.")
         payload = {"company": display_name, "company_names": labels, "existing": anchors, "leads": leads}
         response = model(instruction, payload, _GROUPS)["assignments"]
         event_ids = allowed | {e['event'] for e in anchors} | {0}

@@ -123,10 +123,18 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
                 article["title"], language, subject, article["publisher"]
             )
             candidate = {**article, "language": language, "title_en": title_en, "publisher_en": article["publisher"]}
-            if (not settings["include_country"] and not settings["include_industry"]
-                    and not search_settings.company_lead(candidate, subject)
-                    and not company_developments.review_topics(candidate, subject)):
+            named = search_settings.company_lead(candidate, subject)
+            if not named and search_settings.enforcement_candidate(candidate):
+                candidate["source_kind"] = "identity_review"
+            elif (not named and not settings["include_country"] and not settings["include_industry"]
+                  and not company_developments.review_topics(candidate, subject)):
+                logging.getLogger(__name__).info("Run %s skipped %s hit without company match: %s",
+                                                 run_id, article.get("discovery_service"), article["url"])
                 continue
+            summary = article.get("summary", "")
+            if tags := article.get("publisher_keywords"):
+                labels = ", ".join(map(str, tags)) if isinstance(tags, list) else str(tags)
+                summary += "\nPublisher keywords: " + labels[:1000]
             publisher_en = article["publisher"]
             seen_before = conn.execute(
                 "SELECT EXISTS (SELECT 1 FROM search_results WHERE subject_key = %s AND url = %s "
@@ -141,9 +149,9 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
                 "ON CONFLICT (run_id, subject_key, url) DO NOTHING RETURNING id",
                 (run_id, subject.get("id"), subject_key, subject["name"], article["title"],
                  article["url"], article["publisher"], article.get("discovery_service", ""),
-                 article.get("source_kind", "news"), article["published_at"],
+                 candidate.get("source_kind", "news"), article["published_at"],
                  article["query"], language, title_en, publisher_en, provider,
-                 article["signal_terms"], seen_before, article.get("exposure_paths", []), article.get("summary", ""),
+                 article["signal_terms"], seen_before, article.get("exposure_paths", []), summary,
                  article.get("decision_followup_urls", []), db.Jsonb(article.get("filing_attachments", []))),
             )
             count += inserted.rowcount
@@ -152,7 +160,7 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
                 if queue_checks:
                     conn.execute("INSERT INTO verification_jobs(result_id) VALUES (%s)", (inserted.fetchone()['id'],))
                 saved.add(canonical_url(article["url"]))
-                if article.get("source_kind") != "context" and search_settings.company_lead(candidate, subject):
+                if article.get("source_kind") != "context" and named:
                     month = article["published_at"].astimezone(WEEK_TIMEZONE).strftime("%Y-%m")
                     covered[month] = covered.get(month, 0) + 1
     return count

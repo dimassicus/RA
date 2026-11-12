@@ -92,8 +92,8 @@ def related_identity(text: str, subject: dict) -> bool:
     return any(contains(text, normalized(name)) for name in related_names(subject))
 
 
-def discovery_names(subject: dict) -> list[str]:
-    """Legal name plus at most two preferred aliases; never search affiliates alone."""
+def discovery_names(subject: dict, *, limit=3) -> list[str]:
+    """Reviewed issuer names in preference order; affiliates are separate entities."""
     values = [subject.get("name", ""), *parse_aliases(subject.get("aliases", "")),
               subject.get("short_name", "")]
     names, seen = [], set()
@@ -103,7 +103,7 @@ def discovery_names(subject: dict) -> list[str]:
         if len(key) >= 3 and key not in seen:
             names.append(name)
             seen.add(key)
-    return names[:3]
+    return names[:limit]
 
 
 def provider_name(subject: dict) -> str:
