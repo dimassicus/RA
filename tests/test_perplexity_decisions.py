@@ -171,3 +171,26 @@ def test_long_pdf_retains_operative_page_and_marks_extraction_incomplete():
     assert 'PDF page 23' in body and 'remain under seizure' in body and 'PDF page 24' not in body
     doc=article_content.source_document(body,method,'https://issuer.test/filing.pdf')
     assert doc['review_only'] is True
+
+
+def test_recent_enforcement_search_uses_later_aliases_across_company_profiles(monkeypatch):
+    from ra import search_settings
+    for country, local_name in [('Brazil', 'Ferrovia Exemplo'), ('Indonesia', 'Kereta Contoh')]:
+        subject = dict(name='Example Rail Holdings', country_registration=country,
+                       aliases='Example Trains\nExample Railway Network\n' + local_name)
+        calls = []
+        def response(query, issuer, start, end):
+            calls.append((query, start, end))
+            return []
+        monkeypatch.setattr(perplexity.recovery_providers, 'configured', lambda _: True)
+        monkeypatch.setattr(perplexity, 'search', response)
+        start, end = DAY - timedelta(days=40), DAY
+        for adverse_focus in (True, False):
+            calls.clear()
+            perplexity.collect(subject, (start, end), adverse_focus=adverse_focus)
+            assert any(f'"{local_name}"' in q and country in q and 'arrest' in q and
+                       lo == end - timedelta(days=7) and hi == end for q, lo, hi in calls)
+        row = dict(title='Presidente da ferrovia' if country == 'Brazil' else 'Pimpinan kereta api',
+                   title_en='Railway chairman detained', discovery_service='TheNewsAPI')
+        assert not search_settings.company_lead(row, subject)
+        assert search_settings.enforcement_candidate(row)
