@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from collections import Counter
 from difflib import SequenceMatcher
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -89,6 +90,28 @@ def address_text(address: dict) -> str:
                                             address.get("postalCode"), address.get("country")] if part)
 
 
+def address_conflicts(entered: str, registered: str) -> bool:
+    def building_number(text):
+        # Match an explicit building label or a street-number-first English address.
+        for pattern in (r"\b(?:здание|дом|үй|ғимарат|building|house)\s*№?\s*(\d+)\b",
+                        r"\b(\d+)[ -]+(?:үй|ғимарат)\b",
+                        r"^\s*(\d+)\s+[^,]+?\b(?:street|avenue|road|lane|boulevard)\b"):
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return int(match[1])
+
+    first, second = building_number(entered), building_number(registered)
+    if first is not None and second is not None and first != second:
+        return True
+
+    def main_script(text):
+        scripts = Counter(unicodedata.name(c, "UNKNOWN").split()[0] for c in text if c.isalpha())
+        return max(scripts, key=scripts.get, default=None)
+
+    # Spelling similarity is meaningful only within a comparable writing system.
+    return main_script(entered) == main_script(registered) and name_score(entered, registered) < 0.65
+
+
 def gleif_records(data, country, ids, names, fetch):
     # Search the ID as entered first: punctuation and leading zeroes can be significant.
     identifiers = [data.get("registration_number"), data.get("tax_id"), *sorted(ids)]
@@ -133,6 +156,7 @@ def research_company(data: dict, json_fetcher=fetch_json, feed_fetcher=search.fe
             "Possible name match only; check legal entity")
         findings["matches"].append({"source_name": source, "source_url": url, "legal_name": legal_name,
                                     "identifier": identifier, "country": source_country, "verdict": verdict,
+                                    "legal_address": (suggestions or {}).get("legal_address", ""),
                                     "name_score": round(score, 2), "verified": verified})
         if verified:
             normalized_id = "".join(c for c in identifier.upper() if c.isalnum())
@@ -145,7 +169,7 @@ def research_company(data: dict, json_fetcher=fetch_json, feed_fetcher=search.fe
                 if not proposed.get(field):
                     proposed[field] = value
                     findings["filled"][field] = source
-                elif field in ("name", "legal_address") and name_score(proposed[field], value) < 0.65:
+                elif field == "legal_address" and address_conflicts(proposed[field], value):
                     findings["conflicts"].append(f"{field.replace('_', ' ').title()} differs from {source}: {value}")
 
         return verified

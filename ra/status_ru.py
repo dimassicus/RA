@@ -30,6 +30,7 @@ _FIXED = {
 # Values in named groups are localized only when they denote known UI labels.
 # Company names, provider names, queries, model IDs and quoted descriptions stay verbatim.
 _FORMATS = (
+    (r'Legal Address differs from (.+?): (.+)', 'Юридический адрес отличается от адреса в {0}: {1}'),
     (r'Waiting behind run #(\d+) · (\d+) search(?:es)? ahead\.', 'В очереди за поиском №{0}. Поисков впереди: {1}.'),
     (r'Processing lead (\d+) of (\d+)', 'Обработка материала {0} из {1}'),
     (r'Searching company news · query (\d+) of (\d+)', 'Поиск новостей о компании · запрос {0} из {1}'),

@@ -118,6 +118,24 @@ def test_name_only_registry_hit_does_not_fill(monkeypatch):
     assert not findings["identity_evidence"]
 
 
+@pytest.mark.parametrize("building,conflict", [("здание 6", False), ("6-үй", False), ("8-үй", True)])
+def test_intake_keeps_local_address_and_shows_registry_spelling(monkeypatch, building, conflict):
+    monkeypatch.setattr(db, "list_companies", lambda active=None: [])
+    local = f"Республика Казахстан, г. Астана, район Есиль, улица Дінмұхамед Қонаев, {building}"
+    company = dict(name="Kazakhstan Railways", short_name="KTZ", country_registration="Kazakhstan",
+                   tax_id="020540003431", legal_address=local)
+    entity = dict(legalName={"name": company["name"]}, registeredAs=company["tax_id"], jurisdiction="KZ",
+                  legalAddress={"addressLines": ["6 KUNAYEV STREET", "ESIL DISTRICT"], "city": "ASTANA",
+                                "region": "KZ-11", "postalCode": "010000", "country": "KZ"})
+    record = {"id": "213800X9NVS4IWFKLS77", "attributes": {"entity": entity}}
+    proposed, findings, _ = preliminary.research_company(
+        company, lambda url: {"data": [record]}, lambda url: b"<rss/>")
+    assert proposed["legal_address"] == local
+    assert findings["matches"][0]["verified"]
+    assert findings["matches"][0]["legal_address"].startswith("6 KUNAYEV STREET")
+    assert bool(findings["conflicts"]) == conflict
+
+
 @pytest.mark.parametrize("found_name,jurisdiction,bin_value,verified", [
     ("Қазақстан темір жолы", "KZ", "020540003431", True),
     ("Example Mining", "KZ", "020540003431", False),
