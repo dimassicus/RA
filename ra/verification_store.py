@@ -80,7 +80,10 @@ def _verification(result_id, fetcher, source_url):
                 and datetime.now(timezone.utc) - cached['fetched_at'] < lifetime):
             cache_hit = True
             document = cached['document']
-            if upgrade:
+            old_language = document.get('language')
+            revisit_language = (old_language in ('uz', 'kk', '') and document.get('body')
+                                and detect_language(document['body'][:4000]) != old_language)
+            if upgrade or revisit_language:
                 # Retain checked text; v7 changes KAP, v6 issuer attachments, v5 validation/language.
                 document = {**document, 'reader_version': READER_VERSION}
                 try:

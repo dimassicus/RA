@@ -49,11 +49,19 @@ def detect_language(title: str, feed_locale: str = "") -> str:
     greek = len(re.findall(r"[\u0370-\u03ff\u1f00-\u1fff]", text))
     if greek >= 3 and greek > sum(c.isalpha() for c in text) / 2:
         return "el"
-    if re.search(r"[ўқғҳ]", text, re.I):
-        return "uz"
-    if re.search(r"[әғқңөұүһі]", text, re.I):
-        return "kk" if hint == "kk" else "uz" if hint == "uz" else ""
     code, confidence = _detected(text)
+    if re.search(r"[ўқғҳәңөұүһі]", text, re.I):
+        # A local name inside Russian prose does not change the document's language.
+        russian_words = set(re.findall(r"\b(?:и|в|на|по|для|о|от|из|при|что|с|со|не|об)\b", text.casefold()))
+        if code == "ru" and confidence >= 0.85 and len(russian_words) >= 3:
+            return "ru"
+        if re.search(r"[ўҳ]", text, re.I):
+            return "uz"
+        if re.search(r"[әңөұүһ]", text, re.I):
+            return "kk"
+        if hint in ("kk", "uz"):
+            return hint
+        return code if code in ("uk", "be") and confidence >= 0.85 else ""
     if code and confidence >= 0.85:
         if hint in ("uz", "kk") and not re.search(r"[\u0400-\u052f]", text) and code not in ("en", "ru"):
             return hint  # Those two languages are absent from langdetect's profiles.

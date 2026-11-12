@@ -59,3 +59,11 @@ def test_concurrent_detection_does_not_use_partially_initialized_profiles(monkey
         finally:
             release.set()
         assert first.result() == other.result() == ('pt', 1.0)
+
+
+def test_cyrillic_company_name_does_not_override_the_language_of_the_report():
+    russian = ('Председатели правления фонда «Самрук-Қазына» и национальной компании задержаны '
+               'по подозрению в совершении преступления. Следственные действия продолжаются.')
+    assert detect_language(russian) == 'ru'
+    assert detect_language('Қаржы нарығын реттеу және дамыту агенттігі') == 'kk'
+    assert detect_language('Ўзбекистон Республикасидаги иқтисодий ҳолат') == 'uz'
