@@ -111,7 +111,7 @@ def process_one():
     with db.connect() as conn:
         row = conn.execute("""UPDATE result_translations SET retry_at=now()+interval '15 minutes'
             WHERE key=(SELECT key FROM result_translations WHERE run_id IN (SELECT id FROM display_translation_runs)
-                       AND (english='' OR russian='') AND retry_at<=now()
+                       AND (english='' OR russian='') AND russian_rejections<3 AND retry_at<=now()
                        ORDER BY retry_at,key LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *""").fetchone()
     if not row:
         return False
@@ -121,12 +121,24 @@ def process_one():
                   for part in passages(row['source'], limit=480, subject=row['subject'])]
         if all(chunks):
             english = ' '.join(chunks)
+    rejections, error = row['russian_rejections'], row['russian_error']
     if not localized and english:
-        localized = russian.translate(english, row['subject'])
-    if english != row['english'] or localized != row['russian']:
+        try:
+            localized = russian.checked_translation(english, row['subject'])
+            rejections, error = 0, ''
+        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            rejections += 1
+            error = str(exc)[:250]
+            log.warning("Display translation rejected run=%s key=%s attempt=%s: %s",
+                        row['run_id'], row['key'], rejections, error)
+        except (OSError, RuntimeError) as exc:
+            log.warning("Display translator unavailable run=%s key=%s: %s", row['run_id'], row['key'], type(exc).__name__)
+    previous = (row['english'], row['russian'], row['russian_rejections'], row['russian_error'])
+    if (english, localized, rejections, error) != previous:
         with db.connect() as conn:
-            conn.execute('UPDATE result_translations SET english=%s,russian=%s WHERE key=%s',
-                         (english, localized, row['key']))
+            conn.execute("""UPDATE result_translations SET english=%s,russian=%s,russian_rejections=%s,russian_error=%s
+                WHERE key=%s AND retry_at=%s AND english=%s AND russian=%s""",
+                (english, localized, rejections, error, row['key'], row['retry_at'], row['english'], row['russian']))
     return True
 
 

@@ -94,7 +94,8 @@ def create_app() -> Flask:
             abort(400)
         column = 'russian' if i18n.language() == 'ru' else 'english'
         with db.connect() as conn:
-            ready = conn.execute(f"SELECT 1 FROM result_translations WHERE key=ANY(%s) AND {column}<>'' LIMIT 1",
+            terminal = " OR russian_rejections>=3" if column == "russian" else ""
+            ready = conn.execute(f"SELECT 1 FROM result_translations WHERE key=ANY(%s) AND ({column}<>''{terminal}) LIMIT 1",
                                  (keys,)).fetchone()
         return jsonify(ready=bool(ready))
 

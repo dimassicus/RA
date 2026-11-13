@@ -25,7 +25,7 @@ def test_both_views_and_export_share_one_scored_record(database, monkeypatch, sc
     def translator(text, subject):
         calls.append(text)
         return translations.get(text, 'Переведено для теста')
-    monkeypatch.setattr(bilingual.russian, 'translate', translator)
+    monkeypatch.setattr(bilingual.russian, 'checked_translation', translator)
     lead = dict(title=original, publisher='Issuer', url='https://issuer.test/report', query='Acme',
                 language='en', summary=summary, published_at=datetime.now(timezone.utc)-timedelta(hours=1),
                 signal_terms=[], source_kind='official')
@@ -119,9 +119,31 @@ def test_moscow_cutoff_restores_only_eligible_work_and_archives_stay_read_only(d
         assert 'Ожидает перевода' in i18n.ru('New detail')
     assert not database.execute("SELECT 1 FROM result_translations WHERE source='Archive-only miss'").fetchone()
     calls = []
-    monkeypatch.setattr(bilingual.russian, 'translate', lambda text, subject: calls.append(text) or 'Перевод')
+    monkeypatch.setattr(bilingual.russian, 'checked_translation', lambda text, subject: calls.append(text) or 'Перевод')
     while bilingual.process_one():
         pass
     assert {'New filing', 'Shared summary', 'New detail'} <= set(calls)
     assert calls.count('Shared summary') == 1 and 'Old filing' not in calls
     assert not bilingual.process_one()
+
+
+def test_repeated_invalid_russian_stops_but_service_outage_can_retry(database, monkeypatch):
+    subject = {'name': 'Acme'}
+    run_id = db.create_run('one_off', [subject])
+    bilingual.enqueue(database, 'An item for review', run_id=run_id)
+    def fail(*args):
+        raise OSError("offline")
+    monkeypatch.setattr(bilingual.russian, 'checked_translation', fail)
+    assert bilingual.process_one()
+    assert database.execute('SELECT russian_rejections FROM result_translations').fetchone()['russian_rejections'] == 0
+    def reject(*args):
+        raise ValueError("Translation changed a currency")
+    monkeypatch.setattr(bilingual.russian, 'checked_translation', reject)
+    for _ in range(3):
+        database.execute('UPDATE result_translations SET retry_at=now()')
+        assert bilingual.process_one()
+    database.execute('UPDATE result_translations SET retry_at=now()')
+    assert not bilingual.process_one()
+    row = database.execute('SELECT * FROM result_translations').fetchone()
+    assert row['russian'] == '' and row['russian_error'] == "Translation changed a currency"
+    assert 'оригинал' in i18n.ru(row['source'])

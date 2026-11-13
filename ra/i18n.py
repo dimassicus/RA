@@ -61,7 +61,7 @@ def prefetch(rows):
         keys.update(bilingual.key(v, 'en') for v in values if v and v not in MESSAGES)
     conn = _reader()
     g.translation_cache.update(dict.fromkeys(keys))
-    for row in conn.execute('SELECT key,english,russian,run_id FROM result_translations WHERE key=ANY(%s)', (list(keys),)):
+    for row in conn.execute('SELECT key,english,russian,run_id,russian_rejections FROM result_translations WHERE key=ANY(%s)', (list(keys),)):
         g.translation_cache[row['key']] = row
 
 
@@ -70,7 +70,7 @@ def _lookup(text, source, target):
         return text
     digest = bilingual.key(text, source)
     def read(conn):
-        return conn.execute('SELECT english,russian,run_id FROM result_translations WHERE key=%s', (digest,)).fetchone()
+        return conn.execute('SELECT english,russian,run_id,russian_rejections FROM result_translations WHERE key=%s', (digest,)).fetchone()
     if has_request_context():
         conn = _reader()
         cache = g.translation_cache
@@ -83,6 +83,8 @@ def _lookup(text, source, target):
     result = (row or {}).get('russian' if target == 'ru' else 'english')
     if result:
         return result
+    if row and target == "ru" and row["russian_rejections"] >= 3:
+        return "Перевод не прошёл проверку · оригинал: " + text
     if has_request_context():
         if 'translation_run_id' not in g:
             run_id = g.get('article_run_id') or (request.view_args or {}).get('run_id')

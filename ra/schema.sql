@@ -344,3 +344,5 @@ CREATE INDEX IF NOT EXISTS result_translations_pending ON result_translations(re
 CREATE OR REPLACE VIEW display_translation_runs AS
     SELECT id FROM search_runs WHERE created_at >= TIMESTAMPTZ '2026-11-13 00:00:00+03';
 ALTER TABLE result_translations ADD COLUMN IF NOT EXISTS run_id BIGINT REFERENCES search_runs(id) ON DELETE SET NULL;
+ALTER TABLE result_translations ADD COLUMN IF NOT EXISTS russian_rejections INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE result_translations ADD COLUMN IF NOT EXISTS russian_error TEXT NOT NULL DEFAULT '';

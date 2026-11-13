@@ -56,11 +56,11 @@ def test_mixed_language_financial_text_accepts_equivalent_russian(source, transl
 def test_failed_passage_returns_no_partial_copy_and_can_be_retried(before, after, generate):
     text = "Overview\n\nAcme reported −12 million USD and 5% for filing AB-123."
     good = "ZXQNAME0ZXQ указала −12 миллионов USD и 5% в документе AB-123."
-    generate.side_effect = [{"russian": "Обзор"}, {"russian": good.replace(before, after)}, {"russian": good}]
+    generate.side_effect = [{"russian": "Обзор"}, {"russian": good.replace(before, after)}, {"russian": ""}, {"russian": good}]
 
     assert russian.translate(text, "Acme") == ""
     assert russian.translate(text, "Acme") == "Обзор\n\n" + good.replace("ZXQNAME0ZXQ", "Acme")
-    assert generate.call_count == 3
+    assert generate.call_count == 4
 
 
 def test_unavailable_model_does_not_poison_retry(generate):
@@ -83,3 +83,24 @@ def test_offline_model_precedes_local_fallback_and_preserves_currency(monkeypatc
     generate.assert_not_called()
     assert russian.translate("Debt: USD 6 million") == "Долг: 6 млн USD"
     generate.assert_called_once()
+
+
+def test_repair_protects_original_amount_and_rechecks_result(generate):
+    generate.side_effect = [
+        {"russian": "Сумма составила 100 000 долларов."},
+        {"russian": "Сумма составила ZXQVALUE0ZXQ долларов."},
+    ]
+    assert russian.translate("The total was $100,000.") == "Сумма составила 100,000 долларов."
+    assert "ZXQVALUE0ZXQ" in generate.call_args.args[1]
+
+
+def test_currency_prefix_and_plural_percentages(generate):
+    generate.return_value = {"russian": "Проценты в Европе указаны в евро."}
+    assert russian.translate("Percentages in Europe are stated in euros.") == generate.return_value["russian"]
+    with pytest.raises(ValueError, match="currency"):
+        russian._checked("Paid in euros", "Оплачено в Европе", {})
+
+
+def test_truncated_issuer_name_preserves_only_verified_prefix(generate):
+    assert russian.translate("ACME INDUSTRIES ...", "Acme Industries Limited") == "ACME INDUSTRIES ..."
+    generate.assert_not_called()
