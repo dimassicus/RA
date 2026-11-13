@@ -214,18 +214,18 @@ def enqueue_run(run_id, limit_per_company=8):
     rows.sort(key=lambda a: (a.get('source_kind') == 'context', urlsplit(a['url']).hostname == 'news.google.com',
                             -abs(a.get('score') or 0), -(a['published_at'] or a['created_at']).timestamp(), a['id']))
     counts, total = {}, 0
-    for article in rows:
-        if (article.get('verification') or {}).get('status', 'pending') != 'pending':
-            continue
-        key = article['subject_key']
-        if limit_per_company is not None and counts.get(key, 0) >= limit_per_company:
-            continue
-        with db.connect() as conn:
+    with db.connect() as conn:
+        for article in rows:
+            if (article.get('verification') or {}).get('status', 'pending') != 'pending':
+                continue
+            key = article['subject_key']
+            if limit_per_company is not None and counts.get(key, 0) >= limit_per_company:
+                continue
             added = conn.execute('INSERT INTO verification_jobs (result_id) VALUES (%s) ON CONFLICT DO NOTHING RETURNING result_id',
                                  (article['id'],)).fetchone()
-        if added:
-            counts[key] = counts.get(key, 0) + 1
-            total += 1
+            if added:
+                counts[key] = counts.get(key, 0) + 1
+                total += 1
     _wake.set()
     return total
 

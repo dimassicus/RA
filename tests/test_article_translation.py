@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from copy import deepcopy
 
 import pytest
@@ -15,6 +16,7 @@ def approved(*args, **kwargs):
 
 @pytest.fixture
 def local(monkeypatch):
+    monkeypatch.setattr(at.local_models, 'reviewer_requests', lambda: nullcontext(None))
     monkeypatch.setattr(headline_review, 'readiness', lambda: {'ready': True})
     monkeypatch.setattr(headline_review, 'audit', approved)
     monkeypatch.setattr(headline_review, 'fallback', lambda *a, **kw: ('', 'Offline test'))

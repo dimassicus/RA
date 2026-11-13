@@ -111,6 +111,18 @@ def group_replacements(parts, replacements, language):
     return grouped, review
 
 
+def review_parts(parts, language):
+    slots = local_models.REVIEW_SLOTS
+    for index in range(0, len(parts), slots):
+        group = parts[index:index + slots]
+        reviews = headline_review.audit_batch([(p['source'], language, p['english'],
+                                                p.get('review', {}).get('reason', '')) for p in group])
+        for part, review in zip(group, reviews, strict=True):
+            part['review'] = review
+        if any(review.get('status') == 'unavailable' for review in reviews):
+            break
+
+
 def prepare(document, subject=None):
     """Reuse reviewed passages on retry; translate first, then review to limit model switching."""
     return local_models.run_phases([prepare_steps(document, subject)], "source translation")[0]
@@ -162,13 +174,7 @@ def prepare_steps(document, subject=None, *, checkpoint=None):
     if checkpoint:
         checkpoint(result)
     yield local_models.QWEN
-    for part in parts:
-        if faithful(part) or not part.get('english'):
-            continue
-        part['review'] = headline_review.audit(part['source'], language, part['english'],
-                                               retry_reason=part.get('review', {}).get('reason', ''))
-        if part['review'].get('status') == 'unavailable':
-            break
+    review_parts([p for p in parts if not faithful(p) and p.get('english')], language)
     # A rejected Argos output must not be retried forever with the same translation engine.
     rejected = [p for p in parts if p.get('provider', '').startswith('Argos')
                 and p.get('review', {}).get('status') in ('material_error', 'uncertain')]
@@ -190,8 +196,7 @@ def prepare_steps(document, subject=None, *, checkpoint=None):
         if checkpoint:
             checkpoint(result)
         yield local_models.QWEN
-    for part in replacements:
-        part['review'] = headline_review.audit(part['source'], language, part['english'])
+    review_parts(replacements, language)
     checked = sum(faithful(p) for p in parts)
     scope = 'Source excerpt' if document.get('excerpt') else 'Full-article'
     result.update(status='faithful' if checked == len(parts) else 'needs_review',

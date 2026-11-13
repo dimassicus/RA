@@ -63,3 +63,23 @@ def test_identity_change_and_undated_page_remain_visible_gaps():
     results, gaps = disclosures.collect(SUBJECT | {"disclosure_sources": state},
         fetch=lambda url: (b'<html>No machine readable dates</html>', "text/html", url))
     assert not results and "does not establish" in gaps[0]
+
+
+def test_independent_archives_overlap_and_keep_coverage_order():
+    import threading
+
+    rendezvous = threading.Barrier(2)
+    first, second = "https://example.test/feed", "https://example.test/archive"
+    state = {"identity": disclosures.identity(SUBJECT), "sources": [
+        {"url": first, "kind": "page"}, {"url": second, "kind": "page"}]}
+    def fetch(url):
+        rendezvous.wait(timeout=5)
+        if url == first:
+            raise OSError("archive offline")
+        return b'<script type="application/ld+json">{"headline":"Filing","datePublished":"2026-11-07T12:00:00Z","url":"/filing"}</script>', "text/html", url
+
+    coverage = []
+    rows, gaps = disclosures.collect({**SUBJECT, "disclosure_sources": state}, coverage=coverage, fetch=fetch)
+    assert [row["url"] for row in coverage] == [first, second]
+    assert [row["url"] for row in rows] == ["https://example.test/filing"]
+    assert gaps == [f"{first}: OSError: archive offline"]

@@ -1,6 +1,8 @@
 """Local translation and shadow review. Reviewer judgments never feed credit scoring."""
 import json
 import re
+from contextvars import ContextVar
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
@@ -14,6 +16,9 @@ from . import db, online_translation, local_models, translation_names
 from .local_models import PORT, QWEN, GEMMA, local_request
 from .news_apis import ProviderError
 from .language import _detected, detect_language
+
+_review_transport = ContextVar("review_transport", default=None)
+
 
 def readiness():
     if local_models.activity():
@@ -32,7 +37,7 @@ def readiness():
 @lru_cache(maxsize=1024)
 def _audit(source, language, candidate, retry_reason=''):
     data, meta = review(source, language, "en", {"A": candidate}, QWEN, PORT,
-                       enabled=False, shadow_only=True, retry_reason=retry_reason, request_fn=local_request)
+                       enabled=False, shadow_only=True, retry_reason=retry_reason, request_fn=_review_transport.get() or local_request)
     if meta["model"] != QWEN:
         raise ValueError("Unexpected reviewer model")
     assessment, = data["assessments"]
@@ -51,6 +56,28 @@ def audit(source, language, candidate, *, retry_reason=''):
     except (OSError, ValueError, KeyError, TypeError) as exc:
         return {"status": "unavailable", "model": QWEN, "reasoning": "off",
                 "reason": str(exc)[:250]}
+
+
+def audit_batch(items):
+    """Review up to four independent (source, language, candidate, retry reason) inputs in order."""
+    if len(items) < 2:
+        return [audit(source, lang, candidate, retry_reason=reason) for source, lang, candidate, reason in items]
+    if len(items) > local_models.REVIEW_SLOTS:
+        raise ValueError("Review group exceeds available slots")
+    try:
+        with local_models.reviewer_requests() as request:
+            def check(item):
+                source, lang, candidate, reason = item
+                token = _review_transport.set(request)
+                try:
+                    return audit(source, lang, candidate, retry_reason=reason)
+                finally:
+                    _review_transport.reset(token)
+            with ThreadPoolExecutor(max_workers=len(items)) as pool:
+                return list(pool.map(check, items))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return [{"status": "unavailable", "model": QWEN, "reasoning": "off",
+                 "reason": str(exc)[:250]} for _ in items]
 
 
 def fallback(source, language, publisher, argos_status, company_name="", *, article=False):
@@ -136,16 +163,20 @@ def review_saved(run_id, *, progress=None):
             "SELECT id,title,language,title_en FROM search_results WHERE run_id=%s AND title_en<>'' "
             "AND lower(split_part(language,'-',1)) NOT IN ('en','zxx') AND COALESCE(headline_review->>'status','unavailable')='unavailable' "
             "ORDER BY id", (run_id,)).fetchall()
-    for index, row in enumerate(rows):
+    slots = local_models.REVIEW_SLOTS
+    for index in range(0, len(rows), slots):
         if db.run_paused(run_id):
             return
+        group = rows[index:index + slots]
         if progress:
             progress(f"Qwen · Checking headline translation {index + 1} of {len(rows)}", index, len(rows))
-        result = audit(row["title"], row["language"], row["title_en"])
+        reviews = audit_batch([(r["title"], r["language"], r["title_en"], "") for r in group])
         with db.connect() as conn:
-            conn.execute("UPDATE search_results SET headline_review=%s WHERE id=%s AND title_en=%s AND language=%s",
-                         (Jsonb(result), row["id"], row["title_en"], row["language"]))
-        if result.get("status") == "unavailable":
+            for row, result in zip(group, reviews, strict=True):
+                conn.execute("UPDATE search_results SET headline_review=%s WHERE id=%s AND title=%s AND title_en=%s "
+                             "AND language=%s AND COALESCE(headline_review->>'status','unavailable')='unavailable'",
+                             (Jsonb(result), row["id"], row["title"], row["title_en"], row["language"]))
+        if any(result.get("status") == "unavailable" for result in reviews):
             break
 
 

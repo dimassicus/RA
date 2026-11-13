@@ -10,6 +10,7 @@ from ra import local_models as lm
 @pytest.fixture
 def runtime(monkeypatch, tmp_path):
     loaded = {lm.QWEN: lm.CONTEXT}
+    slots = {lm.QWEN: lm.REVIEW_SLOTS}
     calls = []
     available = set(lm.MODELS)
     monkeypatch.setattr(lm, "LOCK_PATH", tmp_path / "models.lock")
@@ -18,12 +19,14 @@ def runtime(monkeypatch, tmp_path):
     def command(*args):
         calls.append(args)
         if args[0] == "ps":
-            return json.dumps([{"identifier": model, "contextLength": context, "status": "idle"}
+            return json.dumps([{"identifier": model, "contextLength": context, "status": "idle",
+                                "parallel": slots.get(model, 1)}
                                for model, context in loaded.items()])
         if args[0] == "unload":
             del loaded[args[1]]
         if args[0] == "load":
             assert not loaded, "Never load the second large model before unloading the first"
+            slots[args[1]] = int(args[args.index("--parallel") + 1])
             loaded[args[1]] = int(args[args.index("--context-length") + 1])
         return ""
 
@@ -195,3 +198,49 @@ def test_whole_run_drains_each_model_before_corrections_or_competing_workers(run
         other.result()
     assert [c[1] for c in calls if c[0]=='load'] == [lm.GEMMA,lm.QWEN,lm.GEMMA,lm.QWEN,lm.GEMMA]
     assert [c[1] for c in calls if c[0]=='infer'] == [lm.GEMMA]*24+[lm.QWEN]*24+[lm.GEMMA]*6+[lm.QWEN]*6+[lm.GEMMA]
+
+
+def test_cached_readiness_expires_on_unlock_and_recovers_external_unload(runtime, monkeypatch):
+    from urllib.error import HTTPError
+    loaded, calls, _ = runtime
+    raw = lm.raw_request
+
+    def request(port, path, body=None, timeout=300):
+        if body and body["model"] not in loaded:
+            raise HTTPError(path, 404, "Model unloaded", {}, None)
+        return raw(port, path, body, timeout)
+
+    monkeypatch.setattr(lm, "raw_request", request)
+    with lm.batch("test"):
+        infer(lm.QWEN)
+        infer(lm.QWEN)
+        assert calls.count(("ps", "--json")) == 1
+        loaded.clear()
+        assert infer(lm.QWEN)["model"] == lm.QWEN
+        assert calls.count(("ps", "--json")) == 2
+    infer(lm.QWEN)
+    assert calls.count(("ps", "--json")) == 3
+
+
+def test_independent_reviews_use_one_lease_and_keep_evidence_in_order(runtime, monkeypatch):
+    from ra import headline_review
+    _, calls, _ = runtime
+    raw = lm.raw_request
+    ready = threading.Barrier(lm.REVIEW_SLOTS)
+
+    def request(port, path, body=None, timeout=300):
+        if body is None:
+            return raw(port, path, body, timeout)
+        source = json.loads(body["messages"][1]["content"])["source"]
+        ready.wait(timeout=5)
+        raw(port, path, body, timeout)
+        return {"model": lm.QWEN, "choices": [{"finish_reason": "stop", "message": {"content": json.dumps({
+            "reviews": [{"candidate": "A", "verdict": "uncertain" if source.endswith("1") else "faithful",
+                         "issues": []}]})}}]}
+
+    monkeypatch.setattr(lm, "raw_request", request)
+    items = [(f"Testquelle {i}", "de", f"Test source {i}", "") for i in range(lm.REVIEW_SLOTS)]
+    results = headline_review.audit_batch(items)
+    assert [r["status"] for r in results] == ["faithful", "uncertain", "faithful", "faithful"]
+    assert calls.count(("ps", "--json")) == 1
+    assert calls.count(("infer", lm.QWEN)) == 4

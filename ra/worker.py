@@ -93,16 +93,8 @@ def _work_loop():
         try:
             if db.run_paused(run_id):
                 continue
-            from . import verification_store, event_analysis
-            # Finish older reviews before a new run starts using the same two models.
-            while (prior := verification_store.next_run()) is not None:
-                with local_models.batch(f"run {prior}"):
-                    verification_store.process_jobs(prior)
-                    event_analysis.finish_pending(prior)
-            with local_models.batch(f"run {run_id}"):
-                process_run(run_id)
-                verification_store.process_jobs(run_id)
-                event_analysis.finish_pending(run_id)
+            # The verification and event workers consume the durable queues after discovery.
+            process_run(run_id)
         except Exception as exc:
             with db.connect() as conn:
                 conn.execute(
@@ -120,19 +112,21 @@ def _work_loop():
 def _save_leads(run_id, subject, subject_key, articles, settings, company_progress, saved, covered,
                 *, connection=None, queue_checks=False):
     count = 0
+    # Complete headline translation before opening the foreground write transaction.
+    candidates = []
+    for index, article in enumerate(articles):
+        company_progress(f"Processing lead {index + 1} of {len(articles)}", index, len(articles))
+        language = detect_language(article["title"], article["language"])
+        english, provider = translate_text(article["title"], language, subject, article["publisher"])
+        candidates.append({**article, "language": language, "title_en": english,
+                           "publisher_en": article["publisher"], "translation_provider": provider})
     with (nullcontext(connection) if connection is not None else db.connect()) as conn:
-        for index, article in enumerate(articles):
-            company_progress(f"Processing lead {index + 1} of {len(articles)}", index, len(articles))
-            language = detect_language(article["title"], article["language"])
-            title_en, provider = translate_text(
-                article["title"], language, subject, article["publisher"]
-            )
-            candidate = {**article, "language": language, "title_en": title_en, "publisher_en": article["publisher"]}
-            named = search_settings.company_lead(candidate, subject)
-            if not named and search_settings.enforcement_candidate(candidate):
-                candidate["source_kind"] = "identity_review"
+        for article in candidates:
+            named = search_settings.company_lead(article, subject)
+            if not named and search_settings.enforcement_candidate(article):
+                article["source_kind"] = "identity_review"
             elif (not named and not settings["include_country"] and not settings["include_industry"]
-                  and not company_developments.review_topics(candidate, subject)):
+                  and not company_developments.review_topics(article, subject)):
                 logging.getLogger(__name__).info("Run %s skipped %s hit without company match: %s",
                                                  run_id, article.get("discovery_service"), article["url"])
                 continue
@@ -140,7 +134,6 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
             if tags := article.get("publisher_keywords"):
                 labels = ", ".join(map(str, tags)) if isinstance(tags, list) else str(tags)
                 summary += "\nPublisher keywords: " + labels[:1000]
-            publisher_en = article["publisher"]
             seen_before = conn.execute(
                 "SELECT EXISTS (SELECT 1 FROM search_results WHERE subject_key = %s AND url = %s "
                 "AND run_id <> %s)", (subject_key, article["url"], run_id)
@@ -154,14 +147,14 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
                 "ON CONFLICT (run_id, subject_key, url) DO NOTHING RETURNING id",
                 (run_id, subject.get("id"), subject_key, subject["name"], article["title"],
                  article["url"], article["publisher"], article.get("discovery_service", ""),
-                 candidate.get("source_kind", "news"), article["published_at"],
-                 article["query"], language, title_en, publisher_en, provider,
+                 article.get("source_kind", "news"), article["published_at"],
+                 article["query"], article["language"], article["title_en"], article["publisher_en"], article["translation_provider"],
                  article["signal_terms"], seen_before, article.get("exposure_paths", []), summary,
                  article.get("decision_followup_urls", []), db.Jsonb(article.get("filing_attachments", []))),
             )
             count += inserted.rowcount
             if inserted.rowcount:
-                bilingual.enqueue_lead(conn, candidate, subject)
+                bilingual.enqueue_lead(conn, article, subject)
                 if queue_checks:
                     conn.execute("INSERT INTO verification_jobs(result_id) VALUES (%s)", (inserted.fetchone()['id'],))
                 saved.add(canonical_url(article["url"]))
@@ -327,20 +320,22 @@ def _discover(run_id, searcher, topic_searcher, roster_check):
                     WHERE id=%s""",(run_id,run_id,run_id))
         yield
         time.sleep(0.25)
-    with db.connect() as conn:
-        counts = conn.execute(
-            "SELECT result_count, error_count FROM search_runs WHERE id = %s", (run_id,)
-        ).fetchone()
-        status = "completed" if counts["error_count"] == 0 else ("partial" if counts["result_count"] else "failed")
-        conn.execute(
-            "UPDATE search_runs SET status = %s, finished_at = now() WHERE id = %s",
-            (status, run_id),
-        )
-    with db.connect() as conn:
-        if conn.execute("SELECT 1 FROM rss_recovery WHERE run_id=%s LIMIT 1",(run_id,)).fetchone():
-            rss_recovery.sync_run(conn,run_id)
-    refresh_scores(run_id)
-    from .verification_store import enqueue_run
-    enqueue_run(run_id, limit_per_company=None)
-    with db.connect() as conn:
-        conn.execute("UPDATE search_runs SET event_analysis_status='pending' WHERE id=%s", (run_id,))
+    # Publish completion and the source queue before RSS recovery or drafting can take the run.
+    with local_models.batch(f"run {run_id}"):
+        with db.connect() as conn:
+            counts = conn.execute(
+                "SELECT result_count, error_count FROM search_runs WHERE id = %s", (run_id,)
+            ).fetchone()
+            status = "completed" if counts["error_count"] == 0 else ("partial" if counts["result_count"] else "failed")
+            conn.execute(
+                "UPDATE search_runs SET status = %s, finished_at = now() WHERE id = %s",
+                (status, run_id),
+            )
+        with db.connect() as conn:
+            if conn.execute("SELECT 1 FROM rss_recovery WHERE run_id=%s LIMIT 1",(run_id,)).fetchone():
+                rss_recovery.sync_run(conn,run_id)
+        refresh_scores(run_id)
+        from .verification_store import enqueue_run
+        enqueue_run(run_id, limit_per_company=None)
+        with db.connect() as conn:
+            conn.execute("UPDATE search_runs SET event_analysis_status='pending' WHERE id=%s", (run_id,))

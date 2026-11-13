@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from urllib.parse import urlencode, urljoin, urlsplit
@@ -208,12 +209,11 @@ def collect(subject, *, window=None, fetch=fetch_bytes, coverage=None):
     language = LOCALES.get(country_name(subject.get("country_registration", "")), ("en",))[0]
     if not any(s["kind"] in ("feed","page") for s in state.get("sources", [])):
         coverage.append(dict(source="Issuer disclosure archive", status="No confirmed dated index", **span))
-    for source in state.get("sources", []):
-        if source["kind"] in ("adapter", "candidate"):
-            continue  # The existing issuer-specific collector owns these notices.
+
+    def collect_archive(source):
+        articles, problems = [], []
         url = source["url"]
         note = dict(source=source.get("label") or "Issuer disclosures", url=url, status="Unavailable", **span)
-        coverage.append(note)
         try:
             next_url, visited, known, dates = url, set(), set(), []
             note.update(count=0, pages=0)
@@ -253,7 +253,7 @@ def collect(subject, *, window=None, fetch=fetch_bytes, coverage=None):
                     if window and not window[0] <= day <= window[1]:
                         continue
                     note["count"] += 1
-                    results.append(dict(article, source_kind="news", publisher=subject.get("short_name") or subject["name"],
+                    articles.append(dict(article, source_kind="news", publisher=subject.get("short_name") or subject["name"],
                                         discovery_service="Discovered company disclosures"))
                 if dates:
                     note.update(first=min(dates).date().isoformat(), last=max(dates).date().isoformat())
@@ -261,7 +261,7 @@ def collect(subject, *, window=None, fetch=fetch_bytes, coverage=None):
                     break
             if not dates:
                 note["detail"] = "No dated records extracted."
-                gaps.append(f"No dated records extracted from {url}; this does not establish that no disclosures exist.")
+                problems.append(f"No dated records extracted from {url}; this does not establish that no disclosures exist.")
             elif window:
                 missing = []
                 if min(dates).date() > window[0].date():
@@ -272,7 +272,17 @@ def collect(subject, *, window=None, fetch=fetch_bytes, coverage=None):
                     note["detail"] = (note.get("detail","") + " Coverage unconfirmed: " + ", ".join(missing)).strip()
         except (OSError, ValueError, TypeError, KeyError, ElementTree.ParseError) as exc:
             note.update(status="Incomplete", detail=str(exc)[:240])
-            gaps.append(f"{url}: {type(exc).__name__}: {exc}")
+            problems.append(f"{url}: {type(exc).__name__}: {exc}")
+        return articles, note, problems
+
+    # The existing issuer-specific collector owns adapter and candidate sources.
+    archives = [source for source in state.get("sources", []) if source["kind"] not in ("adapter", "candidate")]
+    # Each archive owns its pagination. Merge in discovery order to preserve duplicate precedence.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        for articles, note, problems in pool.map(collect_archive, archives):
+            results.extend(articles)
+            coverage.append(note)
+            gaps.extend(problems)
     return list({item["url"]: item for item in results}.values()), gaps
 
 

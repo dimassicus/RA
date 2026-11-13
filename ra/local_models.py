@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import threading
 import time
+from urllib.error import HTTPError
 
 from scripts.translation_review.lmstudio import local_request as raw_request
 
@@ -17,6 +18,7 @@ QWEN = "qwen/qwen3.8-27b"
 GEMMA = "google/gemma-4-31b-qat"
 MODELS = {QWEN: "Qwen 27B", GEMMA: "Gemma 31B"}
 CONTEXT = 16384
+REVIEW_SLOTS = 4
 LOCK_PATH = Path(__file__).resolve().parents[1] / ".local" / "lmstudio.lock"
 _lock = threading.Lock()
 _activity = (None, "")
@@ -70,13 +72,14 @@ def _ensure(model, port, *, retry=True):
     if not any(row["id"] == model for row in available):
         raise OSError(f"Download {MODELS[model]} in LM Studio before using it.")
     loaded = _wait_idle()
+    slots = REVIEW_SLOTS if model == QWEN else 1
     ready = False
     for row in loaded:
         current = row["identifier"]
         if current not in MODELS:
             continue
         if (current == model and row.get("contextLength", 0) >= CONTEXT
-                and row.get("parallel", 1) == 1):
+                and row.get("parallel", 1) == slots):
             ready = True
             continue
         _set_activity(f"Unloading {MODELS[current]} to free memory…")
@@ -84,7 +87,7 @@ def _ensure(model, port, *, retry=True):
     if not ready:
         _set_activity(f"Loading {MODELS[model]}…")
         args = ["load", model, "--identifier", model, "--context-length", str(CONTEXT),
-                "--parallel", "1", "--yes"]
+                "--parallel", str(slots), "--yes"]
         if model == GEMMA:
             args.extend(["--gpu", "max"])
         _command(*args)
@@ -114,12 +117,14 @@ def batch(label):
         with LOCK_PATH.open("a") as lock_file:
             fcntl.flock(lock_file, fcntl.LOCK_EX)
             _owner.label = label
+            _owner.model = None
             try:
                 yield
             finally:
                 global _activity
                 _activity = (None, "")
                 _owner.label = None
+                _owner.model = None
                 fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
@@ -153,15 +158,66 @@ def run_phases(tasks, label, *, before_step=None):
     return results
 
 
+def _completion(port, path, body, timeout):
+    body = dict(body, reasoning_effort="none", chat_template_kwargs={
+        **body.get("chat_template_kwargs", {}), "enable_thinking": False})
+    return raw_request(port, path, body, timeout)
+
+
+def _ready_model(model, port):
+    if _owner.model != model:
+        _owner.model = None
+        _ensure(model, port)
+        _owner.model = model
+    _set_activity(f"{_owner.label} · {MODELS[model]} processing · reasoning off.")
+
+
+@contextmanager
+def reviewer_requests():
+    """The caller joins all concurrent reviews before releasing the model lease."""
+    with batch("translation reviews"):
+        _ready_model(QWEN, PORT)
+        failed = threading.Event()
+
+        def request(port, path, body, timeout):
+            if port != PORT or path != "/v1/chat/completions" or body["model"] != QWEN:
+                raise ValueError("Unexpected parallel review request")
+            try:
+                return _completion(port, path, body, timeout)
+            except (OSError, ValueError):
+                failed.set()
+                raise
+
+        try:
+            yield request
+        finally:
+            if failed.is_set():
+                _owner.model = None
+
+
 def local_request(port, path, body=None, timeout=300):
     if path != "/v1/chat/completions":
         return raw_request(port, path, body, timeout)
     model = (body or {}).get("model")
     if port != PORT or model not in MODELS:
         raise ValueError("Unsupported RA local model or port")
-    body = dict(body, reasoning_effort="none", chat_template_kwargs={
-        **body.get("chat_template_kwargs", {}), "enable_thinking": False})
     with batch("individual request"):
-        _ensure(model, port)
-        _set_activity(f"{_owner.label} · {MODELS[model]} processing · reasoning off.")
-        return raw_request(port, path, body, timeout)
+        cached = _owner.model == model
+        _ready_model(model, port)
+        try:
+            return _completion(port, path, body, timeout)
+        except HTTPError as exc:
+            _owner.model = None
+            if not cached or exc.code not in (400, 404, 409, 503):
+                raise
+            # An external unload can invalidate the lease. Retry only a missing instance.
+            inventory = raw_request(port, "/api/v0/models", timeout=3)["data"]
+            if any(row["id"] == model and row["state"] == "loaded" for row in inventory):
+                raise
+            _ensure(model, port)
+            result = _completion(port, path, body, timeout)
+            _owner.model = model
+            return result
+        except (OSError, ValueError):
+            _owner.model = None
+            raise
