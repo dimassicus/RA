@@ -62,3 +62,37 @@ def test_financial_review_reads_middle_of_source_even_if_grouper_omits_decline()
         return model(QUOTE)(instruction, payload, schema)
     drafts, = event_analysis.draft_company(ISSUER, [row], model=reply)
     assert drafts[5]['profit_decline_quote'] == QUOTE and drafts[5]['sentiment'] == -1
+
+
+@pytest.mark.parametrize('rewrite_succeeds', [False, True])
+def test_higher_target_and_lower_actual_profit_stay_distinct(rewrite_succeeds):
+    target = "Acme Metals raised its annual net profit target."
+    row = dict(ROW, title=target, discovery_summary=QUOTE)
+    good = "Acme Metals raises annual profit target as quarterly net profit falls"
+    reversed_title = "Acme Metals cuts annual profit target as quarterly net profit rises"
+    checked = []
+
+    def reply(instruction, data, schema):
+        if 'earnings_reports' in data:
+            lines = data['earnings_reports'][5]
+            return {'findings': [dict(id=5, passage=next(i for i,v in lines.items() if v == QUOTE),
+                                      target_passage=next(i for i,v in lines.items() if v == target))]}
+        if 'leads' in data:
+            return model(QUOTE)(instruction, data, schema)
+        if 'actual' in data:
+            assert data['actual'] == QUOTE and data['target'] == target
+            checked.append(data['title'])
+            return {'consistent': data['title'] == good}
+        title = good if rewrite_succeeds and 'previous_draft' in data else reversed_title
+        # Include the word "decline" so the general earnings check alone cannot pass a reversal.
+        return dict(title=title + (" despite earlier decline" if title != good else ""),
+                    summary=(good + ". ") * 15)
+
+    draft, = event_analysis.draft_company(ISSUER, [row], model=reply)
+    assert len(checked) == 2
+    assert draft[5]['profit_decline_quote'] == QUOTE and draft[5]['sentiment'] == -1
+    if rewrite_succeeds:
+        assert draft[5]['title'] == good
+    else:
+        assert QUOTE in draft[5]['summary'] and target in draft[5]['summary']
+        assert reversed_title not in draft[5]['title']

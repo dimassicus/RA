@@ -112,7 +112,7 @@ def evidence(row, subject=None):
             "score": row["score"], "reviewed": row.get("score_status") == "reviewed"}
 
 
-_EARNINGS = re.compile(r"\b(?:profits?|earnings|net income|laba|lucro|utilidad|bénéfice|net kâr|прибыл\w*)\b|净利润|純利益", re.I)
+_EARNINGS = re.compile(r"\b(?:profits?|earnings|net income|laba|lucro|utilidad|bénéfice|net kâr|lợi nhuận|прибыл\w*)\b|净利润|純利益", re.I)
 
 
 def reported_profit_declines(leads, assignments, company, model):
@@ -133,14 +133,19 @@ def reported_profit_declines(leads, assignments, company, model):
         "for the reporting period covered by this article? Include an explicitly stated fall or comparable amounts "
         "demonstrating one, even if revenue rose. Exclude forecasts, peers, a slower increase, isolated amounts and "
         "incidental historical periods. Select the numbered passage that actually shows the downward comparison. "
-        "An original-language headline is valid evidence. Omit records with no such passage.",
+        "If that issuer also raised its profit target, select a passage explicitly reporting the upward revision "
+        "in target_passage. Use 0 if absent. A target is a plan, never realised profit. "
+        "An original-language headline is valid evidence. Omit records with no actual decline.",
         {"issuer": company, "earnings_reports": {rid: dict(enumerate(lines, 1)) for rid, lines in reports.items()}},
-        keywords.object_schema({"findings": {"type": "array", "items": keywords.object_schema({"id": _INT, "passage": _INT})}}))
+        keywords.object_schema({"findings": {"type": "array", "items": keywords.object_schema({"id": _INT, "passage": _INT, "target_passage": _INT})}}))
     quotes = {}
     for finding in response['findings']:
         rid, index = finding['id'], finding['passage']
         if rid in reports and type(index) is int and 1 <= index <= len(reports[rid]):
-            quotes[rid] = reports[rid][index - 1]
+            target = finding.get('target_passage', 0)
+            quotes[rid] = {'profit_decline_quote': reports[rid][index - 1]}
+            if type(target) is int and 1 <= target <= len(reports[rid]):
+                quotes[rid]['raised_target_quote'] = reports[rid][target - 1]
     return quotes
 
 
@@ -283,9 +288,8 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
                 direction = min(direction, 0)
                 if r['material_notice'] == 'Exchange inquiry or issuer response' and key != r['id'] and anchor.get('date', anchor.get('published')) != r['published']:
                     key = r['id']
-            quote = profit_quotes.get(r['id'], '').strip()
-            if quote:
-                r['profit_decline_quote'] = quote
+            if r['id'] in profit_quotes:
+                r.update(profit_quotes[r['id']])
                 direction = -1
                 key = key or r['id']
             decision = r.get('decision') or {}
@@ -318,7 +322,7 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             yield {r['id']:dict(event=key, sentiment=r['score'], title=title[:250], summary=summary,
                                 decision=ruling) for r in members}
             continue
-        sample = sorted(members, key=lambda r: (not r['decision_notice'], not r.get('profit_decline_quote'), r['status'] != 'supported', r['score'], r['id']))
+        sample = sorted(members, key=lambda r: (not r['decision_notice'], not r.get('raised_target_quote'), not r.get('profit_decline_quote'), r['status'] != 'supported', r['score'], r['id']))
         sample = sample[:5]
         facts = [dict(r, sources=source_sample(r['sources'], 22000 // len(sample)), corroboration=[]) for r in sample]
         instruction = ("Write an English analyst brief of 150–250 words about this one company event. "
@@ -341,6 +345,11 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
         payload = {"company": display_name, "company_names": labels, "event": {"event": key}, "coverage": len(members),
                    "publication_dates": sorted({r['published'] for r in members}), "evidence": facts}
         earnings = any(r.get('profit_decline_quote') for r in members)
+        mixed = next((r for r in members if r.get('raised_target_quote')), None)
+        if mixed:
+            instruction += (" In both title and summary, explicitly distinguish the higher profit target from "
+                            "the decline in actual reported profit. Identify the respective periods and keep "
+                            "each amount or percentage with its own measure. Do not present the target as achieved.")
         if earnings:
             instruction += (" State the reported profit decline in the title and summary. Give its reporting period, "
                             "magnitude and comparison when supplied. Keep revenue changes separate. Attribute figures "
@@ -362,7 +371,7 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             continue
         def valid(draft):
             title, summary = draft.get("title"), draft.get("summary")
-            return (isinstance(title, str) and isinstance(summary, str) and
+            valid_text = (isinstance(title, str) and isinstance(summary, str) and
                     (not earnings or all(re.search(r'profit|earnings|income|loss', field, re.I) and
                                          re.search(r'declin|fall|fell|drop|decreas|slid|slip|down|lower|shrank|shrink|plung|dip|contract|widen|reduc', field, re.I)
                                          for field in (title, summary))) and
@@ -373,28 +382,41 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
                      (not re.search(r'\bpermanent(?:ly)?\b', summary, re.I) or
                       re.search(r'\bpermanent(?:ly)?\b', ruling['outcome']+' '+ruling['remaining'], re.I)) and
                      (not ruling.get('decision_day') or decision_review.mentions_day(summary, ruling['decision_day'])))))
-        if not valid(draft):
+            if not valid_text or not mixed:
+                return bool(valid_text)
+            verdict = model("Check the title and summary separately against the two source passages. "
+                            "Return consistent only if BOTH fields distinguish a raised profit target from "
+                            "a drop in actual profit for this issuer, with periods, amounts and comparisons "
+                            "assigned correctly wherever given. Reject forecasts described as realised results.",
+                            {"title": title, "summary": summary, "target": mixed['raised_target_quote'],
+                             "actual": mixed['profit_decline_quote']},
+                            keywords.object_schema({"consistent": {"type": "boolean"}}))
+            return verdict.get("consistent") is True
+
+        accepted = valid(draft)
+        if not accepted:
             words = len(str(draft.get("summary") or "").split())
             draft = model(instruction + f" Rewrite the previous draft ({words} words) to 180–210 words. "
                           "Copy company into both fields. Ground every statement in the supplied evidence.",
                           dict(payload, previous_draft=draft), _DRAFT)
+            accepted = valid(draft)
         aligned = True
-        if ruling and valid(draft):
+        if ruling and accepted:
             verdict = model("Check the English brief against the dated ruling and its quoted evidence. "
                             "Accept only if the brief accurately conveys the outcome and every reported residual restriction, "
                             "the right parties, assets, quantities and dates. Reject any suggestion that the notice and hearing date coincide "
                             "without explicit evidence, or that the original application still awaits a ruling.",
                             {"brief":draft, "decision":ruling}, keywords.object_schema({"consistent":{"type":"boolean"}}))
             aligned = verdict.get("consistent") is True
-        if ruling and (not aligned or not valid(draft)):
+        if ruling and (not aligned or not accepted):
             # Give the analyst the dated source record even if the model repeats a stale legal status.
             draft = {"title": display_name + " · reported decision", "summary":
                      ("Decision dated " + ruling['decision_day'] + ". " if ruling.get('decision_day') else "") +
                      "The notice was published on " + ruling["as_of"] + ". " +
                      ruling["outcome"] + " " + ruling["remaining"]}
-        elif not valid(draft):
+        elif not accepted:
             # If prose validation fails twice, report the source directly without adopting its claims.
-            lead = sample[0]
+            lead = mixed or sample[0]
             headline = lead['english'] or lead['title']
             passage = lead.get('profit_decline_quote') or next(iter(lead['quotes']), '')
             attribution = lead['publisher'] or "The source"
@@ -404,6 +426,11 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
                 summary += f' The recorded passage reads: “{passage}”'
             draft = {"title": f"{display_name} · {headline}",
                      "summary": f"{display_name} · {summary} This source note requires analyst review."}
+            if mixed:
+                draft = {"title": f"{display_name} raises profit target as reported profit falls",
+                         "summary": f"{attribution} reports a higher profit target for {display_name}: "
+                                    f"“{mixed['raised_target_quote']}” The reported result fell: "
+                                    f"“{mixed['profit_decline_quote']}” This source note requires analyst review."}
             _log.info("Saved source note for run event %s after two invalid narratives", key)
         day = draft.get('event_day')
         if (not day or ruling or day > max(payload['publication_dates']) or
