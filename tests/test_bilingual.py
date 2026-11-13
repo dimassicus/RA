@@ -147,3 +147,14 @@ def test_repeated_invalid_russian_stops_but_service_outage_can_retry(database, m
     row = database.execute('SELECT * FROM result_translations').fetchone()
     assert row['russian'] == '' and row['russian_error'] == "Translation changed a currency"
     assert 'оригинал' in i18n.ru(row['source'])
+
+
+def test_display_worker_waits_for_paused_run(database, monkeypatch):
+    run_id = db.create_run('selected', [{'name': 'Acme'}])
+    bilingual.enqueue(database, 'A pending translation', run_id=run_id)
+    database.execute("UPDATE search_runs SET paused=TRUE WHERE id=%s", (run_id,))
+    monkeypatch.setattr(bilingual.russian, 'checked_translation', lambda *args: 'Готово')
+    assert not bilingual.process_one()
+    database.execute("UPDATE search_runs SET paused=FALSE WHERE id=%s", (run_id,))
+    assert bilingual.process_one()
+    assert database.execute("SELECT russian FROM result_translations").fetchone()['russian'] == 'Готово'

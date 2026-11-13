@@ -110,7 +110,8 @@ def process_one():
     # Lease before inference. A killed worker releases its job when the lease expires.
     with db.connect() as conn:
         row = conn.execute("""UPDATE result_translations SET retry_at=now()+interval '15 minutes'
-            WHERE key=(SELECT key FROM result_translations WHERE run_id IN (SELECT id FROM display_translation_runs)
+            WHERE key=(SELECT key FROM result_translations WHERE run_id IN (
+                       SELECT s.id FROM search_runs s JOIN display_translation_runs eligible USING (id) WHERE NOT s.paused)
                        AND (english='' OR russian='') AND russian_rejections<3 AND retry_at<=now()
                        ORDER BY retry_at,key LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *""").fetchone()
     if not row:
