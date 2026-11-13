@@ -212,3 +212,29 @@ def test_closed_history_cannot_requeue_work_but_new_runs_can(database, monkeypat
     assert 'Run processing stopped by the operator.' in client.get(f'/runs/{rid}').text
     newer = db.create_run('selected', [db.company_snapshot(company)])
     assert db.get_run(newer)['status'] == 'queued' and 'processing_stopped_at' not in db.get_run(newer)['search_settings']
+
+
+def test_inflight_feed_success_cannot_clear_other_requests_cooldown():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    gate = rss_gate.GoogleRSS()
+    slow_started, limited = Event(), Event()
+
+    def fetch(url):
+        if url == 'slow':
+            slow_started.set()
+            assert limited.wait(3)
+            return b'<rss/>'
+        assert slow_started.wait(3)
+        raise HTTPError(url, 429, 'rate limited', {'Retry-After': '900'}, None)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        slow = pool.submit(gate.read, fetch, 'slow', 'probe')
+        try:
+            with pytest.raises(rss_gate.Deferred):
+                pool.submit(gate.read, fetch, 'limited', 'probe').result(timeout=4)
+        finally:
+            limited.set()
+        assert slow.result() == b'<rss/>'
+    with pytest.raises(rss_gate.Deferred):
+        gate.read(lambda _: pytest.fail('request during cooldown'), 'next', 'probe')

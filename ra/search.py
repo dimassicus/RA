@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 import unicodedata
 import json
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 import time
 import pycountry
 from babel import Locale
@@ -431,6 +433,16 @@ def search_company(subject, fetcher=fetch_feed, official_fetcher=fetch_json_post
             return finished.value
 
 
+def _company_feed(fetcher, query, edition, bounds, subject):
+    url, language = feed_url(query, edition, window=bounds)
+    if fetcher is fetch_feed:
+        probe = feed_url('"' + provider_name(subject) + '"', edition, window=bounds)[0]
+        raw = fetcher(url, probe=probe)
+    else:
+        raw = fetcher(url)
+    return parse_feed(raw, query, language, limit=100, window=bounds)
+
+
 def search_company_steps(subject, fetcher=fetch_feed, official_fetcher=fetch_json_post, *, progress=None,
                          window=None, on_deferred=None, provider_window=None, filing_coverage=None, settings=None):
     articles, errors = [], []
@@ -500,25 +512,32 @@ def search_company_steps(subject, fetcher=fetch_feed, official_fetcher=fetch_jso
     settings = settings or search_settings.for_run({})
     adverse_focus = settings.get("adverse_only", False)
     queries = planned_feeds(subject, window, adverse_focus)
-    for index, (query, edition, bounds) in enumerate(queries):
-        yield
-        if progress:
-            progress(f"Searching company news · query {index + 1} of {len(queries)}", index, len(queries))
-        url, language = feed_url(query, edition, window=bounds)
-        try:
-            probe = feed_url('"' + provider_name(subject) + '"', edition, window=bounds)[0]
-            raw = fetcher(url, probe=probe) if fetcher is fetch_feed else fetcher(url)
-            for article in parse_feed(raw, query, language, limit=100, window=bounds):
-                if article["url"] not in seen_urls:
-                    seen_urls.add(article["url"])
-                    articles.append(article)
-        except rss_gate.Deferred as exc:
-            if on_deferred:
-                on_deferred(query, edition, bounds)
-            elif str(exc) not in errors:
-                errors.append(str(exc))
-        except Exception as exc:
-            errors.append(f"{query}: {type(exc).__name__}: {exc}")
+    # Keep a single feed in flight across the next checkpoint; consume in plan order.
+    with (ThreadPoolExecutor(max_workers=2) if fetcher is fetch_feed else nullcontext()) as pool:
+        pending = {}
+        for index, (query, edition, bounds) in enumerate(queries):
+            yield
+            if progress:
+                progress(f"Searching company news · query {index + 1} of {len(queries)}", index, len(queries))
+            try:
+                if pool:
+                    for i in range(index, min(index + 2, len(queries))):
+                        if i not in pending:
+                            pending[i] = pool.submit(_company_feed, fetcher, *queries[i], subject)
+                    hits = pending.pop(index).result()
+                else:
+                    hits = _company_feed(fetcher, query, edition, bounds, subject)
+                for article in hits:
+                    if article["url"] not in seen_urls:
+                        seen_urls.add(article["url"])
+                        articles.append(article)
+            except rss_gate.Deferred as exc:
+                if on_deferred:
+                    on_deferred(query, edition, bounds)
+                elif str(exc) not in errors:
+                    errors.append(str(exc))
+            except Exception as exc:
+                errors.append(f"{query}: {type(exc).__name__}: {exc}")
     from .article_content import canonical_url
     yield
     extra, gaps = (perplexity.collect(subject, span, articles, progress, adverse_focus=adverse_focus)
