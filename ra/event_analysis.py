@@ -200,11 +200,23 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
     labels = translation_names.names(subject)
     matcher = brief_name_pattern(subject)
     records = [evidence(r, subject) for r in sorted(rows, key=lambda a: (str(a.get('published_at') or ''), a['id'])) if triage_candidate(r)]
+    # Syndicated pages can append other issuers' headlines under a Related News heading.
+    result = {}
     for record in records:
+        main, related, _ = record['summary'].partition('## Related News')
+        if related:
+            record['summary'] = main.strip()
+            primary = [record['title'], record['english'], main, *record['quotes'],
+                       *(source['text'] for source in record['sources'])]
+            if (not record['reviewed'] and record['status'] != 'supported' and
+                    not any(matcher.search(text) for text in primary)):
+                result[record['id']] = {"excluded": True, "sentiment": 0}
+                continue
         if record['decision_notice']:
             record['decision'] = decision_review.disposition([record], company, model)
     catalog = {e['event']: e for e in previous}
-    groups, result = defaultdict(list), {}
+    records = [r for r in records if r['id'] not in result]
+    groups = defaultdict(list)
     # Include the full current source-review budget without overflowing the local model context.
     for batch in grouping_batches(records, per_document):
         # Nearest dated anchors keep long historical searches within the model context.
@@ -362,7 +374,10 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
                       re.search(r'\bpermanent(?:ly)?\b', ruling['outcome']+' '+ruling['remaining'], re.I)) and
                      (not ruling.get('decision_day') or decision_review.mentions_day(summary, ruling['decision_day'])))))
         if not valid(draft):
-            draft = model(instruction + " Rewrite to 180–210 words. Copy company into both fields.", payload, _DRAFT)
+            words = len(str(draft.get("summary") or "").split())
+            draft = model(instruction + f" Rewrite the previous draft ({words} words) to 180–210 words. "
+                          "Copy company into both fields. Ground every statement in the supplied evidence.",
+                          dict(payload, previous_draft=draft), _DRAFT)
         aligned = True
         if ruling and valid(draft):
             verdict = model("Check the English brief against the dated ruling and its quoted evidence. "
@@ -378,7 +393,18 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
                      "The notice was published on " + ruling["as_of"] + ". " +
                      ruling["outcome"] + " " + ruling["remaining"]}
         elif not valid(draft):
-            raise ValueError("Incomplete event narrative or missing company identity")
+            # If prose validation fails twice, report the source directly without adopting its claims.
+            lead = sample[0]
+            headline = lead['english'] or lead['title']
+            passage = lead.get('profit_decline_quote') or next(iter(lead['quotes']), '')
+            attribution = lead['publisher'] or "The source"
+            date = f" on {lead['published']}" if lead['published'] else ""
+            summary = f'{attribution} published the headline “{headline}”{date}.'
+            if passage and passage != headline:
+                summary += f' The recorded passage reads: “{passage}”'
+            draft = {"title": f"{display_name} · {headline}",
+                     "summary": f"{display_name} · {summary} This source note requires analyst review."}
+            _log.info("Saved source note for run event %s after two invalid narratives", key)
         day = draft.get('event_day')
         if (not day or ruling or day > max(payload['publication_dates']) or
                 not any(decision_review.mentions_day(s['text'], day, s.get('language', 'en'))

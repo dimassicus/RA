@@ -198,7 +198,8 @@ def append_leads(conn, run, subject, rows):
             conn.execute("UPDATE search_results SET exposure_paths=%s WHERE id=%s", (paths,result_id))
     if added:
         conn.execute("UPDATE search_runs SET candidates_in_window=coalesce(candidates_in_window,0)+%s, "
-                     "event_analysis_status='pending',retry_translations=TRUE WHERE id=%s",(added,run['id']))
+                     "event_analysis_status=CASE WHEN event_analysis_status='failed' THEN 'failed' ELSE 'pending' END, "
+                     "retry_translations=TRUE WHERE id=%s",(added,run['id']))
     if added or path_updates:
         score_store._assess(conn,run['id'])
     return added

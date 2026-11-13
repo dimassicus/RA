@@ -50,7 +50,8 @@ def test_retry_after_pauses_on_first_failure(monkeypatch, retry_after):
     assert gate.until == 10900.
 
 
-def test_replay_preserves_original_run_and_reviews(database, monkeypatch):
+@pytest.mark.parametrize(('draft_status', 'after_recovery'), [('failed', 'failed'), ('complete', 'pending')])
+def test_replay_preserves_original_run_and_reviews(database, monkeypatch, draft_status, after_recovery):
     company, rid, existing = seed(database)
     db.set_report_selection(rid,[existing['id']],scores={existing['id']: -1})
     run = db.get_run(rid)
@@ -76,13 +77,14 @@ def test_replay_preserves_original_run_and_reviews(database, monkeypatch):
     assert rss_recovery.recover_one()
     assert not rss_recovery.recover_one()
     assert len(db.get_results(rid)) == 1
-    database.execute("UPDATE search_runs SET status='partial' WHERE id=%s",(rid,))
+    database.execute("UPDATE search_runs SET status='partial',event_analysis_status=%s WHERE id=%s",(draft_status,rid))
     assert rss_recovery.recover_one()
     assert rss_recovery.recover_one()
     assert rss_recovery.recover_one()
     assert not rss_recovery.recover_one()
     assert paid == [('"Acme Manufacturing"',span,'pt')]
     saved = db.get_results(rid)
+    assert db.get_run(rid)['event_analysis_status'] == after_recovery
     assert len(saved) == 2 and db.get_run(rid)['result_count'] == 2
     original = next(r for r in saved if r['id']==existing['id'])
     assert original['report_selected'] and original['score_status']=='reviewed' and original['score']==-1

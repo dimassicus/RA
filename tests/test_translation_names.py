@@ -85,3 +85,28 @@ def test_event_briefs_use_one_watchlist_name_for_distinct_heringer_events():
         assert event['title'] == f'Fertilizantes Heringer {actions[i]}'
         assert event['summary'].startswith(event['title'] + '.')
         assert source['title'] == f'{labels[i]} {actions[i]}'
+
+
+def test_invalid_rewrite_uses_attributed_headline_and_continues_next_event():
+    rows = [dict(id=i, title=f'Lautan Luas disclosure {i}', score=0, publisher='Issuer',
+                 published_at='2026-11-06') for i in (1, 2)]
+    def model(instruction, payload, schema):
+        if 'leads' in payload:
+            return {'assignments': [dict(id=i, event=i, sentiment=0, title='Disclosure') for i in (1, 2)]}
+        if payload['event']['event'] == 2:
+            return dict(title='LTLS second disclosure', summary='LTLS ' + 'evidence ' * 151)
+        if 'previous_draft' in payload:
+            assert '121 words' in instruction
+            return dict(title='Incorrect merger', summary='unsupported ' * 260)
+        return dict(title='Incorrect merger', summary='unsupported ' * 121)
+    first, second = event_analysis.draft_company(SUBJECT, rows, model=model)
+    assert 'Issuer published the headline “Lautan Luas disclosure 1” on 2026-11-06' in first[1]['summary']
+    assert 'unsupported' not in first[1]['summary'] and 'analyst review' in first[1]['summary']
+    assert second[2]['title'] == 'Lautan Luas second disclosure'
+
+
+def test_related_news_link_alone_cannot_attribute_another_issuers_merger():
+    row = dict(id=5112, title='Piraeus Bank absorbs its subsidiaries', score=0,
+               discovery_summary='# Piraeus Bank absorbs its subsidiaries ## Related News ### Lautan Luas merger')
+    draft, = event_analysis.draft_company(SUBJECT, [row], model=lambda *_: pytest.fail('no issuer evidence'))
+    assert draft == {5112: {'excluded': True, 'sentiment': 0}}
