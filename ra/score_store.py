@@ -28,11 +28,14 @@ def _audit(conn, article, assessment, reason):
 
 def _write(conn, result_id, assessment):
     from .bilingual import enqueue
-    enqueue(conn, assessment['score_reason'])
-    conn.execute("UPDATE search_results SET " + ", ".join(field + "=%s" for field in FIELDS) +
-                 ", score_updated_at=now() WHERE id=%s",
-                 tuple(Jsonb(assessment[field]) if field == "score_evidence" else assessment[field]
-                       for field in FIELDS) + (result_id,))
+    row = conn.execute(
+        "UPDATE search_results SET " + ", ".join(field + "=%s" for field in FIELDS) +
+        ", score_updated_at=now() WHERE id=%s RETURNING run_id",
+        tuple(Jsonb(assessment[field]) if field == "score_evidence" else assessment[field]
+              for field in FIELDS) + (result_id,),
+    ).fetchone()
+    if row:
+        enqueue(conn, assessment['score_reason'], run_id=row['run_id'])
 
 
 def _migrate_three_grades(conn):

@@ -10,7 +10,7 @@ import pycountry
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, abort, flash, g, jsonify, redirect, render_template, request, send_file, session, url_for
 from psycopg.errors import UniqueViolation
 
 from . import archive, bilingual, i18n, db, disclosures, governance_roster, keywords, risk_factors, intake_worker, model_store, news_apis, preliminary, worker
@@ -375,6 +375,7 @@ def create_app() -> Flask:
                 return redirect(url_for("article_score", result_id=result_id))
             flash("Article score saved. Weekly history updated and the decision recorded.", "success")
             return redirect(url_for("article_score", result_id=result_id))
+        g.article_run_id = article["run_id"]
         return render_template("article_score.html", article=article, history=score_store.article_history(result_id),
                                labels=LABELS, rubric=RUBRIC, materiality=MATERIALITY, lookup_title=original_title(article), **verification_store.details(result_id))
 

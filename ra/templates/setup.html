@@ -65,7 +65,7 @@
           <form method="post" action="{{ url_for('retry_run_stage', run_id=run.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="form-actions">
-              <button class="button secondary" name="stage" value="translations" {% if v.reviewed == v.translation_total %}disabled{% endif %}>{{ _('Retry translations') }}</button>
+              <button class="button secondary" name="stage" value="translations" {% if not run.display_translations_enabled or v.reviewed == v.translation_total %}disabled{% endif %}>{{ _('Retry translations') }}</button>
               <button class="button secondary" name="stage" value="sources" {% if not v.source_retryable %}disabled{% endif %}>{{ _('Retry source checks (') }}{{ v.source_retryable }})</button>
               {% if run.status in ('failed','partial') %}<button class="button secondary" name="stage" value="search">{{ _('Restart search as new run') }}</button>{% endif %}
             </div>

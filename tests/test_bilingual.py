@@ -76,8 +76,9 @@ def test_both_views_and_export_share_one_scored_record(database, monkeypatch, sc
 def test_retry_preserves_one_job_and_russian_original(database, monkeypatch):
     text = 'Компания сообщила о падении прибыли.'
     subject = {'name': 'Acme', 'comment': 'Private notes'}
-    bilingual.enqueue(database, text, 'ru', subject)
-    bilingual.enqueue(database, text, 'ru', subject)
+    run_id = db.create_run('one_off', [subject])
+    bilingual.enqueue(database, text, 'ru', subject, run_id=run_id)
+    bilingual.enqueue(database, text, 'ru', subject, run_id=run_id)
     from ra import translation
     monkeypatch.setattr(translation, 'translate_text', lambda *args: ('', 'offline'))
     assert bilingual.process_one()
@@ -89,4 +90,38 @@ def test_retry_preserves_one_job_and_russian_original(database, monkeypatch):
     assert bilingual.process_one()
     assert i18n.headline({'title': text, 'language': 'ru'}, 'ru') == text
     assert i18n.headline({'title': text, 'language': 'ru'}, 'en') == 'The company reported falling profits.'
+    assert not bilingual.process_one()
+
+
+def test_moscow_cutoff_restores_only_eligible_work_and_archives_stay_read_only(database, monkeypatch):
+    from test_score_store import seed
+
+    _, old, old_lead = seed(database, title='Old filing')
+    _, new, new_lead = seed(database, title='New filing', url='https://example.test/new')
+    database.execute("UPDATE search_runs SET created_at='2026-11-12 20:59:59+00' WHERE id=%s", (old,))
+    database.execute("UPDATE search_runs SET created_at='2026-11-12 21:00:00+00' WHERE id=%s", (new,))
+    database.execute("UPDATE search_results SET published_at='2025-01-01', discovery_summary='Shared summary' WHERE id=%s",
+                     (new_lead['id'],))
+    for source in ('Old filing', 'Shared summary', 'Saved copy'):
+        database.execute("""INSERT INTO result_translations(key,source,language,english,russian)
+            VALUES (%s,%s,'en',%s,%s)""", (bilingual.key(source, 'en'), source, source,
+                                          'Готовый перевод' if source == 'Saved copy' else ''))
+    bilingual.restore_run_queue(database)
+    bilingual.restore_run_queue(database)
+    bilingual.enqueue(database, 'Old-only retry', run_id=old)
+    assert not database.execute("SELECT 1 FROM result_translations WHERE source='Old-only retry'").fetchone()
+    client = create_app().test_client()
+    with client.application.test_request_context(f'/runs/{old}'):
+        assert i18n.ru('Old filing') == 'Old filing'
+        assert i18n.ru('Saved copy') == 'Готовый перевод'
+        assert i18n.ru('Archive-only miss') == 'Archive-only miss'
+    with client.application.test_request_context(f'/runs/{new}'):
+        assert 'Ожидает перевода' in i18n.ru('New detail')
+    assert not database.execute("SELECT 1 FROM result_translations WHERE source='Archive-only miss'").fetchone()
+    calls = []
+    monkeypatch.setattr(bilingual.russian, 'translate', lambda text, subject: calls.append(text) or 'Перевод')
+    while bilingual.process_one():
+        pass
+    assert {'New filing', 'Shared summary', 'New detail'} <= set(calls)
+    assert calls.count('Shared summary') == 1 and 'Old filing' not in calls
     assert not bilingual.process_one()

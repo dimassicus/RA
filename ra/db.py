@@ -77,7 +77,11 @@ def release_firecrawl_credit(day):
 
 def init_schema():
     with connect() as conn:
+        restore_display = conn.execute("SELECT to_regclass('display_translation_runs') IS NULL AS needed").fetchone()['needed']
         conn.execute(Path(__file__).with_name("schema.sql").read_text())
+        if restore_display:
+            from .bilingual import restore_run_queue
+            restore_run_queue(conn)
         from .keywords import seed
         seed(conn)
         from . import risk_factors
@@ -433,7 +437,8 @@ def list_runs(limit: int = 12):
         return conn.execute(
             "SELECT id, scope, status, paused, total_companies, completed_companies, "
             "result_count, error_count, created_at, event_analysis_status, "
-            "search_settings ? 'processing_stopped_at' AS processing_stopped FROM search_runs "
+            "search_settings ? 'processing_stopped_at' AS processing_stopped, "
+            "id IN (SELECT id FROM display_translation_runs) AS display_translations_enabled FROM search_runs "
             "ORDER BY id DESC LIMIT %s", (limit,)
         ).fetchall()
 
@@ -542,7 +547,7 @@ def set_report_selection(run_id: int, selected_ids: list[int], edits: dict[int, 
         for result_id, (changed, qa, title_en, publisher_en) in prepared.items():
             if changed:
                 from .bilingual import enqueue
-                enqueue(conn, title_en)
+                enqueue(conn, title_en, run_id=run_id)
             conn.execute(
                 "UPDATE search_results SET headline_review = CASE WHEN %s THEN %s ELSE headline_review END, title_en = %s, publisher_en = %s, "
                 "translation_provider = 'analyst edited' WHERE id = %s",

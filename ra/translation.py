@@ -145,8 +145,8 @@ def backfill(force: bool = False, run_id: int | None = None) -> tuple[int, int]:
     db.init_schema()
     with db.connect() as conn:
         rows = conn.execute(
-            "SELECT r.id,title,publisher,language,subject_name,company_id,s.subjects FROM search_results r JOIN search_runs s ON s.id=r.run_id "
-            "WHERE (%s::bigint IS NOT NULL OR NOT (s.search_settings ? 'processing_stopped_at')) "
+            "SELECT r.id,r.run_id,title,publisher,language,subject_name,company_id,s.subjects FROM search_results r JOIN search_runs s ON s.id=r.run_id "
+            "JOIN display_translation_runs eligible ON eligible.id=s.id WHERE (%s::bigint IS NOT NULL OR NOT (s.search_settings ? 'processing_stopped_at')) "
             "AND (%s::bigint IS NULL OR run_id=%s) AND (title_en = '' OR (%s AND translation_provider = 'Argos offline model')) ORDER BY r.id",
             (run_id, run_id, run_id, force),
         ).fetchall()
@@ -160,7 +160,7 @@ def backfill(force: bool = False, run_id: int | None = None) -> tuple[int, int]:
         publisher_en = row["publisher"]  # Publisher names are brands, not prose.
         with db.connect() as conn:
             from .bilingual import enqueue
-            enqueue(conn, title_en, subject=db.subject_for(row, row["subjects"]))
+            enqueue(conn, title_en, subject=db.subject_for(row, row["subjects"]), run_id=row["run_id"])
             conn.execute(
                 "UPDATE search_results SET title_en = %s, publisher_en = %s, translation_provider = %s, language = %s, headline_review = %s "
                 "WHERE id = %s AND (title_en = '' OR (%s AND translation_provider = 'Argos offline model'))",

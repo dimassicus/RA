@@ -339,3 +339,8 @@ CREATE TABLE IF NOT EXISTS result_translations (
     retry_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS result_translations_pending ON result_translations(retry_at) WHERE english='' OR russian='';
+
+-- The monitoring run's creation time determines display translation eligibility.
+CREATE OR REPLACE VIEW display_translation_runs AS
+    SELECT id FROM search_runs WHERE created_at >= TIMESTAMPTZ '2026-11-13 00:00:00+03';
+ALTER TABLE result_translations ADD COLUMN IF NOT EXISTS run_id BIGINT REFERENCES search_runs(id) ON DELETE SET NULL;

@@ -154,7 +154,7 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
             )
             count += inserted.rowcount
             if inserted.rowcount:
-                bilingual.enqueue_lead(conn, article, subject)
+                bilingual.enqueue_lead(conn, article, subject, run_id)
                 if queue_checks:
                     conn.execute("INSERT INTO verification_jobs(result_id) VALUES (%s)", (inserted.fetchone()['id'],))
                 saved.add(canonical_url(article["url"]))

@@ -185,6 +185,7 @@ def retry_pending():
     with db.connect() as conn:
         rows = conn.execute("""
             SELECT r.*,s.subjects FROM search_results r JOIN search_runs s ON s.id=r.run_id
+            JOIN display_translation_runs eligible ON eligible.id=s.id
             WHERE s.retry_translations AND NOT s.paused AND s.status IN ('completed','partial','failed')
               AND lower(split_part(r.language,'-',1)) NOT IN ('en','zxx')
               AND (r.title_en='' OR COALESCE(r.headline_review->>'status','pending')
@@ -217,7 +218,7 @@ def retry_pending():
             result["retry_after"] = (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat()
         with db.connect() as conn:
             from .bilingual import enqueue
-            enqueue(conn, english, subject=subject)
+            enqueue(conn, english, subject=subject, run_id=row['run_id'])
             conn.execute("""
                 UPDATE search_results SET title_en=%s,translation_provider=%s,headline_review=%s,language=%s
                 WHERE id=%s AND title=%s AND title_en=%s AND language=%s AND headline_review=%s
@@ -228,9 +229,12 @@ def retry_pending():
 
 def request_retry(run_id):
     with db.connect() as conn:
-        run = conn.execute("SELECT status FROM search_runs WHERE id=%s FOR UPDATE", (run_id,)).fetchone()
+        run = conn.execute("SELECT status, id IN (SELECT id FROM display_translation_runs) AS eligible "
+                           "FROM search_runs WHERE id=%s FOR UPDATE", (run_id,)).fetchone()
         if not run or run["status"] in ("queued", "running"):
             raise ValueError("Wait for the search to finish before retrying translations.")
+        if not run["eligible"]:
+            return 0
         conn.execute("UPDATE search_runs SET retry_translations=TRUE WHERE id=%s", (run_id,))
         return conn.execute("""
             UPDATE search_results SET headline_review=(headline_review-'retry_count')-'retry_after'

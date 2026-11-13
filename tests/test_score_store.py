@@ -1387,7 +1387,7 @@ def test_russian_archive_shows_saved_translations_in_results_and_excel(database)
         event_draft=event_draft || '{"title":"Annual disclosure"}' WHERE id=%s""", (lead['id'],))
     for source, russian in [('Company filing', 'Отчёт компании'), ('Annual disclosure', 'Годовое раскрытие'),
                             ('Test event brief', 'Описание события')]:
-        bilingual.enqueue(database, source, 'en')
+        bilingual.enqueue(database, source, 'en', run_id=lead['run_id'])
         database.execute("UPDATE result_translations SET russian=%s WHERE key=%s",
                          (russian, bilingual.key(source, 'en')))
     client = create_app().test_client()

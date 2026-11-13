@@ -42,7 +42,7 @@ def close_reader(error):
         with stack:
             if error is None:
                 for digest in sorted(g.translation_missing):
-                    bilingual.enqueue(g.translation_db, *g.translation_missing[digest])
+                    bilingual.enqueue(g.translation_db, *g.translation_missing[digest], run_id=g.translation_run_id)
 
 
 def prefetch(rows):
@@ -61,7 +61,7 @@ def prefetch(rows):
         keys.update(bilingual.key(v, 'en') for v in values if v and v not in MESSAGES)
     conn = _reader()
     g.translation_cache.update(dict.fromkeys(keys))
-    for row in conn.execute('SELECT key,english,russian FROM result_translations WHERE key=ANY(%s)', (list(keys),)):
+    for row in conn.execute('SELECT key,english,russian,run_id FROM result_translations WHERE key=ANY(%s)', (list(keys),)):
         g.translation_cache[row['key']] = row
 
 
@@ -70,24 +70,30 @@ def _lookup(text, source, target):
         return text
     digest = bilingual.key(text, source)
     def read(conn):
-        return conn.execute('SELECT english,russian FROM result_translations WHERE key=%s', (digest,)).fetchone()
+        return conn.execute('SELECT english,russian,run_id FROM result_translations WHERE key=%s', (digest,)).fetchone()
     if has_request_context():
         conn = _reader()
         cache = g.translation_cache
         if digest not in cache:
             cache[digest] = read(conn)
         row = cache[digest]
-        if row is None:
-            g.translation_missing[digest] = (text, source)
     else:
         with db.connect() as conn:
             row = read(conn)
-            if row is None:
-                bilingual.enqueue(conn, text, source)
     result = (row or {}).get('russian' if target == 'ru' else 'english')
-    if not result and has_request_context():
-        g.translation_pending.add(digest)
-    return result or (('Ожидает перевода · оригинал: ' if target == 'ru' else 'Translation pending · original: ') + text)
+    if result:
+        return result
+    if has_request_context():
+        if 'translation_run_id' not in g:
+            run_id = g.get('article_run_id') or (request.view_args or {}).get('run_id')
+            g.translation_run_id = run_id if run_id and conn.execute(
+                'SELECT id FROM display_translation_runs WHERE id=%s', (run_id,)).fetchone() else None
+        if g.translation_run_id:
+            if not row or row['run_id'] is None:
+                g.translation_missing[digest] = (text, source)
+            g.translation_pending.add(digest)
+            return ('Ожидает перевода · оригинал: ' if target == 'ru' else 'Translation pending · original: ') + text
+    return text
 
 
 def ru(text):
