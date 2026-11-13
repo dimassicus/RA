@@ -13,7 +13,7 @@ def runtime(monkeypatch, tmp_path):
     calls = []
     available = set(lm.MODELS)
     monkeypatch.setattr(lm, "LOCK_PATH", tmp_path / "models.lock")
-    monkeypatch.setattr(lm, "_activity", "")
+    monkeypatch.setattr(lm, "_activity", (None, ""))
 
     def command(*args):
         calls.append(args)
@@ -126,17 +126,23 @@ def test_concurrent_review_cannot_unload_active_translation(runtime, monkeypatch
             assert release.wait(5)
         return raw(port, path, body, timeout)
 
+    def translate():
+        with lm.batch("run 51"):
+            return infer(lm.GEMMA)
+
     def review():
         second_started.set()
         return infer(lm.QWEN)
 
     monkeypatch.setattr(lm, "raw_request", blocked)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        translation = pool.submit(infer, lm.GEMMA)
+        translation = pool.submit(translate)
         assert entered.wait(5)
         review_task = pool.submit(review)
         try:
             assert second_started.wait(5)
+            assert "Gemma" in lm.activity("run 51")
+            assert lm.activity("run 52") == ""
             assert ("unload", lm.GEMMA) not in calls
         finally:
             release.set()

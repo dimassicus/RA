@@ -12,7 +12,7 @@
       <button class="button secondary" name="action" value="{{ 'resume' if run.paused else 'pause' }}">{{ _('Resume') if run.paused else _('Pause') }}</button>
     </form>
   {% endif %}</div>
-  <div class="hero-stats"><span>{{ _('Companies searched') }}: <strong>{{ run.completed_companies }}/{{ run.total_companies }}</strong></span><span>{{ _('Collected leads') }}: <strong>{{ run.result_count }}</strong></span><span>{{ _('Source errors') }}: <strong>{{ run.error_count }}</strong></span><span id="run-state" class="status status-{{ run.status }}">{{ _('Paused' if run.paused else 'Summary pending' if run.status == 'completed' and run.event_analysis_status in ('pending', 'waiting_sources') else 'Summary needs retry' if run.status == 'completed' and run.event_analysis_status == 'failed' else run.status) }}</span></div>
+  <div class="hero-stats"><span>{{ _('Companies searched') }}: <strong>{{ run.completed_companies }}/{{ run.total_companies }}</strong></span><span>{{ _('Collected leads') }}: <strong>{{ run.result_count }}</strong></span><span>{{ _('Source errors') }}: <strong>{{ run.error_count }}</strong></span><span id="run-state" role="status" class="status status-{{ run.status }}">{{ _(state_label) }}</span></div>
   {% if run.window_start %}<p>{{ _('Publication window:') }} {{ run.window_start|localdate('%d %b %Y %H:%M %Z') }} – {{ run.window_end|localdate('%d %b %Y %H:%M %Z') }}{{ _('. Historical retrieval performed now; source availability may differ from that week.') }}</p>{% endif %}
   {% if run.candidates_in_window is number %}<p>{{ _('{0} candidates inside the publication window · {1} kept after search filters.').format(run.candidates_in_window, run.result_count) }}</p>{% endif %}
   {% if run.monthly_backfill %}
@@ -37,29 +37,32 @@
   'stopped': _('Automatic headline retries stopped: {0} unresolved reviews exhausted their retries.'),
   'retries': _('{0} unresolved reviews can still retry · {1} exhausted their retries.'),
   'brief': _('Company event briefs saved so far · {0}. Drafting follows publisher checks.'),
+  'idle': _('No run work in progress.'),
   'updated': _('Updated {0}. Changes to your report selection are preserved.'),
   'disconnected': _('Connection interrupted. Showing last known progress; retrying.')
 } %}
 <section class="panel check-progress" aria-label="{{ _('Verification progress') }}">
+  <p id="reviewer-status" role="status"{% if not model_message %} hidden{% endif %}>{{ _(model_message) if model_message }}</p>
   {% if search_progress %}
+  <div id="search-progress">
   <label for="search-bar">{{ _('Search progress') }}</label>
   <progress id="search-bar"{% if search_progress.total %} max="{{ search_progress.total }}" value="{{ search_progress.done }}"{% endif %}></progress>
   <p id="search-step" role="status">{{ _(search_progress.message) }}</p>
   <small id="search-age" class="subtext">{% if search_progress.age is defined and search_progress.age is not none %}{{ progress_copy.age.format(search_progress.age) }}{% endif %}</small>
+  </div>
   {% endif %}
   <label for="publisher-bar">{{ _('Publisher article checks') }} <strong id="publisher-percent">{{ v.get('percent',0) }}%</strong></label>
   <progress id="publisher-bar" max="100" value="{{ v.get('percent',0) }}"></progress>
   <p id="publisher-count">{{ progress_copy.publisher.format(v.get('completed',0) + v.get('failed',0), v.get('total',0), v.get('queued',0), v.get('running',0), v.get('failed',0), v.get('attention',0)) }}</p>
   <p class="subtext">{{ _('100% means every check finished. An inaccessible article still counts as processed. Only supported company impact or an analyst decision can affect a score.') }}</p>
   <label for="translation-bar">{{ _('Headline translation checks · Qwen') }} <strong id="translation-percent">{{ v.get('translation_percent',0) }}%</strong></label>
-  <p id="reviewer-status" role="status">{{ _(reviewer.message) }}</p>
   <progress id="translation-bar" max="100" value="{{ v.get('translation_percent',0) }}"></progress>
   <p id="translation-count">{{ progress_copy.translation.format(v.get('reviewed',0), v.get('translation_total',0), v.get('review_failed',0), v.get('missing',0), v.get('review_attention',0)) }}</p>
   <p class="subtext">{{ _('Failed attempts and missing translations remain incomplete. Completed reviews can flag translation errors or uncertainty. RA retries when Qwen reconnects and the search worker is idle; unresolved translations receive up to three automatic retries.') }}</p>
   <p id="translation-retries" role="status">{% if v.get('review_exhausted',0) and not v.get('review_pending',0) %}{{ progress_copy.stopped.format(v.review_exhausted) }}{% else %}{{ progress_copy.retries.format(v.get('review_pending',0), v.get('review_exhausted',0)) }}{% endif %}</p>
   <p id="results-refresh" role="status" hidden>{{ _('New assessments are available. Save your edits, then') }} <a href="{{ request.full_path }}">{{ _('refresh lead details and filter counts') }}</a>.</p>
   <p class="subtext">{{ _('Counters and results update live. Unsaved edits pause automatic page refresh.') }}</p>
-  <small id="check-live" class="subtext">{{ _('Updates automatically while this page is open.') }}</small>
+  <small id="check-live" class="subtext">{{ _('Updates automatically while this page is open.') if can_pause or run.paused else progress_copy.idle }}</small>
 </section>
 {% if run.status not in ('queued', 'running') %}
 <section class="panel"><h2>{{ _('Company monitoring report') }}</h2>
@@ -178,7 +181,6 @@
     if ((pauseButton.value === 'resume') === Boolean(paused)) return;
     pauseButton.value = paused ? 'resume' : 'pause';
     pauseButton.textContent = paused ? {{ _('Resume')|tojson }} : {{ _('Pause')|tojson }};
-    document.getElementById('run-state').textContent = paused ? {{ _('Paused')|tojson }} : {{ _(run.status)|tojson }};
   }
   pauseForm.addEventListener('submit', async event => {
     if (!hasUnsavedChanges()) return;
@@ -190,6 +192,7 @@
       const response = await fetch(pauseForm.getAttribute('action'), {method:'POST', body:data, headers:{Accept:'application/json'}});
       if (!response.ok) throw Error();
       showPauseState((await response.json()).paused);
+      await updateChecks(false);
     } catch (_) {
       document.getElementById('check-live').textContent = {{ _('Could not update the run. Refresh to check its status.')|tojson }};
     } finally {
@@ -197,13 +200,16 @@
     }
   });
   {% endif %}
-  async function updateChecks() {
+  async function updateChecks(schedule = true) {
     try {
       if (document.hidden) return;
       const response = await fetch(statusUrl, {cache: 'no-store'});
       if (!response.ok) throw Error();
       const data = await response.json();
       const v = data.verification;
+      const badge = document.getElementById('run-state');
+      badge.textContent = data.state_label;
+      badge.className = 'status status-' + data.status;
       {% if can_pause or run.paused %}
       pauseForm.hidden = !data.can_pause && !data.paused;
       if (!pauseForm.hidden && !pauseButton.disabled) showPauseState(data.paused);
@@ -213,8 +219,9 @@
         if (!hasUnsavedChanges()) { window.location.reload(); return; }
         document.getElementById('results-refresh').hidden = false;
       }
-      {% if run.status in ('queued','running') %}
+      {% if search_progress %}
       const step = data.discovery;
+      document.getElementById('search-progress').hidden = !step;
       const bar = document.getElementById('search-bar');
       if (step && bar) {
         if (step.total) {
@@ -233,7 +240,9 @@
       }
       document.getElementById('publisher-count').textContent =
         progressText('publisher', v.completed + v.failed, v.total, v.queued, v.running, v.failed, v.attention);
-      document.getElementById('reviewer-status').textContent = data.reviewer.message;
+      const activity = document.getElementById('reviewer-status');
+      activity.textContent = data.reviewer.message;
+      activity.hidden = !data.reviewer.message;
       const briefProgress = document.getElementById('brief-progress');
       if (briefProgress) briefProgress.textContent = progressText('brief', v.event_briefs);
       document.getElementById('translation-count').textContent =
@@ -241,11 +250,11 @@
       document.getElementById('translation-retries').textContent = v.review_exhausted && !v.review_pending ?
         progressText('stopped', v.review_exhausted) : progressText('retries', v.review_pending, v.review_exhausted);
       document.getElementById('check-live').textContent =
-        progressText('updated', new Date().toLocaleTimeString({{ ui_language()|tojson }}));
+        data.can_pause || data.paused ? progressText('updated', new Date().toLocaleTimeString({{ ui_language()|tojson }})) : progressCopy.idle;
     } catch (_) {
       document.getElementById('check-live').textContent = progressCopy.disconnected;
     } finally {
-      setTimeout(updateChecks, 5000);
+      if (schedule) setTimeout(updateChecks, 5000);
     }
   }
   setTimeout(updateChecks, 5000);

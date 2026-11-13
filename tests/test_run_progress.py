@@ -29,7 +29,7 @@ def run_page(status="completed", theme_status="inconclusive"):
                    keyword_hits=[], source_kind="news", report_selected=False)
     with create_app().test_request_context("/runs/15?view=all"):
         html = render_template("run.html", run=run, verification_jobs=checks,
-                               reviewer={"message": "Ready"}, search_progress=None,
+                               state_label=status, model_message="", search_progress=None,
                                score_labels=LABELS, results=[article], errors=[], view="all", counts={}, all_count=2,
                                selected_count=0, summary_leads=[], other_count=2, rosters=[], exposure_checks=[])
     return html, checks
@@ -51,8 +51,8 @@ def test_polling_refreshes_results_but_preserves_unsaved_controls(edit, initial_
         pytest.skip("Node is required to execute the browser polling regression")
     html, checks = run_page(status=initial_status)
     script = re.findall(r"<script>(.*?)</script>", html, re.S)[-1]
-    payload = dict(status="completed", completed_companies=1, discovery=None,
-                   reviewer={"message": "Ready"},
+    payload = dict(status="partial", state_label="Finished with partial coverage", can_pause=False, completed_companies=1, discovery=None,
+                   reviewer={"message": ""},
                    verification={**checks, "completed": 2, "queued": 0, "percent": 100, "revision": "after"})
     harness = r"""
 const vm = require('node:vm');
@@ -81,6 +81,9 @@ if (edit === 'select') controls[2].value = 'Second';
   if (edit) {
     assert.equal(element('results-refresh').hidden, false);
     assert.equal(element('publisher-bar').value, 100);
+    assert.equal(element('run-state').textContent, 'Finished with partial coverage');
+    assert.equal(element('reviewer-status').hidden, true);
+    assert.equal(element('check-live').textContent, 'No run work in progress.');
     assert.match(element('translation-retries').textContent, /retries stopped/);
     assert.doesNotMatch(element('check-live').textContent, /interrupted/);
     controls[0].value = 'Original'; controls[1].checked = false; controls[2].value = 'First';

@@ -28,6 +28,40 @@ def test_saved_run_page_accepts_trailing_slash(monkeypatch):
         assert client.get("/runs/5/").status_code == 200
 
 
+@pytest.mark.parametrize("language,finished", [
+    ("en", "Finished with partial coverage"),
+    ("ru", "Поиск завершён с неполным охватом источников"),
+])
+def test_partial_run_header_and_live_activity_are_run_specific(monkeypatch, language, finished):
+    from ra import i18n, local_models
+    monkeypatch.setattr(i18n, "_lookup", lambda text, *_: text)
+    run = dict(id=51, status="partial", scope="selected", subjects=[], created_at=datetime.now(timezone.utc),
+               completed_companies=1, total_companies=1, result_count=0, error_count=1, event_analysis_status="complete")
+    checks = dict(queued=0, running=0)
+    monkeypatch.setattr(db, "get_run", lambda _: run)
+    monkeypatch.setattr(db, "get_results", lambda _: [])
+    monkeypatch.setattr(db, "get_errors", lambda _: [])
+    monkeypatch.setattr(verification_store, "job_summary", lambda _: checks)
+    client = create_app().test_client()
+    client.set_cookie("ra_language", language)
+    message = "Loading Gemma 31B…"
+    for owner in ("run 510", "individual request"):
+        monkeypatch.setattr(local_models, "_activity", (owner, message))
+        page = client.get("/runs/51").text
+        assert f">{finished}</span>" in page and 'id="reviewer-status" role="status" hidden' in page
+        data = client.get("/api/runs/51/status").json
+        assert data["state_label"] == finished and data["reviewer"]["message"] == ""
+
+    checks["running"] = 1
+    monkeypatch.setattr(local_models, "_activity", ("run 51", message))
+    active = client.get("/api/runs/51/status").json
+    assert active["state_label"] != finished and "Gemma" in active["reviewer"]["message"]
+    assert active["reviewer"]["message"] in client.get("/runs/51").text
+    checks["running"] = 0
+    run["event_analysis_status"] = "pending"
+    assert client.get("/api/runs/51/status").json["state_label"] != finished
+
+
 def test_ai_summary_orders_events_across_companies_and_their_sources(monkeypatch):
     def lead(identifier, company, day, group, decision=None, event_day=None):
         draft = dict(event=group, title=f"Brief {group}", summary="Summary")

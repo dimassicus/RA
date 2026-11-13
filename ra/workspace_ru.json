@@ -1,5 +1,11 @@
 {
   "Could not update the run. Refresh to check its status.": "Не удалось изменить состояние поиска. Обновите страницу, чтобы проверить его статус.",
+  "No run work in progress.": "Обработка этого поиска завершена.",
+  "Finished": "Поиск завершён",
+  "Finished with partial coverage": "Поиск завершён с неполным охватом источников",
+  "Checking sources": "Идёт проверка источников",
+  "Finished · summary needs retry": "Поиск завершён · нужно повторить подготовку сводки",
+  "Stopped": "Поиск остановлен",
   "Pause": "Приостановить",
   "Resume": "Продолжить",
   "Paused": "Приостановлено",

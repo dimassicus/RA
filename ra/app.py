@@ -23,7 +23,7 @@ from .publisher_lookup import original_title
 from .search import company_search_plan
 from .reports import make_pdf, make_xlsx
 from .relevance import classify_results
-from . import event_analysis, score_store, verification_store, headline_review, search_settings
+from . import event_analysis, score_store, verification_store, headline_review, local_models, search_settings
 from .scoring import LABELS, RUBRIC, MATERIALITY, VERSION, WEEK_TIMEZONE, week_start
 
 
@@ -56,6 +56,24 @@ def company_label(company):
 def alphabetical_companies(companies):
     return sorted(companies, key=lambda c: (normalized((c.get("short_name") or "").strip() or c["name"]),
                                             normalized(c["name"]), c.get("id") or 0))
+
+
+def run_state_label(run, checks):
+    if (run.get("search_settings") or {}).get("processing_stopped_at"):
+        return "Stopped"
+    if run.get("paused"):
+        return "Paused"
+    status = run["status"]
+    if status not in ("completed", "partial"):
+        return status
+    if checks.get("queued") or checks.get("running"):
+        return "Checking sources"
+    summary = run.get("event_analysis_status", "pending")
+    if summary == "failed":
+        return "Finished · summary needs retry"
+    if summary != "complete":
+        return "Summary pending"
+    return "Finished with partial coverage" if status == "partial" else "Finished"
 
 
 def create_app() -> Flask:
@@ -175,7 +193,6 @@ def create_app() -> Flask:
 
     @app.get("/api/translations/status")
     def translation_status():
-        from . import local_models
         catalog = risk_factors if request.args.get("factors") == "1" else keywords
         codes = catalog.languages()
         rows = [row for row in catalog.records() if row["enabled"]]
@@ -598,7 +615,7 @@ def create_app() -> Flask:
             exposure_checks=db.exposure_coverage(run_id) if view == "exposure" else [],
             score_labels=LABELS, verification_jobs=checks,
             can_pause=db.can_pause_run(run, checks.get("queued") or checks.get("running")),
-            reviewer=headline_review.readiness(),
+            state_label=run_state_label(run, checks), model_message=local_models.activity(f"run {run_id}"),
             search_progress=worker.search_progress(run), all_count=len(all_results),
             selected_count=sum(bool(item["report_selected"]) for item in all_results),
         )
@@ -633,7 +650,7 @@ def create_app() -> Flask:
         if not run:
             abort(404)
         payload = {key: run[key] for key in ("status", "total_companies", "completed_companies", "result_count", "error_count")}
-        progress, reviewer = worker.search_progress(run), headline_review.readiness()
+        progress = worker.search_progress(run)
         if progress:
             progress = dict(progress, message=i18n.message(progress['message']))
         checks = verification_store.job_summary(run_id)
@@ -641,7 +658,9 @@ def create_app() -> Flask:
                        can_pause=db.can_pause_run(run, checks.get("queued") or checks.get("running")),
                        event_analysis_status=run.get("event_analysis_status", "pending"),
                        discovery=progress, verification=checks,
-                       reviewer=dict(reviewer, message=i18n.message(reviewer['message'])))
+                       state_label=i18n.message(run_state_label(run, checks)),
+                       reviewer=dict(ready=headline_review.readiness()["ready"],
+                                     message=i18n.message(local_models.activity(f"run {run_id}"))))
 
     @app.get("/runs/<int:run_id>/company-report")
     def download_company_report(run_id):

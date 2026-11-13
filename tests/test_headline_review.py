@@ -153,7 +153,7 @@ def test_readiness_requires_api_and_downloaded_qwen_without_loading(monkeypatch)
     assert qa.readiness()["ready"]
     monkeypatch.setattr(qa, "local_request", lambda *a, **kw: {"data": [{"id": qa.QWEN, "state": "not-loaded"}]})
     assert qa.readiness()["ready"]
-    monkeypatch.setattr(qa.local_models, "_activity", "Loading Gemma 31B…")
+    monkeypatch.setattr(qa.local_models, "_activity", ("run 7", "Loading Gemma 31B…"))
     assert qa.readiness()["message"] == "Loading Gemma 31B…"
 
 
