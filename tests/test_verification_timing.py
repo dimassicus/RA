@@ -260,3 +260,66 @@ def test_queue_batches_primary_sources_and_attachments_across_leads(database, mo
     assert [name for name,_ in groupby(events)]==['Gemma','Qwen','Gemma','Qwen']
     assert verification_store.job_summary(run)['completed']==7
     assert not database.execute("SELECT 1 FROM verification_jobs WHERE translation_checkpoint<>'{}'").fetchone()
+
+
+def test_repeat_watchlist_rechecks_content_and_reuses_unchanged_work(database, monkeypatch):
+    from ra import db, worker
+    from ra.article_content import source_document
+
+    company, _, seed_article = seed(database)
+    subject = db.company_snapshot(company)
+    title = company['name'] + ' reports losses'
+    lead = dict(title=title, publisher='Test', discovery_service='Test', language='en',
+                source_kind='news', published_at=seed_article['published_at'], query='issuer',
+                signal_terms=[], url='https://example.test/repeat')
+    body = [title + ' for the period.']
+    attachments = []
+    calls = {'translate': [], 'fetch': [], 'verify': []}
+    verify = verification_store.verify
+    def fetch(url, hint):
+        calls['fetch'].append(url)
+        final_url = lead['url'] if url.endswith('/redirect') else url
+        return dict(source_document(body[0], 'HTML article/main text', final_url),
+                    language='en', linked_documents=list(attachments))
+    def check(doc, target, article):
+        calls['verify'].append(article['id'])
+        return verify(doc, target, article)
+    def translate(title, *args):
+        calls['translate'].append(title)
+        return title, 'English'
+    monkeypatch.setattr(worker, 'translate_text', translate)
+    monkeypatch.setattr(worker, 'detect_language', lambda *_:'en')
+    monkeypatch.setattr(verification_store,'retrieve',fetch)
+    monkeypatch.setattr(verification_store,'verify',check)
+    monkeypatch.setattr(verification_store.risk_factors,'records',lambda: [])
+    def collect(articles):
+        run = db.create_run('all',[subject])
+        worker.process_run(run, searcher=lambda s:(articles,[]), topic_searcher=lambda *a,**k:[],
+                           roster_check=lambda *a:None)
+        verification_store.process_jobs(run)
+        return db.get_results(run)
+    first, = collect([lead])
+    assert not first['seen_before']
+    # Existing runs store the publisher hash even if they predate the full-input fingerprint.
+    database.execute("UPDATE search_results SET verification=verification-'source_key' WHERE id=%s", (first['id'],))
+    repeated = collect([dict(lead, query='other query'), dict(lead, title=title+' later', url=lead['url']+'/missed')])
+    same = next(r for r in repeated if r['url']==lead['url'])
+    assert same['verification']['reused_from']==first['id']
+    assert len(calls['translate'])==len(calls['verify'])==2
+    assert len(calls['fetch'])==3
+    body[0] += ' The issuer has since filed for bankruptcy.'
+    changed, = collect([lead])
+    assert 'reused_from' not in changed['verification']
+    assert changed['verification']['document_hash']!=first['verification']['document_hash']
+    assert len(calls['translate'])==2 and len(calls['verify'])==3
+    renamed, = collect([dict(lead,title=title+' update')])
+    assert 'reused_from' not in renamed['verification']
+    assert len(calls['translate'])==3 and len(calls['verify'])==4
+
+    redirected, = collect([dict(lead, title=renamed['title'], url=lead['url']+'/redirect')])
+    assert redirected['verification']['reused_from'] == renamed['id']
+    assert len(calls['translate']) == 3
+    attachments.append(dict(source_document('A new issuer filing.', 'PDF text', lead['url']+'/filing'), language='en'))
+    updated, = collect([dict(lead, title=renamed['title'])])
+    assert 'reused_from' not in updated['verification']
+    assert len(updated['verification']['sources']) == 2

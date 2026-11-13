@@ -14,7 +14,7 @@ import logging
 from . import local_models, db, governance_roster, search_settings, company_developments, monthly_backfill, rss_recovery
 from .article_content import canonical_url
 from .scoring import WEEK_TIMEZONE
-from . import bilingual, exposure
+from . import bilingual, exposure, translation_names
 from .aliases import provider_name
 from .search import feed_url, search_company, search_company_steps
 from .governance_sources import notice_source
@@ -114,6 +114,18 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
     count = 0
     # Complete headline translation before opening the foreground write transaction.
     candidates = []
+    articles = list(articles)
+    headlines = {}
+    if subject.get("id") and articles:
+        with (nullcontext(connection) if connection is not None else db.connect()) as conn:
+            previous = conn.execute("""SELECT DISTINCT ON (title,language,publisher)
+                title,language,publisher,title_en,publisher_en,translation_provider,headline_review
+                FROM search_results WHERE subject_key=%s AND company_id=%s
+                AND run_id<>%s AND title=ANY(%s) AND title_en<>''
+                AND coalesce(headline_review->>'status','') NOT IN ('material_error','uncertain')
+                ORDER BY title,language,publisher,(headline_review->>'status'='faithful') DESC NULLS LAST,id DESC""",
+                (subject_key, subject['id'], run_id, [a['title'] for a in articles])).fetchall()
+        headlines = {(r['title'], r['language'], r['publisher']): r for r in previous}
     for index, article in enumerate(articles):
         company_progress(f"Processing lead {index + 1} of {len(articles)}", index, len(articles))
         context_lead = article.get("source_kind") == "context" or bool(article.get("exposure_paths"))
@@ -126,9 +138,14 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
                                                  run_id, article.get("discovery_service"), article["url"])
                 continue
         language = detect_language(article["title"], article["language"])
-        english, provider = translate_text(article["title"], language, subject, article["publisher"])
+        prior = headlines.get((article['title'], language, article['publisher']))
+        if prior and translation_names.preserved(article['title'], prior['title_en'], subject):
+            english, provider = prior['title_en'], prior['translation_provider']
+            article = dict(article, headline_review=prior['headline_review'], publisher_en=prior['publisher_en'])
+        else:
+            english, provider = translate_text(article["title"], language, subject, article["publisher"])
         candidates.append({**article, "language": language, "title_en": english,
-                           "publisher_en": article["publisher"], "translation_provider": provider})
+                           "publisher_en": article.get("publisher_en", article["publisher"]), "translation_provider": provider})
     with (nullcontext(connection) if connection is not None else db.connect()) as conn:
         for article in candidates:
             named = search_settings.company_lead(article, subject)
@@ -144,15 +161,16 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
                 "INSERT INTO search_results "
                 "(run_id, company_id, subject_key, subject_name, title, url, publisher, discovery_service, source_kind, "
                 "published_at, query, language, title_en, publisher_en, translation_provider, "
-                "signal_terms, seen_before, exposure_paths, discovery_summary, decision_followup_urls, filing_attachments) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "signal_terms, seen_before, exposure_paths, discovery_summary, decision_followup_urls, filing_attachments, headline_review) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "ON CONFLICT (run_id, subject_key, url) DO NOTHING RETURNING id",
                 (run_id, subject.get("id"), subject_key, subject["name"], article["title"],
                  article["url"], article["publisher"], article.get("discovery_service", ""),
                  article.get("source_kind", "news"), article["published_at"],
                  article["query"], article["language"], article["title_en"], article["publisher_en"], article["translation_provider"],
                  article["signal_terms"], seen_before, article.get("exposure_paths", []), summary,
-                 article.get("decision_followup_urls", []), db.Jsonb(article.get("filing_attachments", []))),
+                 article.get("decision_followup_urls", []), db.Jsonb(article.get("filing_attachments", [])),
+                 db.Jsonb(article.get("headline_review", {}))),
             )
             count += inserted.rowcount
             if inserted.rowcount:
