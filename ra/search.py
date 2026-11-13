@@ -12,6 +12,7 @@ import pycountry
 from babel import Locale
 from babel.languages import get_territory_language_info
 from datetime import datetime, timedelta, timezone
+from math import ceil
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
@@ -19,7 +20,7 @@ from urllib.error import URLError
 from xml.etree import ElementTree
 
 from . import keywords, news_apis, risk_factors, company_developments
-from . import rss_gate
+from . import rss_gate, rss_windows
 from .news_topics import excluded_query_terms, excluded_story
 from .aliases import parse_aliases, provider_name, discovery_names, ambiguous, company_names, related_names, normalized as identity_normalized
 
@@ -251,7 +252,7 @@ def company_search_plan(subject):
                              + governance_searches(subject) + adverse_searches(subject)))
 
 
-def feed_url(query: str, country: str, *, window=None) -> tuple[str, str]:
+def feed_url(query: str, country: str, *, window=None, rolling=False) -> tuple[str, str]:
     language, region, edition = LOCALES.get(normalized(country), ("en-US", "US", "US:en"))
     exclusions = " ".join(f'-"{term}"' for term in excluded_query_terms(language))
     dates = "when:7d"
@@ -260,6 +261,11 @@ def feed_url(query: str, country: str, *, window=None) -> tuple[str, str]:
         start = window[0].astimezone(timezone.utc).date() - timedelta(days=1)
         end = window[1].astimezone(timezone.utc).date() + timedelta(days=1)
         dates = f"after:{start.isoformat()} before:{end.isoformat()}"
+        if rolling:
+            now = datetime.now(timezone.utc)
+            if now - timedelta(hours=1) <= window[1] <= now:
+                hours = max(1, ceil((now - window[0]) / timedelta(hours=1)))
+                dates = f"when:{hours}h"
     return "https://news.google.com/rss/search?" + urlencode(
         {"q": f"{query} {exclusions} {dates}", "hl": language, "gl": region, "ceid": edition}
     ), language
@@ -433,8 +439,8 @@ def search_company(subject, fetcher=fetch_feed, official_fetcher=fetch_json_post
             return finished.value
 
 
-def _company_feed(fetcher, query, edition, bounds, subject):
-    url, language = feed_url(query, edition, window=bounds)
+def _company_feed(fetcher, query, edition, bounds, subject, rolling=False):
+    url, language = feed_url(query, edition, window=bounds, rolling=rolling)
     if fetcher is fetch_feed:
         probe = feed_url('"' + provider_name(subject) + '"', edition, window=bounds)[0]
         raw = fetcher(url, probe=probe)
@@ -444,7 +450,7 @@ def _company_feed(fetcher, query, edition, bounds, subject):
 
 
 def search_company_steps(subject, fetcher=fetch_feed, official_fetcher=fetch_json_post, *, progress=None,
-                         window=None, on_deferred=None, provider_window=None, filing_coverage=None, settings=None):
+                         window=None, on_deferred=None, provider_window=None, filing_coverage=None, settings=None, rss_covered=None, rss_done=None):
     articles, errors = [], []
     seen_urls = set()
     from . import disclosures, idx_filings
@@ -511,7 +517,11 @@ def search_company_steps(subject, fetcher=fetch_feed, official_fetcher=fetch_jso
     from . import google_discovery, perplexity, search_settings
     settings = settings or search_settings.for_run({})
     adverse_focus = settings.get("adverse_only", False)
-    queries = planned_feeds(subject, window, adverse_focus)
+    queries = planned_feeds(subject, span if rss_covered is not None else window, adverse_focus)
+    if rss_covered is not None:
+        key = str(subject['id'])
+        queries = [(q, edition, gap) for q, edition, bounds in queries
+                   for gap in rss_windows.gaps(bounds, rss_covered.get((key, q, edition), ()))]
     # Keep a single feed in flight across the next checkpoint; consume in plan order.
     with (ThreadPoolExecutor(max_workers=2) if fetcher is fetch_feed else nullcontext()) as pool:
         pending = {}
@@ -523,10 +533,12 @@ def search_company_steps(subject, fetcher=fetch_feed, official_fetcher=fetch_jso
                 if pool:
                     for i in range(index, min(index + 2, len(queries))):
                         if i not in pending:
-                            pending[i] = pool.submit(_company_feed, fetcher, *queries[i], subject)
+                            pending[i] = pool.submit(_company_feed, fetcher, *queries[i], subject, rss_covered is not None)
                     hits = pending.pop(index).result()
                 else:
-                    hits = _company_feed(fetcher, query, edition, bounds, subject)
+                    hits = _company_feed(fetcher, query, edition, bounds, subject, rss_covered is not None)
+                if rss_done is not None:
+                    rss_done.append((str(subject['id']), query, edition, bounds))
                 for article in hits:
                     if article["url"] not in seen_urls:
                         seen_urls.add(article["url"])

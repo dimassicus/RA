@@ -346,3 +346,15 @@ CREATE OR REPLACE VIEW display_translation_runs AS
 ALTER TABLE result_translations ADD COLUMN IF NOT EXISTS run_id BIGINT REFERENCES search_runs(id) ON DELETE SET NULL;
 ALTER TABLE result_translations ADD COLUMN IF NOT EXISTS russian_rejections INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE result_translations ADD COLUMN IF NOT EXISTS russian_error TEXT NOT NULL DEFAULT '';
+
+-- Intervals are inclusive publication instants, persisted after successful RSS parsing and lead storage.
+CREATE TABLE IF NOT EXISTS rss_search_windows (
+    run_id bigint NOT NULL REFERENCES search_runs ON DELETE CASCADE,
+    subject_key text NOT NULL,
+    query text NOT NULL,
+    edition text NOT NULL,
+    start_at timestamptz NOT NULL,
+    end_at timestamptz NOT NULL CHECK (end_at >= start_at),
+    PRIMARY KEY (run_id, subject_key, query, edition, start_at, end_at)
+);
+CREATE INDEX IF NOT EXISTS rss_search_windows_lookup ON rss_search_windows (subject_key,end_at);

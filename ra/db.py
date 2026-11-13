@@ -374,7 +374,7 @@ def set_active(company_id: int, active: bool):
         ).fetchone()
 
 
-def create_run(scope: str, subjects: list[dict], *, window_start=None, window_end=None):
+def create_run(scope: str, subjects: list[dict], *, window_start=None, window_end=None, watchlist_batch=False):
     from psycopg.types.json import Jsonb
     from . import search_settings
 
@@ -387,6 +387,8 @@ def create_run(scope: str, subjects: list[dict], *, window_start=None, window_en
         if window_end - window_start > timedelta(days=7) and not (scope in ("selected", "one_off") and len(subjects) == 1):
             raise ValueError("Date ranges longer than seven days require a single-company search.")
     settings = search_settings.read()
+    if watchlist_batch:
+        settings["watchlist_batch"] = True
     with connect() as conn:
         return conn.execute(
             "INSERT INTO search_runs (scope, subjects, total_companies, retry_translations, window_start, window_end, search_settings) "
@@ -443,7 +445,7 @@ def list_runs(limit: int = 12):
         ).fetchall()
 
 
-def run_topic_check(run_id, search, editions, branch, topic, *, include_factors=False):
+def run_topic_check(run_id, search, editions, branch, topic, *, include_factors=False, rss_done=None):
     from .exposure import check_topic
     from .news_topics import excluded_story
     with connect() as conn:
@@ -459,6 +461,9 @@ def run_topic_check(run_id, search, editions, branch, topic, *, include_factors=
                       for hit, channel in hits]
             conn.execute("UPDATE exposure_checks SET hits=%s,error=%s WHERE run_id=%s AND branch=%s AND topic=%s",
                          (Jsonb(stored), error, run_id, branch, topic))
+            if rss_done:
+                from . import rss_windows
+                rss_windows.save(conn, run_id, rss_done)
             return hits, error
         row = conn.execute("SELECT hits,error FROM exposure_checks WHERE run_id=%s AND branch=%s AND topic=%s",
                            (run_id, branch, topic)).fetchone()

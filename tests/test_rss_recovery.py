@@ -238,3 +238,70 @@ def test_inflight_feed_success_cannot_clear_other_requests_cooldown():
         assert slow.result() == b'<rss/>'
     with pytest.raises(rss_gate.Deferred):
         gate.read(lambda _: pytest.fail('request during cooldown'), 'next', 'probe')
+
+
+def test_batch_rss_covers_only_gaps_and_perplexity_keeps_full_window(database, monkeypatch):
+    from datetime import datetime, timezone
+    from urllib.parse import parse_qs, urlsplit
+    from ra import disclosures, idx_filings, perplexity, rss_windows
+    from functools import partial
+
+    company, _, _ = seed(database)
+    subject = db.company_snapshot(company)
+    end = datetime.now(timezone.utc) - timedelta(minutes=3)
+    start = end - timedelta(days=7)
+    prior_end = end - timedelta(minutes=40)
+    feeds = ['worked', 'retry']
+    calls, paid = [], []
+    def read(url):
+        query = parse_qs(urlsplit(url).query)['q'][0]
+        calls.append(query)
+        if query.startswith('retry') and len(calls) == 2:
+            raise rss_gate.Deferred('test cooldown')
+        return b'<rss><channel/></rss>'
+    monkeypatch.setattr(worker, 'search_company_steps', partial(search.search_company_steps, fetcher=read))
+    monkeypatch.setattr(worker, 'plan_subjects', lambda subjects, _: subjects)
+    monkeypatch.setattr(disclosures, 'collect', lambda *a, **kw: ([], []))
+    monkeypatch.setattr(idx_filings, 'collect', lambda *a, **kw: ([], []))
+    monkeypatch.setattr(search.news_apis, 'configured_providers', lambda: [])
+    monkeypatch.setattr(search, 'planned_feeds', lambda subject, window, focus: [(q, '', window) for q in feeds])
+    monkeypatch.setattr(perplexity, 'collect', lambda subject, span, *a, **kw: (paid.append(span) or [], []))
+    def run(lo, hi):
+        rid = db.create_run('all', [subject], window_start=lo, window_end=hi)
+        database.execute("""UPDATE search_runs SET search_settings='{"use_perplexity":true,"use_google":false}' WHERE id=%s""",(rid,))
+        worker.process_run(rid, topic_searcher=lambda *a, **kw: [], roster_check=lambda *a: None)
+        return rid
+    run(start, prior_end)
+    assert len(calls) == 2
+    feeds.append('new alias')
+    rid = run(start, end)
+    assert len(calls) == 5 and 'when:1h' in calls[2]
+    intervals = {r['query']: (r['start_at'], r['end_at']) for r in database.execute(
+        'SELECT * FROM rss_search_windows WHERE run_id=%s', (rid,))}
+    assert intervals == {'worked': (prior_end + rss_windows.TICK, end), 'retry': (start,end), 'new alias': (start,end)}
+    run(start, end)
+    assert len(calls) == 5 and paid == [(start,prior_end),(start,end),(start,end)]
+    # Prior coverage in the middle leaves both historical holes available.
+    assert list(rss_windows.gaps((start,end),[(start+timedelta(days=1),prior_end)])) == [
+        (start,start+timedelta(days=1)-rss_windows.TICK),(prior_end+rss_windows.TICK,end)]
+
+
+def test_context_feed_filters_provider_overflow_at_exact_boundary():
+    from datetime import datetime, timezone
+    from email.utils import format_datetime
+    from ra import rss_windows
+    end = datetime.now(timezone.utc)
+    window = end-timedelta(hours=7), end
+    saved = window[0], end-timedelta(hours=1)
+    key = rss_windows.topic_key('country','brazil',None)
+    done = []
+    def feed(url):
+        return ('<rss><channel>' + ''.join(
+            f'<item><title>Brazil capital controls</title><link>https://news.test/{i}</link><pubDate>{format_datetime(d)}</pubDate></item>'
+            for i,d in enumerate((saved[1]-timedelta(minutes=2),end-timedelta(minutes=1)))) + '</channel></rss>').encode()
+    exposure.search_topic('country','brazil',feed,window=window,rss_covered={},rss_done=done)
+    _, query, edition, _ = done.pop()
+    hits = exposure.search_topic('country','brazil',feed,window=window,
+            rss_covered={(key,query,edition):[saved]},rss_done=done)
+    assert done==[(key,query,edition,(saved[1]+rss_windows.TICK,end))]
+    assert [row['url'] for row,_ in hits]==['https://news.test/1']

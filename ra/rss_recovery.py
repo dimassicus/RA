@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from http.client import HTTPException
 from xml.etree import ElementTree
 
-from . import db, exposure, monthly_backfill, news_apis, recovery_providers, rss_gate, search, search_settings
+from . import db, exposure, monthly_backfill, news_apis, recovery_providers, rss_gate, rss_windows, search, search_settings
 from .aliases import provider_name
 from .article_content import canonical_url
 
@@ -309,6 +309,11 @@ def _recover_one():
             completed = [job['id']]
         conn.execute("UPDATE rss_recovery SET status='recovered',detail='',attempts=attempts+1 WHERE id=ANY(%s)",
                      (completed,))
+        if run['scope'] == 'all' or run['search_settings'].get('watchlist_batch') or len(run['subjects']) > 1:
+            req = job['request']
+            key = rss_windows.topic_key(context['branch'], context['topic'], context.get('factor')) if context else job['subject_key']
+            span = tuple(datetime.fromisoformat(v) for v in req['window'])
+            rss_windows.save(conn, run['id'], [(key, req['query'], req['edition'], span)])
         sync_run(conn, run['id'], refresh_weeks=True)
         return True
 

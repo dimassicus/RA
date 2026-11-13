@@ -11,7 +11,7 @@ import threading
 import time
 import logging
 
-from . import local_models, db, governance_roster, search_settings, company_developments, monthly_backfill, rss_recovery
+from . import local_models, db, governance_roster, search_settings, company_developments, monthly_backfill, rss_recovery, rss_windows
 from .article_content import canonical_url
 from .scoring import WEEK_TIMEZONE
 from . import bilingual, exposure, translation_names
@@ -222,6 +222,11 @@ def _discover(run_id, searcher, topic_searcher, roster_check):
     window_end = run.get("window_end") or run["created_at"]
     window_start = run.get("window_start") or window_end - timedelta(days=7)
     historical_window = (window_start, window_end) if run.get("window_start") else None
+    batch_rss = run['scope'] == 'all' or run['search_settings'].get('watchlist_batch', False) or len(run['subjects']) > 1
+    rss_keys = [str(s['id']) for s in run['subjects'] if s.get('id')]
+    with db.connect() as conn:
+        rss_covered = rss_windows.load(conn, rss_keys, (window_start, window_end)) if batch_rss else None
+    topic_done = []
     topic_cache = {}
     editions = topic_editions(run["subjects"])
     include_factors = topic_searcher is None
@@ -236,11 +241,14 @@ def _discover(run_id, searcher, topic_searcher, roster_check):
                 rss_recovery.defer(run, affected, query, edition, span, dict(branch=branch, topic=topic, factor=factor))
             probe = feed_url('"' + provider_name(affected[0]) + '"', edition, window=(window_start, window_end))[0]
             return search_topic(branch, topic, edition=edition, markets=markets, factor=factor,
-                                window=(window_start,window_end), on_deferred=defer, probe=probe)
+                                window=(window_start,window_end), on_deferred=defer, probe=probe,
+                                rss_covered=rss_covered, rss_done=topic_done if batch_rss else None)
     def check(branch, topic):
         if not search_settings.scope_enabled(branch, settings):
             return [], ""
-        return db.run_topic_check(run_id, topic_searcher, editions, branch, topic, include_factors=include_factors)
+        topic_done.clear()
+        return db.run_topic_check(run_id, topic_searcher, editions, branch, topic, include_factors=include_factors,
+                                  rss_done=topic_done)
     for subject in plan_subjects(run["subjects"], run_id):
         subject_key = str(subject.get("id") or f"one-off:{run_id}")
         name = subject["name"]
@@ -258,12 +266,14 @@ def _discover(run_id, searcher, topic_searcher, roster_check):
         company_progress("Checking company news and official sources")
         filing_coverage = []
         search_failure = ""
+        rss_done = []
         try:
             if searcher is search_company:
                 articles, errors = yield from search_company_steps(
                     subject, progress=company_progress, window=historical_window,
                     provider_window=(window_start, window_end), filing_coverage=filing_coverage,
-                    settings=settings, on_deferred=partial(rss_recovery.defer, run, [subject]))
+                    settings=settings, on_deferred=partial(rss_recovery.defer, run, [subject]),
+                    rss_covered=rss_covered, rss_done=rss_done if batch_rss else None)
             else:
                 articles, errors = searcher(subject)
         except Exception as exc:
@@ -323,6 +333,8 @@ def _discover(run_id, searcher, topic_searcher, roster_check):
                 for month in notes:
                     notes[month]["added"] = covered.get(month, 0)
         with db.connect() as conn:
+            if not search_failure:
+                rss_windows.save(conn, run_id, rss_done)
             for message in errors:
                 conn.execute(
                     "INSERT INTO search_errors (run_id, subject_name, message) VALUES (%s, %s, %s)",

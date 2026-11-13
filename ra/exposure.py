@@ -3,7 +3,7 @@ import re
 import unicodedata
 from functools import lru_cache
 
-from . import risk_factors, rss_gate
+from . import risk_factors, rss_gate, rss_windows
 from .aliases import contains, normalized
 from .relevance import headline
 from .exposure_terms import CHANNEL_TERMS, MARKET_ALIASES, REGION_MARKETS, NAMES, TRADE, FUNDING, CURRENCY, OPERATIONS, SUPPLY, PRICES
@@ -113,7 +113,7 @@ def _native_text(value):
     return value.translate(str.maketrans({"’": "'", "‘": "'", "ʻ": "'", "ʼ": "'"}))
 
 
-def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None, factor=None, window=None, on_deferred=None, probe=None):
+def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None, factor=None, window=None, on_deferred=None, probe=None, rss_covered=None, rss_done=None):
     names = [topic] + [alias for alias, canonical in TOPIC_NAMES[branch].items() if canonical == topic]
     channels = CHANNELS[branch]
     if edition:
@@ -143,17 +143,23 @@ def search_topic(branch, topic, fetcher=fetch_feed, *, edition="", markets=None,
         geo = [name for name in geo if name]
         if geo:
             query += " (" + " OR ".join(f'"{name}"' for name in dict.fromkeys(geo)) + ")"
-    url, language = feed_url(query, edition, window=window)
-    hits = []
+    key = rss_windows.topic_key(branch, topic, factor)
+    spans = [window] if rss_covered is None else rss_windows.gaps(window, rss_covered.get((key, query, edition), ()))
+    hits, items = [], []
     fold = _native_text if edition else normalized
-    try:
-        raw = fetcher(url, probe=probe) if fetcher is fetch_feed else fetcher(url)
-    except rss_gate.Deferred:
-        if on_deferred is None:
-            raise
-        on_deferred(query, edition, window)
-        return []
-    for item in parse_feed(raw, query, language):
+    for span in spans:
+        url, language = feed_url(query, edition, window=span, rolling=rss_covered is not None)
+        try:
+            raw = fetcher(url, probe=probe) if fetcher is fetch_feed else fetcher(url)
+        except rss_gate.Deferred:
+            if on_deferred is None:
+                raise
+            on_deferred(query, edition, span)
+            continue
+        items.extend(parse_feed(raw, query, language, window=span if rss_covered is not None else None))
+        if rss_done is not None:
+            rss_done.append((key, query, edition, span))
+    for item in items:
         title = fold(headline(item, "title"))
         def matches(term):
             phrase = fold(term)

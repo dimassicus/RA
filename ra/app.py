@@ -261,7 +261,7 @@ def create_app() -> Flask:
             if run["scope"] == "one_off" or any(not (db.get_company(s.get("id")) or {}).get("active") for s in run["subjects"]):
                 abort(409, "Choose an active watchlist company to start a new search.")
             new_id = db.create_run(run["scope"], run["subjects"], window_start=run.get("window_start"),
-                                   window_end=run.get("window_end"))
+                                   window_end=run.get("window_end"), watchlist_batch=run["search_settings"].get("watchlist_batch", False))
             worker.enqueue(new_id)
             flash(f"Search restarted as run #{new_id} using run #{run_id}'s company list.", "success")
             return redirect(url_for("run_detail", run_id=new_id))
@@ -541,6 +541,8 @@ def create_app() -> Flask:
                     and all(value.tzinfo is not None for value in window.values())
                     and window["window_end"] - window["window_start"] > timedelta(days=7)):
                 raise ValueError("Watchlist searches cover up to seven days. Use a single-company search for a longer range.")
+            if scope == "selected" and not custom_range:
+                window["watchlist_batch"] = True
             run_id = db.create_run(scope, subjects, **window)
         except ValueError as exc:
             abort(400, str(exc))
