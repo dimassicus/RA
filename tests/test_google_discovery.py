@@ -36,7 +36,7 @@ def test_google_requires_single_grounding_citation_in_same_line(monkeypatch):
 
 def test_google_targets_missing_statements_conflicting_figures_or_unresolved_order():
     def plan(rows):
-        return [q for _,q,_ in google.searches(rows,[{'status':'Index checked'}],SPAN,False,[])]
+        return [q for _,q,_ in google.searches(rows,[{'status':'Index checked'}],SPAN,False,[],subject=ISSUER)]
     fiscal=dict(title='Acme Chemical financial results Q1 2026',published_at=SPAN[0],summary='Net profit fell 4%.')
     assert not plan([fiscal])
     assert 'financial results' in plan([fiscal|dict(title='New plant')])[0]

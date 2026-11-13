@@ -966,7 +966,7 @@ def test_firecrawl_monthly_credit_boundary(database):
 
 @pytest.mark.parametrize("historical", [False, True])
 def test_worker_enforces_fixed_week_before_translation_and_verification(database, monkeypatch, caplog, historical):
-    _, run_id, _ = seed(database, status="queued")
+    company, run_id, _ = seed(database, status="queued")
     end = db.get_run(run_id)["created_at"]
     start = end - timedelta(days=7)
     if historical:
@@ -981,7 +981,7 @@ def test_worker_enforces_fixed_week_before_translation_and_verification(database
     dates = [start, end, start - timedelta(microseconds=1), end + timedelta(microseconds=1), None,
              start.astimezone(timezone.utc).replace(tzinfo=None),
              (start - timedelta(seconds=1)).isoformat(), "invalid"]
-    articles = [dict(title=f"Company update {i}", url=f"https://example.test/window/{kind}/{i}",
+    articles = [dict(title=f"{company['name']} update {i}", url=f"https://example.test/window/{kind}/{i}",
                      published_at=date, language="en", publisher="Test", query="test", signal_terms=[],
                      source_kind=kind)
                 for kind in ("news", "official", "context") for i, date in enumerate(dates)]

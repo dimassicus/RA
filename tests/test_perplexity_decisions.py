@@ -193,4 +193,5 @@ def test_recent_enforcement_search_uses_later_aliases_across_company_profiles(mo
         row = dict(title='Presidente da ferrovia' if country == 'Brazil' else 'Pimpinan kereta api',
                    title_en='Railway chairman detained', discovery_service='TheNewsAPI')
         assert not search_settings.company_lead(row, subject)
-        assert search_settings.enforcement_candidate(row)
+        assert not search_settings.enforcement_candidate(row, subject)
+        assert search_settings.enforcement_candidate(dict(row, publisher_keywords=[local_name]), subject)

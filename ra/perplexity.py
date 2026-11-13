@@ -43,8 +43,8 @@ def search(query, subject, start, end):
             continue
         row = dict(url=url, title=title, summary=summary, publisher=parts.hostname, published_at=stamp,
                    discovery_service='Perplexity', source_kind='news', language='', query=query, signal_terms=[])
-        if title and not excluded_story(title,url,publisher=parts.hostname,summary=summary) and (
-                search_settings.company_lead(row, subject) or search_settings.enforcement_candidate(row)):
+        if title and search_settings.company_lead(row, subject) and not excluded_story(
+                title, url, publisher=parts.hostname, summary=summary):
             rows.append(row)
     return rows
 

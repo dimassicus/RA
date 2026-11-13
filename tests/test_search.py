@@ -398,3 +398,18 @@ def test_heringer_custom_range_queries_each_requested_year():
         return {'success': True, 'data': {'document_metas': []}}
     assert heringer_official_notices(fetcher=fetcher, year=2026, start_year=2023) == []
     assert years == [2026, 2025, 2024, 2023]
+
+
+def test_reference_pages_are_excluded_without_losing_dated_news_on_same_site():
+    from ra.news_topics import excluded_story
+    title = "Acme Manufacturing"
+    for url in ("https://ca.finance.yahoo.com/quote/ACME/options/",
+                "https://finance.yahoo.com/quote/ACME/news/?lang=en",
+                "https://www.emis.com/php/company-profile/BR/Acme.html",
+                "https://issuer.test/author/press/"):
+        assert excluded_story(title, url)
+    for url in ("https://finance.yahoo.com/news/acme-defaults.html",
+                "https://www.vedomosti.ru/business/articles/2026/10/02/acme",
+                "https://issuer.test/press/2026/10/acme-filing",
+                "https://registry.test/portal/event.aspx?eventid=123"):
+        assert not excluded_story(title, url)

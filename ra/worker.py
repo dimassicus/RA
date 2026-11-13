@@ -116,6 +116,15 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
     candidates = []
     for index, article in enumerate(articles):
         company_progress(f"Processing lead {index + 1} of {len(articles)}", index, len(articles))
+        context_lead = article.get("source_kind") == "context" or bool(article.get("exposure_paths"))
+        include_context = context_lead and (settings["include_country"] or settings["include_industry"])
+        if not include_context and not search_settings.company_lead(article, subject):
+            if search_settings.enforcement_candidate(article, subject):
+                article = {**article, "source_kind": "identity_review"}
+            elif not company_developments.review_topics(article, subject):
+                logging.getLogger(__name__).info("Run %s skipped %s hit without company match: %s",
+                                                 run_id, article.get("discovery_service"), article["url"])
+                continue
         language = detect_language(article["title"], article["language"])
         english, provider = translate_text(article["title"], language, subject, article["publisher"])
         candidates.append({**article, "language": language, "title_en": english,
@@ -123,13 +132,6 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
     with (nullcontext(connection) if connection is not None else db.connect()) as conn:
         for article in candidates:
             named = search_settings.company_lead(article, subject)
-            if not named and search_settings.enforcement_candidate(article):
-                article["source_kind"] = "identity_review"
-            elif (not named and not settings["include_country"] and not settings["include_industry"]
-                  and not company_developments.review_topics(article, subject)):
-                logging.getLogger(__name__).info("Run %s skipped %s hit without company match: %s",
-                                                 run_id, article.get("discovery_service"), article["url"])
-                continue
             summary = article.get("summary", "")
             if tags := article.get("publisher_keywords"):
                 labels = ", ".join(map(str, tags)) if isinstance(tags, list) else str(tags)

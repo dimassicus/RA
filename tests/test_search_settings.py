@@ -171,18 +171,22 @@ def test_adverse_view_retains_positive_source_and_analyst_decision(database, mon
 def test_role_only_enforcement_hits_reach_source_review(database, monkeypatch):
     from ra import event_analysis, news_apis, scoring, verification
     company, run_id, _ = seed(database)
-    monkeypatch.setattr(worker, "translate_text", lambda *args: ("", "unavailable"))
+    company = dict(company, name="Kazakh Railways", aliases="КТЖ", country_registration="Kazakhstan")
+    translated = []
+    monkeypatch.setattr(worker, "translate_text", lambda title, *args: (translated.append(title) or "", "unavailable"))
     data = dict(title="В Казахстане задержали глав железной дороги и фонда", language="ru",
                 description="По обвинению в коррупции", snippet="Следствие продолжается.",
                 keywords="Казахстан, КТЖ", url="https://news.test/arrest", source="news.test",
                 published_at="2026-11-12T07:28:13Z")
     ordinary = dict(data, title="Railway timetable", keywords="", description="", snippet="",
                     url="https://news.test/timetable")
-    hits = news_apis.parse_articles("thenewsapi", {"data": [data, ordinary]}, "company query")
+    unrelated = dict(data, title="В Казахстане задержали чиновника", keywords="Казахстан, коррупция",
+                     url="https://news.test/unrelated")
+    hits = news_apis.parse_articles("thenewsapi", {"data": [data, ordinary, unrelated]}, "КТЖ company query")
     count = worker._save_leads(run_id, company, str(company['id']), hits,
                                dict(include_country=False, include_industry=False), lambda *args: None,
                                set(), {}, connection=database, queue_checks=True)
-    assert count == 1
+    assert count == 1 and translated == [data["title"]]
     row = database.execute("SELECT * FROM search_results WHERE url=%s", (data["url"],)).fetchone()
     assert row["source_kind"] == "identity_review"
     assert all(data[k] in row["discovery_summary"] for k in ("description", "snippet", "keywords"))
@@ -221,3 +225,14 @@ def test_recovered_source_alias_is_scoped_to_evidence_and_one_issuer():
     assert evidence["aliases"] == "Original Alias\nConfirmed English Name"
     assert profile["aliases"] == "Original Alias"
     assert db.evidence_subject(dict(company_id=14), run) == other
+
+
+def test_publisher_tag_evidence_never_comes_from_query_or_country_alone():
+    target = dict(name='Kazakh Railways', aliases='КТЖ', country_registration='Kazakhstan')
+    hit = dict(title='Railway chairman arrested', query='"КТЖ" Kazakhstan corruption',
+               discovery_service='TheNewsAPI', language='en')
+    for tags in ('Казахстан, коррупция', 'КТЖ', 'Другие КТЖ Новости', 'Новости'):
+        assert not search_settings.enforcement_candidate(dict(hit, publisher_keywords=tags), target)
+    assert search_settings.enforcement_candidate(dict(hit, publisher_keywords=['Казахстан', 'КТЖ']), target)
+    assert not search_settings.enforcement_candidate(dict(hit, publisher_keywords=['Казахстан', 'КТЖ'],
+                                                          exposure_paths=['country']), target)

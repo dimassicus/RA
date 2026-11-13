@@ -2,7 +2,7 @@
 import re
 
 from . import db, company_developments
-from .aliases import contains, headline_identity, normalized, parse_aliases, related_identity
+from .aliases import ambiguous, company_names, contains, headline_identity, normalized, parse_aliases, related_identity
 from .relevance import headline
 
 DEFAULTS = {"include_country": True, "include_industry": True, "adverse_only": False,
@@ -58,8 +58,8 @@ def company_lead(article, subject):
                    (headline(article, "title"), headline(article, "title_en"), article.get("summary", ""))))
 
 
-def enforcement_candidate(article):
-    """Keep serious hits from company-specific searches for a source identity check."""
+def enforcement_signal(article):
+    """Detect enforcement wording independently of the issuer identity check."""
     from .keywords import matches
     if article.get("discovery_service") not in {
             "GNews", "TheNewsAPI", "Perplexity", "Google Gemini 4 Carbon", "Google News RSS", "Brave Search"
@@ -71,6 +71,41 @@ def enforcement_candidate(article):
         return True
     return any(term in {"arrest", "criminal investigation", "corruption", "embezzlement"}
                and direction == "adverse" for term, _, direction in matches(text, article.get("language")))
+
+
+def enforcement_candidate(article, subject):
+    """Unconfirmed enforcement leads need issuer evidence in the returned material."""
+    if not enforcement_signal(article):
+        return False
+    if company_lead(article, subject):
+        return True
+    tags = article.get("publisher_keywords") or []
+    if isinstance(tags, str):
+        tags = re.split(r"[,;|\n]", tags)
+    labels = {normalized(tag) for tag in tags if isinstance(tag, str)}
+    names = labels.intersection(company_names(subject))
+    if not names:
+        return False
+    if any(not ambiguous(name) for name in names):
+        return True
+    # A short issuer tag needs context independent of that tag and the search query.
+    from babel import Locale, UnknownLocaleError
+    from .search import LOCALES
+    country = subject.get("country_registration") or ""
+    context = {normalized(country)}
+    context.update(normalized(x) for x in re.split(r"[,;\n]", subject.get("primary_industries") or ""))
+    locale = LOCALES.get(normalized(country))
+    if locale:
+        for code in ("ru", locale[0].split("-")[0]):
+            try:
+                place = Locale.parse(code).territories.get(locale[1])
+            except UnknownLocaleError:
+                continue
+            if place:
+                context.add(normalized(place))
+    returned = [headline(article, "title"), headline(article, "title_en"), article.get("summary") or "",
+                *(labels - names)]
+    return any(contains(normalized(field), clue) for clue in context - names - {""} for field in returned)
 
 
 def adverse_lead(article, subject):

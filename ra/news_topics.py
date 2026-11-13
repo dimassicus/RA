@@ -1,4 +1,4 @@
-"""Exclude sports and arts coverage at discovery, before processing leads."""
+"""Exclude off-topic coverage and reference pages at discovery, before processing leads."""
 import re
 from urllib.parse import unquote, urlsplit
 
@@ -68,14 +68,37 @@ BUSINESS_USAGE = re.compile(
 )
 
 
+# These routes serve profiles, quote dashboards or report catalogues with rolling update dates.
+REFERENCE_ROUTES = {
+    "finance.yahoo.com": r"/quote/[^/]+(?:/(?:analysis|charts?|community|financials|history|holders|key-statistics|news|options|profile|seasonality))?/?",
+    "emis.com": r"/php/company-profile/.*",
+    "emis.cn": r"/php/company-profile/.*",
+    "zavia.ai": r"/companies/[^/]+/?",
+    "theorg.com": r"/org/[^/]+(?:/(?:teams|org-chart)(?:/.*)?)?/?",
+    "snowball-income.com": r"/stocks/[^/]+/?",
+    "vedomosti.ru": r"/companies/[^/]+/?",
+    "graphiq.ai": r"/dossier/[^/]+/?",
+    "cnpja.com": r"/office/\d+/?",
+    "giiresearch.com": r"/report/[^/]+/?",
+    "thebusinessresearchcompany.com": r"/report/[^/]+/?",
+}
+
+
 def excluded_story(title, url, *, publisher="", categories=(), summary=""):
     if normalized(publisher) in TOPIC_PUBLISHERS:
         return True
     if isinstance(categories, str):
         categories = [categories]
     try:
-        path = unquote(urlsplit(url).path)
+        parts = urlsplit(url)
+        host = (parts.hostname or "").lower()
+        path = unquote(parts.path)
     except ValueError:
+        return True
+    if re.fullmatch(r"/author/[^/]+/?", path):
+        return True
+    if any((host == domain or host.endswith("." + domain)) and re.fullmatch(route, path, re.I)
+           for domain, route in REFERENCE_ROUTES.items()):
         return True
     sections = [*categories, *path.split("/")[:-1]]
     if any(normalized(label) in SECTIONS for label in sections if isinstance(label, str)):
