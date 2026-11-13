@@ -16,7 +16,8 @@ _worker = None
 _STRING = {"type": "string"}
 _INT = {"type": "integer"}
 _GROUPS = keywords.object_schema({"assignments": {"type": "array", "items": keywords.object_schema({
-    "id": _INT, "event": _INT, "title": _STRING, "profit_decline_quote": _STRING, "sentiment": {"type": "integer", "enum": [-1, 0, 1]}})}})
+    "id": _INT, "event": _INT, "title": _STRING, "profit_decline_quote": _STRING,
+    "material_event_quote": _STRING, "sentiment": {"type": "integer", "enum": [-1, 0, 1]}})}})
 _DRAFT = keywords.object_schema({"title": _STRING, "summary": _STRING, "event_day": _STRING,
                                 "favourable_only": {"type": "boolean"}, "background_only": {"type": "boolean"}})
 
@@ -48,7 +49,7 @@ def candidate(row):
 
 def triage_candidate(row):
     # A favourable headline can still introduce mixed results in the underlying report.
-    return candidate(row) or (row.get('score') == 1 and row.get('score_status') != 'reviewed'
+    return candidate(row) or (row.get('score') == 1 and (row.get('score_status') != 'reviewed' or row.get('score_included'))
                               and row.get('source_kind') not in ('context', 'identity_review') and not row.get('exposure_paths')
                               and (row.get('verification') or {}).get('status') != 'unmatched')
 
@@ -101,6 +102,7 @@ def source_sample(sources, budget):
 def evidence(row, subject=None):
     check = row.get("verification") or {}
     return {"id": row["id"], "published": str(row.get("published_at") or "")[:10],
+            "source_url": check.get("source_url") or row.get("url", ""),
             "material_notice": material_notice(row, subject),
             "decision_notice": company_developments.decision_notice(row), "petition": company_developments.petition_notice(row), "url": row.get("url", ""),
             "publisher": row.get("publisher", ""), "title": row["title"][:500],
@@ -220,6 +222,8 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
         if record['decision_notice']:
             record['decision'] = decision_review.disposition([record], company, model)
     catalog = {e['event']: e for e in previous}
+    # The same dated publisher document can arrive via RSS, a direct link or a later run.
+    source_events = {(canonical_url(e['source_url']), e['date']): e['event'] for e in previous if e.get('source_url')}
     records = [r for r in records if r['id'] not in result]
     groups = defaultdict(list)
     # Include the full current source-review budget without overflowing the local model context.
@@ -238,7 +242,13 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             "Return every input id once. Use an existing event ID for the same incident, otherwise use the first "
             "article ID of the incident in this batch. Score each standalone story -1 negative, 0 neutral, +1 positive. Distinguish different sites, cases, periods and subsequent "
             "decisions. Group reports of a ruling and its implementation separately from an earlier petition. "
-            "Do not discard a material partial release while restrictions remain. Use event 0 for unrelated, purely favourable or background stories without an event. "
+            "Do not discard a material partial release while restrictions remain. For a concrete, newly reported action material to the issuer's financing, assets, operations or governance, "
+            "copy a verbatim supporting passage into material_event_quote and group the event regardless of sentiment. "
+            "Examples include completed bond placements and winning bids for substantial assets. Preserve the actual stage. "
+            "Prefer publisher text; an issuer filing excerpt explicitly documenting the action also qualifies. "
+            "Exclude past events repeated in profiles or calendars, incidental mentions, routine publicity and plans without a new milestone. "
+            "Use an empty quote when absent. Score 0 when the action has no established directional credit impact. "
+            "Use event 0 for unrelated or immaterial background and promotional coverage. "
             "Assess each issuer's realised profit separately from its revenue, operating cash flow and outlook. "
             "If the issuer reported falling profit or earnings for the period covered, copy a contiguous verbatim passage "
             "including the profit measure and its decrease into profit_decline_quote, otherwise use an empty string. "
@@ -247,7 +257,7 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             "rose. Group by issuer and reporting period; annual and quarterly earnings releases are distinct events. "
             "Keep dated material exchange inquiries, issuer responses and governance changes including executive appointments even when coverage is favourable. "
             "A listing in a generic calendar or directory does not establish a new event or confirm a previously reported incident. "
-            "Separate repeated inquiries on different dates unless the source identifies the same inquiry. Classify purely favourable announcements as positive and archive them. "
+            "Separate repeated inquiries on different dates unless the source identifies the same inquiry. Assess favourable tone separately from financial materiality. "
             "Retain a sourced detention of a current company executive as a governance event. Name the person, role and reported procedural stage. "
             "Never infer corporate wrongdoing or financial loss from a person's detention. Never infer corporate wrongdoing from an owner's case. Give each event a specific English title.")
         payload = {"company": display_name, "company_names": labels, "existing": anchors, "leads": leads}
@@ -283,6 +293,14 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
                 key = r['id']
             protected = r["status"] == "supported" or r["reviewed"]
             direction = r['score'] if protected else assignment['sentiment']
+            quote = (assignment.get('material_event_quote') or '').strip()
+            passages = [s['text'] for s in r['sources']] or [r['title'], r['summary']]
+            if (quote and any(quote in text for text in passages)
+                    and r['status'] != 'unmatched'):
+                r['material_event_quote'] = quote
+                key = key or r['id']
+                if r['source_url'] and r['published']:
+                    key = source_events.setdefault((canonical_url(r['source_url']), r['published']), key)
             if r['material_notice'] and not r['reviewed']:
                 key = key or r['id']
                 direction = min(direction, 0)
@@ -301,7 +319,7 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             if protected and not key:
                 key = r['id']
             r['score'] = direction
-            if not key or direction > 0:
+            if not key or (direction > 0 and not r.get('material_event_quote')):
                 result[r['id']] = {"excluded": True, "sentiment": direction}
                 continue
             catalog.setdefault(key, {"event": key, "title": assignment['title'][:250], "date": r['published']})
@@ -332,6 +350,8 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             "Use an empty string if the action date is uncertain. "
             "Name the issuer in both title and summary using company verbatim. Use that same name throughout. "
             "The other company_names are aliases of this issuer. Preserve verbatim source quotations. "
+            "For a material transaction, identify the documented stage and amount. An auction win alone establishes neither "
+            "payment nor title transfer. Bond placement alone establishes neither financial distress nor improved credit. "
             "Use only the supplied evidence. Distinguish allegations, source statements and supported impacts. "
             "Do not invent facts, assume that silence means safety, or treat repeated coverage as greater damage. "
             "Do not claim that a filing omits details on the basis of excerpts. Identify the company’s role. "
@@ -365,7 +385,8 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
                             "State the decision_day and notice publication date separately. If decision_day is unknown, never equate the two dates. "
                             "Never present the original application as still awaiting that same ruling. Continued seizure does not establish permanence.")
         draft = model(instruction, payload, _DRAFT)
-        if ((draft.get("favourable_only") is True or draft.get("background_only") is True) and not earnings and not ruling and
+        promotional = draft.get("favourable_only") and not any(r.get('material_event_quote') for r in members)
+        if ((promotional or draft.get("background_only")) and not earnings and not ruling and
                 not any(r['reviewed'] or r['material_notice'] or (r['status'] == 'supported' and r['score'] < 0) for r in members)):
             yield {r['id']: {"excluded": True, "sentiment": 1 if draft.get("favourable_only") else 0} for r in members}
             continue
@@ -418,7 +439,7 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
             # If prose validation fails twice, report the source directly without adopting its claims.
             lead = mixed or sample[0]
             headline = lead['english'] or lead['title']
-            passage = lead.get('profit_decline_quote') or next(iter(lead['quotes']), '')
+            passage = lead.get('profit_decline_quote') or lead.get('material_event_quote') or next(iter(lead['quotes']), '')
             attribution = lead['publisher'] or "The source"
             date = f" on {lead['published']}" if lead['published'] else ""
             summary = f'{attribution} published the headline “{headline}”{date}.'
@@ -441,6 +462,7 @@ def draft_company(company, rows, previous=(), model=None, *, per_document=True):
         title = name_brief(draft["title"], display_name, matcher)
         summary = name_brief(draft["summary"], display_name, matcher, narrative=True)
         yield {r['id']: {"event": key, "sentiment": r["score"], "title": title[:250],
+                         **({"material_event_quote": r['material_event_quote']} if r.get('material_event_quote') else {}),
                          **({"profit_decline_quote": r["profit_decline_quote"]} if r.get("profit_decline_quote") else {}),
                          **({"event_day": day} if day else {}),
                          "summary": summary.strip(), **({"decision":ruling} if ruling else {})} for r in members}
@@ -451,14 +473,17 @@ def run_events(run, rows):
     groups = defaultdict(list)
     for row in rows:
         draft = row.get('event_draft') or {}
-        if candidate(row) and draft.get('event'):
-            groups[(row.get('company_id') or row['subject_name'], row.get('event_group') or str(row['id']))].append(row)
+        if draft.get('event') and (candidate(row) or (draft.get('material_event_quote') and triage_candidate(row))):
+            groups[(row.get('company_id') or row['subject_name'], row.get('event_group') or f"event:{draft['event']}")].append(row)
     result = []
     for (company, key), members in groups.items():
         subject = subjects.get(company) or next((s for s in run['subjects'] if s['name'] == members[0]['subject_name']),
                                                 {'name': members[0]['subject_name']})
         initial = event_assessment(members)
         score = event_assessment(members, saved=True) if run.get('selection_saved') else initial
+        selected = [r for r in members if not run.get('selection_saved') or r.get('report_selected')]
+        if selected and all(r.get('score') == 1 and r['event_draft'].get('material_event_quote') for r in selected):
+            score = dict(score, score=1, reason="Positive material event. Excluded from weekly risk scoring.")
         draft = next((r['event_draft'] for r in members if (r.get('event_draft') or {}).get('summary')), {})
         sources = sorted(members, key=lambda r: (r.get('published_at') is None, r.get('published_at'), r['id']))
         first_publication = sources[0].get('published_at')
@@ -503,12 +528,13 @@ def process(run_id):
                                            (followup.get('verification') or {}).get('status') != 'unmatched'
                                            for src in followup['event_sources']]
             members = pending
-            prior = conn.execute("""SELECT DISTINCT ON (event_draft->>'event')
-                (event_draft->>'event')::bigint AS event, event_draft->>'title' AS title,
-                published_at::date::text AS date FROM search_results WHERE (company_id=%s OR (company_id IS NULL AND run_id=%s))
+            prior = conn.execute("""SELECT (event_draft->>'event')::bigint AS event, event_draft->>'title' AS title,
+                coalesce(nullif(verification->>'source_url',''),url) AS source_url,
+                (published_at AT TIME ZONE 'Europe/Moscow')::date::text AS date FROM search_results
+                WHERE (company_id=%s OR (company_id IS NULL AND run_id=%s AND subject_key=%s))
                 AND event_draft ? 'event' AND published_at BETWEEN %s::timestamptz - interval '30 days'
                 AND %s::timestamptz + interval '30 days'""",
-                (members[0]['company_id'], run_id, min((r['published_at'] for r in members if r['published_at']), default=None),
+                (members[0]['company_id'], run_id, members[0]['subject_key'], min((r['published_at'] for r in members if r['published_at']), default=None),
                  max((r['published_at'] for r in members if r['published_at']), default=None))).fetchall()
         try:
             for drafts in draft_company(subject, members, prior, per_document=run["per_document_limit"]):
@@ -530,7 +556,9 @@ def process(run_id):
     with db.connect() as conn:
         conn.execute("""UPDATE search_runs SET event_analysis_status=CASE WHEN EXISTS (
             SELECT 1 FROM search_results WHERE run_id=%s AND event_draft='{}' AND
-            (id>%s OR (score_status='reviewed' AND score_included AND score<=0))) THEN 'pending' ELSE 'complete' END
+            (id>%s OR (score_status='reviewed' AND score_included AND
+             (score<=0 OR (score=1 AND source_kind NOT IN ('identity_review','context') AND cardinality(exposure_paths)=0
+                            AND verification->>'status' IS DISTINCT FROM 'unmatched'))))) THEN 'pending' ELSE 'complete' END
             WHERE id=%s""", (run_id, max((r['id'] for r in rows), default=0), run_id))
 
 

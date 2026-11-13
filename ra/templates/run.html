@@ -101,9 +101,9 @@
 {% else %}{{ _('Decision reported. Its terms still need verification.') }} <a href="{{ event.decision.notice_url }}">{{ _('Read the notice') }}</a></p>{% endif %}{% endif %}
 <details><summary>{{ _('Source evidence (') }}{{ event.sources|length }})</summary><ul>{% for source in event.sources %}<li>
 {{ source.published_at|localdate('%d %b %Y') if source.published_at else _('Publication date unknown') }} · <a href="{{ url_for('article_score', result_id=source.id) }}#source-evidence">{{ display_title(source) }}</a> · {{ source.publisher }} {{ copy_status(source) }}
-{% set quote = (source.event_draft or {}).get('profit_decline_quote') %}{% if quote %}<blockquote>{{ evidence_text(quote) }}</blockquote>{% endif %}
+{% set quote = (source.event_draft or {}).get('profit_decline_quote') or (source.event_draft or {}).get('material_event_quote') %}{% if quote %}<blockquote>{{ evidence_text(quote) }}</blockquote>{% endif %}
 </li>{% endfor %}</ul></details></article>
-{% else %}<p>{{ _('No completed event briefs yet.' if run.event_analysis_status != 'complete' else 'No event briefs from the available evidence.' if run.error_count or enforcement_review else 'No negative or neutral company events found.') }}</p>{% endfor %}</section>
+{% else %}<p>{{ _('No completed event briefs yet.' if run.event_analysis_status != 'complete' else 'No event briefs from the available evidence.' if run.error_count or enforcement_review else 'No company events found.') }}</p>{% endfor %}</section>
 {% if country_leads %}<section class="panel"><details><summary>{{ _('Country risk leads (') }}{{ country_leads|length }})</summary><ul>{% for item in country_leads %}<li>{{ item.subject_name }} · <a href="{{ url_for('article_score', result_id=item.id) }}">{{ display_title(item) }}</a></li>{% endfor %}</ul></details></section>{% endif %}
 <h2 id="analyst-review">{{ _('Analyst review') }}</h2>
 <form method="post" action="{{ url_for('review_run', run_id=run.id, view=view) }}" id="review-form">

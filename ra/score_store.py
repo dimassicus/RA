@@ -241,7 +241,8 @@ def _review(conn, article, score, included, reason):
                       score_version=VERSION)
     _audit(conn, article, assessment, reason)
     _write(conn, article["id"], assessment)
-    if included and score <= 0 and not (article.get("event_draft") or {}).get("event"):
+    from .event_analysis import triage_candidate
+    if included and triage_candidate(dict(article, **assessment)) and not (article.get("event_draft") or {}).get("event"):
         active = conn.execute("UPDATE search_runs SET event_analysis_status='pending' WHERE id=%s "
                               "AND NOT (search_settings ? 'processing_stopped_at')", (article["run_id"],))
         if active.rowcount:

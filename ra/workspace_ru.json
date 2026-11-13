@@ -245,7 +245,7 @@
   "Use Google API": "Использовать API Google",
   "Use Gemini with Google Search for evidence gaps after Perplexity, or for company discovery when Perplexity is off.": "Использовать Gemini и Google Поиск для уточнения сведений после поиска в Perplexity. Если Perplexity отключён, использовать их для основного поиска по компании.",
   "Focus discovery on adverse events and material filings": "Искать прежде всего негативные события и существенные раскрытия",
-  "Target adverse news and material neutral disclosures throughout the selected dates. Positive finds appear under Other collected leads. This setting also filters the company intake news preview.": "Искать неблагоприятные новости и существенные раскрытия нейтрального характера за весь выбранный период. Положительные новости отображаются в разделе «Другие найденные материалы». Этот фильтр действует и при предварительном поиске новостей для новых компаний.",
+  "Target adverse news and material neutral disclosures throughout the selected dates. Material company events can appear at any score. This setting also filters the company intake news preview.": "Искать неблагоприятные новости и существенные раскрытия нейтрального характера за весь выбранный период. Существенные события по компании отображаются при любой оценке. Этот фильтр действует и при предварительном поиске новостей для новых компаний.",
   "Monitoring keywords": "Ключевые слова для мониторинга",
   "Search scope": "Область поиска",
   "Sentiment": "Тональность",

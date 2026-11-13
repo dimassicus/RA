@@ -75,7 +75,7 @@ def source_quotes(data):
             yield from source_quotes(child)
     elif isinstance(data, dict):
         for field, value in data.items():
-            if field in ('quote', 'outcome_quote', 'remaining_quote', 'profit_decline_quote') and value:
+            if field in ('quote', 'outcome_quote', 'remaining_quote', 'profit_decline_quote', 'material_event_quote') and value:
                 yield value
             elif isinstance(value, (list, dict)):
                 yield from source_quotes(value)

@@ -1430,3 +1430,38 @@ def test_watchlist_removal_requires_confirmation_for_this_company(database):
     response = client.post(path, data={'csrf_token': 'test', 'confirm_remove': str(cid)})
     assert response.location.endswith('/watchlist') and not db.get_company(cid)['active']
     assert score_store.get_article(lead['id'])['id'] == lead['id']
+
+
+@pytest.mark.parametrize("sentiment,adverse_focus", [(0, True), (1, True), (1, False)])
+def test_material_event_survives_focus_and_repeated_publisher_copy(database, monkeypatch, sentiment, adverse_focus):
+    from ra import archive, event_analysis
+
+    quote = "Acme Manufacturing won the property auction."
+    url = "https://publisher.test/auction"
+    company, first_run, first = seed(database, title=quote, url=url)
+    _, repeat_run, repeat = seed(database, title=quote, url="https://rss.test/redirect")
+    for run_id in (first_run, repeat_run):
+        database.execute("UPDATE search_runs SET search_settings=%s WHERE id=%s",
+                         (db.Jsonb({"adverse_only": adverse_focus}), run_id))
+    database.execute("UPDATE search_results SET verification=%s WHERE id=ANY(%s)",
+                     (db.Jsonb({"status": "needs_review", "source_url": url}), [first['id'], repeat['id']]))
+
+    def model(instruction, payload, schema):
+        if 'leads' in payload:
+            return {'assignments': [dict(id=r['id'], event=0, sentiment=sentiment,
+                                         title=quote, material_event_quote=quote) for r in payload['leads']]}
+        return dict(title=quote, summary='Acme Manufacturing ' + 'evidence ' * 150, favourable_only=True)
+
+    monkeypatch.setattr(event_analysis.keywords, 'model_json', model)
+    for run_id in (first_run, repeat_run):
+        score_store.refresh_scores(run_id)
+        event_analysis.process(run_id)
+        event_analysis.process(run_id)
+        event, = event_analysis.run_events(db.get_run(run_id), db.get_results(run_id))
+        assert (event['score'], event['title']) == (sentiment, quote)
+
+    events, total = archive.search(company, 'events', None, None, '', False, None)
+    assert total == 1
+    assert {r['id'] for r in events[0]['sources']} == {first['id'], repeat['id']}
+    assert all(r['event_draft']['event'] == first['id'] for r in events[0]['sources'])
+    assert all(w['metrics']['event_count'] == 0 for w in score_store.weekly_history(company['id']))

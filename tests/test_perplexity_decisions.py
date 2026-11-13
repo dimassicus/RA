@@ -195,3 +195,16 @@ def test_recent_enforcement_search_uses_later_aliases_across_company_profiles(mo
         assert not search_settings.company_lead(row, subject)
         assert not search_settings.enforcement_candidate(row, subject)
         assert search_settings.enforcement_candidate(dict(row, publisher_keywords=[local_name]), subject)
+
+
+def test_positive_material_claim_requires_a_publisher_passage():
+    row = dict(id=5, score=1, title='Lautan Luas opens campaign', published_at=DAY,
+               url='https://issuer.test/5', discovery_summary='Lautan Luas placed the bonds.',
+               event_sources=[dict(url='https://issuer.test/5', language='en',
+                                   kind='original publisher text', text='Lautan Luas opened a public campaign.')])
+    def model(instruction, payload, schema):
+        assert 'leads' in payload
+        return {'assignments': [dict(id=5, event=5, sentiment=1, title='Bond issue',
+                                     material_event_quote='Lautan Luas placed the bonds.')]}
+
+    assert list(event_analysis.draft_company(SUBJECT, [row], model=model)) == [{5: {'excluded': True, 'sentiment': 1}}]

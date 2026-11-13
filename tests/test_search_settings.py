@@ -213,7 +213,7 @@ def test_partial_run_shows_coverage_and_unresolved_enforcement_in_summary(databa
     assert 'Incomplete search coverage.' in summary and 'href="#source-errors"' in summary
     assert 'Enforcement leads awaiting a company identity check (1)' in summary
     assert '#source-evidence' in summary and 'Railway chief detained' in summary
-    assert 'No negative or neutral company events found' not in summary
+    assert 'No company events found' not in summary
 
 
 def test_recovered_source_alias_is_scoped_to_evidence_and_one_issuer():
