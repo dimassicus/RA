@@ -327,6 +327,7 @@ def test_multilingual_source_cache_retries_and_analyst_decisions(database, monke
     assert verification_store.job_summary(run_id)['source_retryable'] == 1
     assert verification_store.retry_failed_run(run_id) == 1
     monkeypatch.setattr(headline_review, 'readiness', lambda: {'ready': True})
+    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: ('', 'offline test'))
     monkeypatch.setattr(translation, 'argos_translate', lambda *a, **kw: (
         'Acme Manufacturing reports net losses of 40 million dollars.', 'Argos test'))
     calls = []

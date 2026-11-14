@@ -80,19 +80,11 @@ def audit_batch(items):
                  "reason": str(exc)[:250]} for _ in items]
 
 
-def fallback(source, language, publisher, argos_status, company_name="", *, article=False):
-    """Try MyMemory, local Gemma and public Google translation; Qwen reviews separately."""
+def gemma_translation(source, language, publisher, company_name="", *, article=False):
     suffix = " - " + publisher
     body = source[:-len(suffix)] if publisher and source.endswith(suffix) else source
     if not body.strip() or len(body) > 4000:
-        return "", f"{argos_status}; local fallback needs review"
-    masked, names = translation_names.mask(body, company_name)
-    reasons = [argos_status]
-    try:
-        english = online_translation.translate(masked, language.split("-")[0].lower(), "en")
-        return translation_names.restore(english, names) + (suffix if body != source else ""), "MyMemory online"
-    except (ProviderError, ValueError) as exc:
-        reasons.append(str(exc))
+        return "", "Passage exceeds local translation bounds"
     try:
         response = local_request(PORT, "/v1/chat/completions", {
             "model": GEMMA, "temperature": 0, "seed": 42, "max_tokens": 2048 if article else 1024,
@@ -128,12 +120,27 @@ def fallback(source, language, publisher, argos_status, company_name="", *, arti
             raise ValueError("output did not read as English")
         if body != source:
             english += suffix
-        return english, GEMMA + " local fallback (reasoning off)"
+        return english, GEMMA + " local translation (reasoning off)"
     except (ValueError, KeyError, TypeError, OSError) as exc:
         known = {"unexpected model, reasoning or incomplete output", "Invalid translation envelope",
                  "unsupported or uncertain", "invalid output", "output did not read as English"}
         reason = str(exc) if type(exc) is ValueError and str(exc) in known else type(exc).__name__
-        reasons.append(f"{GEMMA}: {reason}")
+        return "", f"{GEMMA}: {reason}"
+
+
+def fallback(source, language, publisher, argos_status, company_name="", *, article=False):
+    """Use online backups after local translation fails."""
+    suffix = " - " + publisher
+    body = source[:-len(suffix)] if publisher and source.endswith(suffix) else source
+    if not body.strip() or len(body) > 4000:
+        return "", f"{argos_status}; local fallback needs review"
+    masked, names = translation_names.mask(body, company_name)
+    reasons = [argos_status]
+    try:
+        english = online_translation.translate(masked, language.split("-")[0].lower(), "en")
+        return translation_names.restore(english, names) + (suffix if body != source else ""), "MyMemory online"
+    except (ProviderError, ValueError) as exc:
+        reasons.append(str(exc))
     try:
         from .article_translation import passages
         parts = passages(masked, limit=500)

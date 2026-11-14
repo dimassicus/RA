@@ -167,9 +167,7 @@ def prepare_steps(document, subject=None, *, checkpoint=None):
         if faithful(part):
             continue
         if not part.get('english') or part.get('review', {}).get('status') == 'material_error':
-            english, provider = translation.argos_translate(part['source'], language, complete=True, **identity)
-            if not english:
-                english, provider = headline_review.fallback(part['source'], language, '', provider, article=True, **identity)
+            english, provider = translation.translate_text(part['source'], language, article=True, **identity)
             part.update(english=english, provider=provider, review={})
     if checkpoint:
         checkpoint(result)
@@ -184,8 +182,9 @@ def prepare_steps(document, subject=None, *, checkpoint=None):
         yield local_models.GEMMA
     replacements = []
     for part in rejected:
-        english, provider = headline_review.fallback(part['source'], language, '',
-                                                     'Argos translation rejected by Qwen', article=True, **identity)
+        english, provider = headline_review.gemma_translation(part['source'], language, '', article=True, **identity)
+        if not english:
+            english, provider = headline_review.fallback(part['source'], language, '', provider, article=True, **identity)
         if english:
             part['rejected_translation'] = {k: part[k] for k in ('english', 'provider', 'review')}
             part.update(english=english, provider=provider, review={})

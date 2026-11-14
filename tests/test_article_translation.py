@@ -17,6 +17,7 @@ def approved(*args, **kwargs):
 @pytest.fixture
 def local(monkeypatch):
     monkeypatch.setattr(at.local_models, 'reviewer_requests', lambda: nullcontext(None))
+    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: ('', 'offline test'))
     monkeypatch.setattr(headline_review, 'readiness', lambda: {'ready': True})
     monkeypatch.setattr(headline_review, 'audit', approved)
     monkeypatch.setattr(headline_review, 'fallback', lambda *a, **kw: ('', 'Offline test'))
@@ -124,13 +125,17 @@ def test_offline_review_only_unknown_and_native_languages_fail_safely(local, mon
         assert verify(prepared, SUBJECT, ARTICLE)['status'] in ('needs_review', 'unavailable')
 
 
-def test_argos_first_then_fallback_translations_before_reviews(local, monkeypatch):
+def test_first_pass_then_backups_before_reviews(local, monkeypatch):
     calls = []
-    def argos(text, lang, **kwargs):
+    def argos(text, lang, *args, **kwargs):
         assert kwargs == {'complete': True}
         calls.append('argos')
         return '', 'No pair'
-    def fallback(text, lang, publisher, status, **kwargs):
+    def gemma(*args, **kwargs):
+        calls.append('gemma')
+        return '', 'Gemma unavailable'
+    monkeypatch.setattr(headline_review, 'gemma_translation', gemma)
+    def fallback(text, lang, publisher, status, company, **kwargs):
         assert kwargs == {'article': True} and not publisher
         calls.append('fallback')
         return 'Acme Manufacturing reports net losses of 40 million dollars.', 'Gemma test'
@@ -139,7 +144,7 @@ def test_argos_first_then_fallback_translations_before_reviews(local, monkeypatc
     monkeypatch.setattr(headline_review, 'audit', lambda *a, **kw: (calls.append('review') or approved()))
     prepared = at.prepare(document('Source words. ' * 150, language='uz'))
     count = len(prepared['translation']['parts'])
-    assert calls == ['argos', 'fallback'] * count + ['review'] * count
+    assert calls == ['gemma', 'argos', 'fallback'] * count + ['review'] * count
 
 
 def test_argos_complete_mode_never_silently_truncates(monkeypatch):

@@ -15,8 +15,8 @@ from scripts.translation_review.lmstudio import local_request as raw_request
 
 PORT = 1234
 QWEN = "qwen/qwen3.8-27b"
-GEMMA = "google/gemma-4-31b-qat"
-MODELS = {QWEN: "Qwen 27B", GEMMA: "Gemma 31B"}
+GEMMA = "google/gemma-4-26b-a4b-qat"
+MODELS = {QWEN: "Qwen 27B", GEMMA: "Gemma 26B A4B"}
 CONTEXT = 16384
 REVIEW_SLOTS = 4
 LOCK_PATH = Path(__file__).resolve().parents[1] / ".local" / "lmstudio.lock"

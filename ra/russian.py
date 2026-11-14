@@ -49,23 +49,31 @@ def _passage(source, names):
     if not re.search(r"[A-Za-z]", source) or source in masked or _IDENTIFIERS.fullmatch(source):
         return translation_names.restore(source, masked)
     try:
-        model = translation._model("en", "ru")
-        if model is None and model_store.ensure_model("en", "ru")[0]:
-            translation._model.cache_clear()
+        return _gemma_passage(source, masked)
+    except (OSError, RuntimeError, ValueError, KeyError, IndexError, TypeError):
+        # Preserve the original failure if the offline pair cannot supply a checked copy.
+        try:
             model = translation._model("en", "ru")
-        if model is not None:
-            tokenizer, translator, prefix = model
-            tokens = tokenizer.encode(source, out_type=str)
-            result, = translator.translate_batch(
-                [tokens], target_prefix=[[prefix]] if prefix else None, replace_unknowns=True,
-                beam_size=4, max_input_length=0, max_decoding_length=2048)
-            pieces = result.hypotheses[0]
-            if len(pieces) >= 2048:
-                raise ValueError("Incomplete offline translation")
-            candidate = tokenizer.decode_pieces(pieces).removeprefix(prefix)
-            return _checked(source, candidate, masked)
-    except (OSError, ImportError, RuntimeError, ValueError):
-        pass
+            if model is None and model_store.ensure_model("en", "ru")[0]:
+                translation._model.cache_clear()
+                model = translation._model("en", "ru")
+            if model is not None:
+                tokenizer, translator, prefix = model
+                tokens = tokenizer.encode(source, out_type=str)
+                result, = translator.translate_batch(
+                    [tokens], target_prefix=[[prefix]] if prefix else None, replace_unknowns=True,
+                    beam_size=4, max_input_length=0, max_decoding_length=2048)
+                pieces = result.hypotheses[0]
+                if len(pieces) >= 2048:
+                    raise ValueError("Incomplete offline translation")
+                candidate = tokenizer.decode_pieces(pieces).removeprefix(prefix)
+                return _checked(source, candidate, masked)
+        except (OSError, ImportError, RuntimeError, ValueError):
+            pass
+        raise
+
+
+def _gemma_passage(source, masked):
     instruction = (
         "Translate the complete passage into Russian. Preserve credit meaning, negation, units and uncertainty. "
         "Copy identifiers, URLs, numbers (including signs and separators), names and ZXQ placeholders exactly. "

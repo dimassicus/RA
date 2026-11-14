@@ -26,7 +26,8 @@ def test_corrupted_or_dropped_protection_markers_trigger_fallback(monkeypatch, o
     tokenizer = SimpleNamespace(encode=lambda text, **kw: [text], decode_pieces=lambda pieces: pieces[0])
     translator = SimpleNamespace(translate_batch=lambda *a, **kw: [SimpleNamespace(hypotheses=[[output]])])
     monkeypatch.setattr(translation, '_model', lambda *a: (tokenizer, translator, ''))
-    monkeypatch.setattr(qa, 'fallback', lambda *a: ('Company repays debt - Brand', 'fallback'))
+    monkeypatch.setattr(qa, 'gemma_translation', lambda *a, **kw: ('', 'offline test'))
+    monkeypatch.setattr(qa, 'fallback', lambda *a, **kw: ('Company repays debt - Brand', 'fallback'))
     assert translation.translate_text('Empresa paga dívida - Brand', 'pt', publisher='Brand') == (
         'Company repays debt - Brand', 'fallback')
 
@@ -60,7 +61,7 @@ def test_fallback_uses_only_gemma_and_preserves_publisher(monkeypatch):
         return {"model": model, "choices": [{"finish_reason": "stop", "message": {"content":
                 json.dumps({"supported": supported, "english": "The company repaid its loan." if supported else ""})}}]}
     monkeypatch.setattr(qa, "local_request", local)
-    monkeypatch.setattr(translation, "argos_translate", lambda *a: ("", "no model"))
+    monkeypatch.setattr(translation, "argos_translate", lambda *a, **kw: pytest.fail("Gemma must run first"))
     candidate, provider = translation.translate_text("Компания погасила кредит - Пресса", "ru", publisher="Пресса")
     assert calls == [qa.GEMMA]
     assert candidate == "The company repaid its loan. - Пресса" and qa.GEMMA in provider
@@ -68,8 +69,8 @@ def test_fallback_uses_only_gemma_and_preserves_publisher(monkeypatch):
 
 def test_invalid_envelopes_leave_original_for_review(monkeypatch):
     monkeypatch.setattr(qa, "local_request", lambda *a, **kw: {"model":"other","choices":[]})
-    candidate, provider = qa.fallback("سندات", "ar", "", "no Argos")
-    assert not candidate and "needs review" in provider
+    candidate, provider = qa.gemma_translation("سندات", "ar", "")
+    assert not candidate and qa.GEMMA in provider
 
 
 def test_gemma_failure_does_not_fall_back_to_qwen(monkeypatch):
@@ -78,9 +79,9 @@ def test_gemma_failure_does_not_fall_back_to_qwen(monkeypatch):
         calls.append(body["model"])
         raise ConnectionRefusedError()
     monkeypatch.setattr(qa, "local_request", unavailable)
-    candidate, provider = qa.fallback("Empresa paga dívida", "pt", "", "no Argos")
+    candidate, provider = qa.gemma_translation("Empresa paga dívida", "pt", "")
     assert calls == [qa.GEMMA]
-    assert not candidate and "needs review" in provider
+    assert not candidate and qa.GEMMA in provider
 
 
 def test_unusable_review_never_promotes_candidate_or_changes_score_hash(monkeypatch):
@@ -127,8 +128,9 @@ def test_missing_model_requires_approval_before_any_network(monkeypatch, tmp_pat
     assert model_store.ensure_model("ar")[0]
 
 
-def test_missing_argos_uses_online_for_any_language_before_local(monkeypatch):
-    monkeypatch.setattr(translation, "argos_translate", lambda *args: ("", "no model"))
+def test_missing_local_models_use_online_for_any_language(monkeypatch):
+    monkeypatch.setattr(qa, "gemma_translation", lambda *a, **kw: ("", "offline"))
+    monkeypatch.setattr(translation, "argos_translate", lambda *args, **kw: ("", "no model"))
     calls = []
     def online(text, source, target):
         calls.append((text, source, target))
@@ -153,8 +155,8 @@ def test_readiness_requires_api_and_downloaded_qwen_without_loading(monkeypatch)
     assert qa.readiness()["ready"]
     monkeypatch.setattr(qa, "local_request", lambda *a, **kw: {"data": [{"id": qa.QWEN, "state": "not-loaded"}]})
     assert qa.readiness()["ready"]
-    monkeypatch.setattr(qa.local_models, "_activity", ("run 7", "Loading Gemma 31B…"))
-    assert qa.readiness()["message"] == "Loading Gemma 31B…"
+    monkeypatch.setattr(qa.local_models, "_activity", ("run 7", "Loading Gemma 26B A4B…"))
+    assert qa.readiness()["message"] == "Loading Gemma 26B A4B…"
 
 
 def test_successful_audit_requests_reasoning_off(monkeypatch):
@@ -196,7 +198,7 @@ def test_filing_number_is_preserved_without_skewing_language_detection(monkeypat
     response = {"model": qa.GEMMA, "choices": [{"finish_reason": "stop", "message": {
         "content": json.dumps({"supported": True, "english": english})}}]}
     monkeypatch.setattr(qa, "local_request", lambda *a, **kw: response)
-    result, provider = qa.fallback("Tanggapan Terkait Surat BEI No. S-03233/BEI.PP2/03-2026", "id", "", "No Argos")
+    result, provider = qa.gemma_translation("Tanggapan Terkait Surat BEI No. S-03233/BEI.PP2/03-2026", "id", "")
     assert result == english and qa.GEMMA in provider
 
 

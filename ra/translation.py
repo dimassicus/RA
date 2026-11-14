@@ -128,12 +128,17 @@ def argos_translate(text: str, language: str, company_name: dict | str = "", pub
         return "", f"translation failed: {type(exc).__name__}"
 
 
-def translate_text(text: str, language: str, company_name: dict | str = "", publisher: str = "") -> tuple[str, str]:
-    candidate, provider = argos_translate(text, language, company_name, publisher)
-    if (candidate and translation_names.preserved(text, candidate, company_name)) or not (text or "").strip():
+def translate_text(text: str, language: str, company_name: dict | str = "", publisher: str = "", *, article=False) -> tuple[str, str]:
+    from . import headline_review
+    if not (text or "").strip() or language.split("-")[0].lower() in ("en", "zxx"):
+        return argos_translate(text, language, company_name, publisher)
+    english, reason = headline_review.gemma_translation(text, language, publisher, company_name, article=article)
+    if english:
+        return english, reason
+    candidate, provider = argos_translate(text, language, company_name, publisher, complete=article)
+    if candidate and translation_names.preserved(text, candidate, company_name):
         return candidate, provider
-    from .headline_review import fallback
-    return fallback(text, language, publisher, provider, company_name)
+    return headline_review.fallback(text, language, publisher, f"{reason}; {provider}", company_name, article=article)
 
 
 def backfill(force: bool = False, run_id: int | None = None) -> tuple[int, int]:

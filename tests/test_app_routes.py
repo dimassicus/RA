@@ -44,7 +44,7 @@ def test_partial_run_header_and_live_activity_are_run_specific(monkeypatch, lang
     monkeypatch.setattr(verification_store, "job_summary", lambda _: checks)
     client = create_app().test_client()
     client.set_cookie("ra_language", language)
-    message = "Loading Gemma 31B…"
+    message = "Loading Gemma 26B A4B…"
     for owner in ("run 510", "individual request"):
         monkeypatch.setattr(local_models, "_activity", (owner, message))
         page = client.get("/runs/51").text

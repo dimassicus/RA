@@ -69,7 +69,7 @@ def test_unavailable_model_does_not_poison_retry(generate):
     assert russian.translate("Costs declined.") == "Стоимость снизилась."
 
 
-def test_offline_model_precedes_local_fallback_and_preserves_currency(monkeypatch, generate):
+def test_gemma_precedes_offline_fallback_and_preserves_currency(monkeypatch, generate):
     tokenizer, translator = Mock(), Mock()
     monkeypatch.setattr(russian.translation, "_model", lambda *_: (tokenizer, translator, ""))
     tokenizer.encode.side_effect = lambda source, **kwargs: [source]
@@ -78,11 +78,12 @@ def test_offline_model_precedes_local_fallback_and_preserves_currency(monkeypatc
         [Mock(hypotheses=[["Долг: 4 млн USD"]])],
         [Mock(hypotheses=[["Долг: 6 млн EUR"]])],
     ]
-    generate.return_value = {"russian": "Долг: 6 млн USD"}
+    generate.side_effect = [OSError("unavailable"), {"russian":"Долг: 6 млн USD"}]
     assert russian.translate("Debt: USD 4 million") == "Долг: 4 млн USD"
-    generate.assert_not_called()
-    assert russian.translate("Debt: USD 6 million") == "Долг: 6 млн USD"
     generate.assert_called_once()
+    assert russian.translate("Debt: USD 6 million") == "Долг: 6 млн USD"
+    assert generate.call_count == 2
+    assert translator.translate_batch.call_count == 1
 
 
 def test_repair_protects_original_amount_and_rechecks_result(generate):

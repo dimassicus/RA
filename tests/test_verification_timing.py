@@ -245,6 +245,7 @@ def test_queue_batches_primary_sources_and_attachments_across_leads(database, mo
         return dict(source(url, 'first '+url),linked_documents=[source(url+'/pdf','replacement '+url)])
     monkeypatch.setattr(verification_store,'retrieve',retrieve)
     monkeypatch.setattr(headline_review,'readiness',lambda:{'ready':True})
+    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: ('', 'offline test'))
     monkeypatch.setattr(translation,'argos_translate',lambda body,*a,**kw: (('reject','Argos test') if body.startswith('replacement') else ('','missing')))
     def fallback(body,*args,**kwargs):
         events.append('Gemma')
