@@ -80,13 +80,13 @@ def test_retry_preserves_one_job_and_russian_original(database, monkeypatch):
     bilingual.enqueue(database, text, 'ru', subject, run_id=run_id)
     bilingual.enqueue(database, text, 'ru', subject, run_id=run_id)
     from ra import translation
-    monkeypatch.setattr(translation, 'translate_text', lambda *args: ('', 'offline'))
+    monkeypatch.setattr(translation, 'translate_text', lambda *args, **kw: ('', 'offline'))
     assert bilingual.process_one()
     assert not bilingual.process_one()
     row, = database.execute('SELECT * FROM result_translations').fetchall()
     assert row['russian'] == text and not row['english'] and 'comment' not in row['subject']
     database.execute('UPDATE result_translations SET retry_at=now()')
-    monkeypatch.setattr(translation, 'translate_text', lambda *args: ('The company reported falling profits.', 'test'))
+    monkeypatch.setattr(translation, 'translate_text', lambda *args, **kw: ('The company reported falling profits.', 'test'))
     assert bilingual.process_one()
     assert i18n.headline({'title': text, 'language': 'ru'}, 'ru') == text
     assert i18n.headline({'title': text, 'language': 'ru'}, 'en') == 'The company reported falling profits.'
@@ -139,9 +139,8 @@ def test_repeated_invalid_russian_stops_but_service_outage_can_retry(database, m
     def reject(*args, **kw):
         raise ValueError("Translation changed a currency")
     monkeypatch.setattr(bilingual.russian, 'checked_translation', reject)
-    for _ in range(3):
-        database.execute('UPDATE result_translations SET retry_at=now()')
-        assert bilingual.process_one()
+    database.execute('UPDATE result_translations SET retry_at=now()')
+    assert bilingual.process_one()
     database.execute('UPDATE result_translations SET retry_at=now()')
     assert not bilingual.process_one()
     row = database.execute('SELECT * FROM result_translations').fetchone()
@@ -178,3 +177,29 @@ def test_short_batch_validates_each_key_and_reuses_passages_after_restart(databa
     assert bilingual.process_one(batch_size=8)
     assert database.execute("SELECT russian FROM result_translations WHERE source LIKE %s", ('%\n%',)).fetchone()['russian'] == 'Долг вырос на 5%\nВыручка упала на 7%'
     assert len(calls)==2
+
+
+def test_unclassified_whole_issuer_alias_preserves_source_spelling(database, monkeypatch):
+    run = db.create_run('selected', [{'name':'Issuer'}])
+    bilingual.enqueue(database,'АО «НК ҚТЖ»','',{'name':'Issuer','aliases':'АО «НК «ҚТЖ»'},run_id=run)
+    from ra import translation
+    monkeypatch.setattr(translation,'translate_text',lambda *a,**kw:pytest.fail('Whole issuer name'))
+    assert bilingual.process_one()
+    row = database.execute('SELECT * FROM result_translations').fetchone()
+    assert row['source'] == row['russian'] == row['english'] == 'АО «НК ҚТЖ»'
+    assert not bilingual.process_one()
+
+
+def test_invalid_english_translation_stops_after_both_providers(database, monkeypatch):
+    from ra import headline_review
+    run = db.create_run('selected',[{'name':'Acme'}])
+    text = 'Acme pagou a dívida'
+    bilingual.enqueue(database,text,'pt',{'name':'Acme'},run_id=run)
+    monkeypatch.setattr(headline_review,'gemma_translation',lambda *a,**kw:('', 'invalid output'))
+    monkeypatch.setattr(headline_review.online_translation,'translate_public',lambda *a:'Another issuer paid the debt')
+    assert bilingual.process_one()
+    database.execute('UPDATE result_translations SET retry_at=now()')
+    assert not bilingual.process_one()
+    row = database.execute('SELECT * FROM result_translations').fetchone()
+    assert not row['english'] and row['russian_rejections']==1 and 'protected company name' in row['russian_error']
+    assert 'needs review' in i18n._lookup(text,'pt','en')

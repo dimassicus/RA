@@ -83,7 +83,9 @@ def _lookup(text, source, target):
     result = (row or {}).get('russian' if target == 'ru' else 'english')
     if result:
         return result
-    if row and target == "ru" and row["russian_rejections"] >= 3:
+    if row and row["russian_rejections"] > 0:
+        if target != "ru":
+            return "Translation needs review · original: " + text
         return "Перевод не прошёл проверку · оригинал: " + text
     if has_request_context():
         if 'translation_run_id' not in g:

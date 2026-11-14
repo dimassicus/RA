@@ -124,7 +124,7 @@ def argos_translate(text: str, language: str, company_name: dict | str = "", pub
         return "", f"translation failed: {type(exc).__name__}"
 
 
-def translate_text(text: str, language: str, company_name: dict | str = "", publisher: str = "", *, article=False) -> tuple[str, str]:
+def translate_text(text: str, language: str, company_name: dict | str = "", publisher: str = "", *, article=False, raise_rejection=False) -> tuple[str, str]:
     from . import headline_review
     text = (text or "").strip()
     if not text:
@@ -135,6 +135,8 @@ def translate_text(text: str, language: str, company_name: dict | str = "", publ
     english, reason = headline_review.gemma_translation(text, language, publisher, company_name, article=article)
     if english:
         return english, reason
+    if raise_rejection:
+        return headline_review.fallback(text, language, publisher, reason, company_name, article=article, raise_rejection=True)
     return headline_review.fallback(text, language, publisher, reason, company_name, article=article)
 
 

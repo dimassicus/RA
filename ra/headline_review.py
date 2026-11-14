@@ -121,18 +121,22 @@ def gemma_translation(source, language, publisher, company_name="", *, article=F
         if body != source:
             english += suffix
         return english, GEMMA + " local translation (reasoning off)"
-    except (ValueError, KeyError, TypeError, OSError) as exc:
+    except OSError:
+        return "", f"{GEMMA}: service unavailable"
+    except (ValueError, KeyError, TypeError) as exc:
         known = {"unexpected model, reasoning or incomplete output", "Invalid translation envelope",
                  "unsupported or uncertain", "invalid output", "output did not read as English"}
         reason = str(exc) if type(exc) is ValueError and str(exc) in known else type(exc).__name__
         return "", f"{GEMMA}: {reason}"
 
 
-def fallback(source, language, publisher, local_status, company_name="", *, article=False):
+def fallback(source, language, publisher, local_status, company_name="", *, article=False, raise_rejection=False):
     """Use Google Translate after local translation fails."""
     suffix = " - " + publisher
     body = source[:-len(suffix)] if publisher and source.endswith(suffix) else source
     if not body.strip() or len(body) > 4000:
+        if raise_rejection:
+            raise ValueError("Passage exceeds English translation bounds")
         return "", f"{local_status}; local fallback needs review"
     masked, names = translation_names.mask(body, company_name)
     try:
@@ -140,7 +144,14 @@ def fallback(source, language, publisher, local_status, company_name="", *, arti
         if english:
             return translation_names.restore(english, names) + (suffix if body != source else ""), "Google public translation"
     except (ProviderError, ValueError) as exc:
+        if raise_rejection:
+            if (local_status.endswith(": service unavailable") or
+                    isinstance(exc, ProviderError) and not isinstance(exc, online_translation.InvalidTranslation)):
+                raise OSError("Display translation service unavailable") from exc
+            raise ValueError("English translation rejected: " + str(exc)) from exc
         return "", f"{local_status}; Google public translation: {exc}; translation needs review"
+    if raise_rejection:
+        raise ValueError("English translation unavailable for this passage")
     return "", f"{local_status}; translation needs review"
 
 

@@ -8,11 +8,15 @@ from urllib.error import URLError
 from .news_apis import ProviderError
 
 
+class InvalidTranslation(ProviderError):
+    """The provider returned unusable content for this input."""
+
+
 @lru_cache(maxsize=2048)
 def translate_public(text, source, target):
     """Keyless public translation; never calls the paid Cloud Translation API."""
     if not text.strip() or len(text) > 500:
-        raise ProviderError("text outside public translation request limits")
+        raise InvalidTranslation("text outside public translation request limits")
     query = urlencode({"client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text})
     # shortcut: this public endpoint is undocumented; fail closed if its format/access changes.
     try:
@@ -29,7 +33,9 @@ def translate_public(text, source, target):
         if not result or "".join(segment[1] for segment in segments) != text:
             raise ValueError("source mismatch")
         return result
-    except (OSError, URLError, ValueError, TypeError, IndexError, KeyError) as exc:
+    except (ValueError, TypeError, IndexError, KeyError) as exc:
+        raise InvalidTranslation("Public translation unavailable or invalid response") from exc
+    except (OSError, URLError) as exc:
         raise ProviderError("Public translation unavailable or invalid response") from exc
 
 

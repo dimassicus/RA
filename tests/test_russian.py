@@ -10,7 +10,7 @@ from ra import russian
 def generate(monkeypatch):
     russian._passage.cache_clear()
     def offline(*args):
-        raise russian.online_translation.ProviderError("offline test")
+        raise russian.online_translation.InvalidTranslation("Invalid response")
     monkeypatch.setattr(russian.online_translation, "translate_public", offline)
     model = Mock()
     monkeypatch.setattr(russian.keywords, "model_json", model)
@@ -112,3 +112,22 @@ def test_interest_amount_abbreviations_and_publisher_names(generate):
         russian._checked("Interest rate of 5 percent", "Проценты по ставке 5", {})
     assert russian.translate("## Acme", "Acme") == "## Acme"
     generate.assert_not_called()
+
+
+def test_numeric_tables_and_ticker_rows_keep_their_values(generate):
+    assert russian.translate('SDF.DE\n8:09 PM\nPDF') == 'SDF.DE\n8:09 PM\nPDF'
+    row = 'YearOpenHighLowCloseReturnVolumeSession2026Rp 1,170Rp 670.00Rp 860.00+5.5%28.4 million'
+    result = russian.translate(row)
+    assert 'Год' in result and result.endswith('2026Rp 1,170Rp 670.00Rp 860.00+5.5%28.4  млн')
+    assert russian.fixed_display(row + ' defaulted') is None
+    generate.assert_not_called()
+
+
+def test_compound_interest_and_currency_code_protection(generate):
+    source = 'It returned +270%, +14.0% annually compounded.'
+    output = 'Доходность составила +270%, или +14.0% годовых с учётом сложных процентов.'
+    assert russian._checked(source, output, {}) == output
+    with pytest.raises(ValueError):
+        russian._checked(source, output.replace('14.0%', '14.0'), {})
+    protected, literals = russian.protect_literals('Profit reached VND 1,445 billion.', {})
+    assert 'VND' not in protected and 'VND' in literals.values()

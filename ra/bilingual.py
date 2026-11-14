@@ -7,6 +7,7 @@ import time
 from functools import lru_cache
 
 from . import db, russian, translation_names
+from .aliases import normalized
 from .language import base_language, detect_language
 
 _wake = threading.Event()
@@ -166,7 +167,7 @@ def process_one(*, batch_size=1):
         rows = conn.execute("""UPDATE result_translations SET retry_at=now()+interval '15 minutes'
             WHERE key IN (SELECT key FROM result_translations WHERE run_id IN (
                        SELECT s.id FROM search_runs s JOIN display_translation_runs eligible USING (id) WHERE NOT s.paused)
-                       AND (english='' OR russian='') AND russian_rejections<3 AND retry_at<=now()
+                       AND (english='' OR russian='') AND russian_rejections=0 AND retry_at<=now()
                        ORDER BY retry_at,key LIMIT %s FOR UPDATE SKIP LOCKED) RETURNING *""", (batch_size,)).fetchall()
     if not rows:
         return False
@@ -189,23 +190,28 @@ def process_row(row):
     from .article_translation import passages
     from .translation import translate_text
     english, localized = row['english'], row['russian']
-    if not english:
-        chunks = [translate_text(part, row['language'], row['subject'])[0]
-                  for part in passages(row['source'], limit=480, subject=row['subject'])]
-        if all(chunks):
-            english = ' '.join(chunks)
     rejections, error = row['russian_rejections'], row['russian_error']
-    if not localized and english:
-        try:
+    try:
+        source_name = normalized(row['source']) if not english else ''
+        if source_name and any(normalized(name) == source_name for name in translation_names.names(row['subject'])):
+            # A whole issuer name stays in its source spelling in both display languages.
+            english = row['source']
+            localized = localized or english
+        if not english:
+            chunks = [translate_text(part, row['language'] or 'auto', row['subject'], raise_rejection=True)[0]
+                      for part in passages(row['source'], limit=480, subject=row['subject'])]
+            if all(chunks):
+                english = ' '.join(chunks)
+        if not localized and english:
             localized = russian.checked_translation(english, row['subject'], translate_passage=saved_passage)
-            rejections, error = 0, ''
-        except (ValueError, KeyError, IndexError, TypeError) as exc:
-            rejections += 1
-            error = str(exc)[:250]
-            log.warning("Display translation rejected run=%s key=%s attempt=%s: %s",
-                        row['run_id'], row['key'], rejections, error)
-        except (OSError, RuntimeError) as exc:
-            log.warning("Display translator unavailable run=%s key=%s: %s", row['run_id'], row['key'], type(exc).__name__)
+    except (ValueError, KeyError, IndexError, TypeError) as exc:
+        # Gemma repair and the independent fallback already ran. The same inputs repeat the rejection.
+        rejections, error = rejections + 1, str(exc)[:250]
+        log.warning("Display translation rejected run=%s key=%s: %s", row['run_id'], row['key'], error)
+    except (OSError, RuntimeError) as exc:
+        log.warning("Display translator unavailable run=%s key=%s: %s", row['run_id'], row['key'], type(exc).__name__)
+    if english and localized:
+        rejections, error = 0, ''
     previous = (row['english'], row['russian'], row['russian_rejections'], row['russian_error'])
     if (english, localized, rejections, error) != previous:
         with db.connect() as conn:

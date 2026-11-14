@@ -11,8 +11,35 @@ from .article_translation import passages
 # Keep URLs, filing codes, figures, and their signs verbatim in display copies.
 _IDENTIFIERS = re.compile(r"https?://[^\s<>]+|\b(?=[A-Z0-9/-]*[A-Z])(?=[A-Z0-9/-]*\d)[A-Z0-9]+(?:[-/][A-Z0-9]+)*\b")
 _NUMBERS = re.compile(r"[-+−]?\d+(?:[.,]\d+)*")
-_LITERALS = re.compile(r"ZXQ[A-Z]*\d+ZXQ|" + _IDENTIFIERS.pattern + "|" + _NUMBERS.pattern)
+_LITERALS = re.compile(r"ZXQ[A-Z]*\d+ZXQ|\b(?:USD|VND|BRL|EUR|TRY|IDR|RUB|KRW)\b|" + _IDENTIFIERS.pattern + "|" + _NUMBERS.pattern)
 _RUSSIAN = re.compile(r"[А-Яа-яЁё]")
+
+
+# Market data sometimes arrives with HTML table cells concatenated into one line.
+_TABLE_WORDS = {
+    "YearOpenHighLowCloseReturnVolumeSessions": "Год / Открытие / Максимум / Минимум / Закрытие / Доходность / Объём / Сессии ",
+    "YearOpenHighLowCloseReturnVolumeSession": "Год / Открытие / Максимум / Минимум / Закрытие / Доходность / Объём / Сессии ",
+    "MonthClose end of monthChanges": "Месяц / Закрытие на конец месяца / Изменения ",
+    "MonthClose end of monthChange": "Месяц / Закрытие на конец месяца / Изменение ",
+    "MonthMonth end closeChange": "Месяц / Закрытие на конец месяца / Изменение ",
+    "January": " январь", "February": " февраль", "March": " март", "April": " апрель",
+    "May": " май", "June": " июнь", "July": " июль", "August": " август",
+    "September": " сентябрь", "October": " октябрь", "November": " ноябрь", "December": " декабрь",
+    "million": " млн ", "jt": " млн ", "n/a": "н/д",
+}
+_TABLE_TOKEN = re.compile("|".join(map(re.escape, _TABLE_WORDS)) + r"|IDR|Rp|[MB]|[\d.,%+−/\s-]+")
+_FIXED_LABEL = re.compile(r"(?:PDF|WhatsApp|PV•|[A-Z0-9]{1,12}\.[A-Z]{1,3}|"
+                          r"(?:CNPJ n[º°]|NIRE) [\d./-]+|(?:0?[1-9]|1[0-2]):[0-5]\d [AP]M)")
+
+
+def fixed_display(source):
+    if _FIXED_LABEL.fullmatch(source):
+        return source
+    if source.count("IDR") + source.count("Rp") >= 3:
+        tokens = _TABLE_TOKEN.findall(source)
+        if "".join(tokens) == source:
+            return "".join(_TABLE_WORDS.get(token, token) for token in tokens).strip()
+    return None
 
 
 def _currencies(text):
@@ -29,6 +56,8 @@ def _currencies(text):
 def _checked(source, result, names):
     if not isinstance(result, str) or not _RUSSIAN.search(result):
         raise ValueError("Missing Russian translation")
+    if Counter(re.findall(r"ZXQ[A-Z]*\d+ZXQ", source)) != Counter(re.findall(r"ZXQ[A-Z]*\d+ZXQ", result)):
+        raise ValueError("Translation changed a protected value")
     for pattern in (_NUMBERS, _IDENTIFIERS):
         if Counter(pattern.findall(source)) != Counter(pattern.findall(result)):
             raise ValueError("Translation changed a number or identifier")
@@ -38,7 +67,7 @@ def _checked(source, result, names):
         raise ValueError("Translation changed a currency")
     # Russian проценты can also mean interest. Count percentage units on amounts.
     percent = r"%|\bpercent(?:ages?)?\b"
-    if re.search(r"\binterest\b", source, re.I):
+    if re.search(r"\b(?:interest|compound(?:ed|ing)?)\b", source, re.I):
         percent += r"|(?<=\d)\s*процент\w*\b"
     else:
         percent += r"|\bпроцент\w*"
@@ -63,14 +92,43 @@ def _passage(source, names):
         unprotected = unprotected.replace(marker, "")
     if not re.search(r"[A-Za-z]", unprotected) or _IDENTIFIERS.fullmatch(source):
         return translation_names.restore(source, masked)
+    if (fixed := fixed_display(source)) is not None:
+        return fixed
     try:
         return _gemma_passage(source, masked)
     except (OSError, RuntimeError, ValueError, KeyError, IndexError, TypeError) as local_error:
+        protected, literals = (protect_literals(source, masked) if isinstance(local_error, ValueError)
+                               else (source, {}))
         try:
-            candidate = online_translation.google_passage(source, "en", "ru")
-        except online_translation.ProviderError:
+            candidate = online_translation.google_passage(protected, "en", "ru")
+        except online_translation.ProviderError as exc:
+            if not isinstance(exc, online_translation.InvalidTranslation):
+                raise OSError("Google translation unavailable") from exc
             raise local_error
-        return _checked(source, candidate, masked)
+        try:
+            return _checked(source, translation_names.restore(candidate, literals), masked)
+        except ValueError:
+            if isinstance(local_error, (OSError, RuntimeError)):
+                raise local_error
+            raise
+
+
+def protect_literals(source, masked):
+    prefix = "ZXQVALUE"
+    while prefix in source:
+        prefix += "X"
+    literals = {}
+
+    def protect(match):
+        value = match.group()
+        if value in masked:
+            return value
+        marker = f"{prefix}{len(literals)}ZXQ"
+        literals[marker] = value
+        return marker
+
+    protected = _LITERALS.sub(protect, source)
+    return protected, literals
 
 
 def _gemma_passage(source, masked):
@@ -84,20 +142,7 @@ def _gemma_passage(source, masked):
         return _checked(source, result["russian"], masked)
     except ValueError as rejection:
         # Shield exact values from localization on the repair pass, then validate the restored passage.
-        prefix = "ZXQVALUE"
-        while prefix in source:
-            prefix += "X"
-        literals = {}
-
-        def protect(match):
-            value = match.group()
-            if value in masked:
-                return value
-            marker = f"{prefix}{len(literals)}ZXQ"
-            literals[marker] = value
-            return marker
-
-        protected = _LITERALS.sub(protect, source)
+        protected, literals = protect_literals(source, masked)
         repair = (f"Translate the entire passage into Russian. Previous output failed: {rejection}. "
                   "Return the translation without surrounding quotes. Render headings, labels and country names "
                   "in Russian. Transcribe unprotected Latin-script names into Cyrillic, including standalone "
@@ -108,8 +153,6 @@ def _gemma_passage(source, masked):
         if not isinstance(candidate, str) or not candidate.strip():
             raise ValueError("Missing Russian translation")
         restored = translation_names.restore(candidate, literals)
-        if prefix in restored:
-            raise ValueError("Translation invented a protected value")
         return _checked(source, restored, masked)
 
 
