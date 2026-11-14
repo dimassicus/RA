@@ -303,10 +303,12 @@ def test_repeat_watchlist_rechecks_content_and_reuses_unchanged_work(database, m
                            roster_check=lambda *a:None)
         verification_store.process_jobs(run)
         return db.get_results(run)
+    subject['primary_industries'] = 'Agriculture, food processing'
     first, = collect([lead])
     assert not first['seen_before']
     # Existing runs store the publisher hash even if they predate the full-input fingerprint.
     database.execute("UPDATE search_results SET verification=verification-'source_key' WHERE id=%s", (first['id'],))
+    subject['primary_industries'] = 'Agriculture; food processing'
     repeated = collect([dict(lead, query='other query'), dict(lead, title=title+' later', url=lead['url']+'/missed')])
     same = next(r for r in repeated if r['url']==lead['url'])
     assert same['verification']['reused_from']==first['id']
@@ -328,3 +330,14 @@ def test_repeat_watchlist_rechecks_content_and_reuses_unchanged_work(database, m
     updated, = collect([dict(lead, title=renamed['title'])])
     assert 'reused_from' not in updated['verification']
     assert len(updated['verification']['sources']) == 2
+
+    # A newer lead can have different attachments. Use the older complete match
+    # when the publisher returns the original set, even across an RSS redirect.
+    attachments.clear()
+    restored, = collect([dict(lead, title=renamed['title'])])
+    assert restored['verification']['reused_from'] == redirected['id']
+    before = len(calls['verify'])
+    subject['primary_industries'] = 'Banking'
+    different_profile, = collect([dict(lead, title=renamed['title'])])
+    assert 'reused_from' not in different_profile['verification']
+    assert len(calls['verify']) == before + 1

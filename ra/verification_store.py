@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -55,31 +56,39 @@ def _source_key(document):
     return hashlib.sha256(json.dumps(inputs(document), sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
-def _previous_check(conn, article, url, *, publisher=False):
+def _previous_checks(conn, article, url, publisher_url):
     if not article.get('company_id') or (article.get('verification') or {}).get('status', 'pending') != 'pending':
-        return None
-    # Resolved publisher URLs also identify a direct link rediscovered through an RSS redirect.
-    match = "r.verification->>'source_url'=%s" if publisher else "r.url=%s AND r.verification->>'requested_url'=%s"
-    params = (url,) if publisher else (article['url'], url)
+        return []
+    # One publisher story may be rediscovered through several RSS redirects.
     return conn.execute("""SELECT r.*,s.subjects,s.search_settings,s.per_document_limit
         FROM search_results r JOIN search_runs s ON s.id=r.run_id
-        WHERE r.subject_key=%s AND r.company_id=%s AND r.run_id<>%s
-        AND s.status IN ('completed','partial') AND """ + match + " ORDER BY r.id DESC LIMIT 1",
-        (article['subject_key'], article['company_id'], article['run_id'], *params)).fetchone()
+        WHERE r.subject_key=%s AND r.company_id=%s AND r.run_id<%s
+        AND s.status IN ('completed','partial') AND (
+            (r.url=%s AND r.verification->>'requested_url'=%s) OR r.verification->>'source_url'=%s)
+        ORDER BY r.id DESC""",
+        (article['subject_key'], article['company_id'], article['run_id'], article['url'], url, publisher_url)).fetchall()
+
+
+def _profile_inputs(subject):
+    # List editors have stored commas, semicolons and newlines for the same entries.
+    def entries(field):
+        return frozenset(part.strip() for part in re.split(r"[,;\n](?![^()]*\))", subject.get(field) or "")
+                         if part.strip())
+    return (subject.get('id'), subject.get('name'), subject.get('short_name'), subject.get('aliases'),
+            subject.get('country_registration'), entries('primary_industries'), entries('primary_countries'),
+            entries('top_management'), entries('key_owners'))
 
 
 def _matching_check(previous, article, run, subject, document, key):
     if not previous or document.get('status') != 'available':
         return False
     prior_subject = db.evidence_subject(previous, previous)
-    identity_fields = ('id', 'name', 'short_name', 'aliases', 'country_registration', 'primary_industries',
-                       'primary_countries', 'top_management', 'key_owners')
     sources = [document, *document.get('linked_documents', [])]
     policy_changed = previous['per_document_limit'] != run['per_document_limit']
     check = previous['verification']
     if (check.get('version') != VERIFICATION_VERSION or check.get('status') not in ('supported','unmatched','needs_review')
             or (policy_changed and len(sources) > 1 and sum(len(d.get('body') or '') for d in sources) > article_translation.SOURCE_REVIEW_LIMIT)
-            or any(prior_subject.get(k) != subject.get(k) for k in identity_fields)
+            or _profile_inputs(prior_subject) != _profile_inputs(subject)
             or any(previous[field] != article[field] for field in
                    ('title','language','publisher','published_at','source_kind','discovery_summary',
                     'exposure_paths','filing_attachments','decision_followup_urls'))
@@ -129,9 +138,8 @@ def _verification(result_id, fetcher, source_url):
         url = canonical_url(source_url or article['url'])
         with db.connect() as conn:
             cached = conn.execute('SELECT * FROM article_documents WHERE url=%s', (url,)).fetchone()
-            previous = _previous_check(conn, article, url) if article.get('seen_before') else None
-            if not previous and cached and cached['document'].get('final_url'):
-                previous = _previous_check(conn, article, cached['document']['final_url'], publisher=True)
+            cached_publisher = cached['document'].get('final_url') if cached else None
+            candidates = _previous_checks(conn, article, url, cached_publisher)
         lifetime = timedelta(days=7) if cached and cached['document']['status'] == 'available' else timedelta(hours=24)
         hint = {"title": article["title"], "publisher": article["publisher"],
                 "published_at": article["published_at"].isoformat() if article["published_at"] else ""}
@@ -144,7 +152,7 @@ def _verification(result_id, fetcher, source_url):
                    and (cached['document'].get('reader_version') in ('public-source-v6', 'public-source-v8')
                         or not url.startswith(('https://dpm.vn/cong-bo-thong-tin/',
                                                'https://dpm.vn/bao-cao-tai-chinh/'))))
-        if (not previous and cached and cached['document'].get('source_hint') == hint
+        if (not candidates and cached and cached['document'].get('source_hint') == hint
                 and (cached['document'].get('reader_version') == READER_VERSION or upgrade)
                 and datetime.now(timezone.utc) - cached['fetched_at'] < lifetime):
             cache_hit = True
@@ -185,25 +193,27 @@ def _verification(result_id, fetcher, source_url):
                              'DO UPDATE SET document=EXCLUDED.document,fetched_at=now()', (url, Jsonb(document)))
         next_stage("translation_review")
         subject = db.evidence_subject(article, run)
-        if not previous and document.get('final_url') and document.get('status') == 'available':
+        publisher = document.get('final_url')
+        if publisher and publisher != cached_publisher and document.get('status') == 'available':
             with db.connect() as conn:
-                previous = _previous_check(conn, article, document['final_url'], publisher=True)
+                candidates = _previous_checks(conn, article, url, publisher)
+        source_key = _source_key(document)
+        previous = next((row for row in candidates
+                         if _matching_check(row, article, run, subject, document, source_key)), None)
         original = document
         document = article_translation.bounded_source(original, subject, company_developments.decision_notice(article),
                                                       per_document=run['per_document_limit'])
         bounded = document is not original
         if bounded:
             prior = (article.get('verification') or {}).get('review_document') or {}
-            if not prior and previous:
-                prior = previous['verification'].get('review_document') or {}
+            if not prior and candidates:
+                prior = (previous or candidates[0])['verification'].get('review_document') or {}
             prior_docs = {d.get('final_url'): d for d in [prior, *prior.get('linked_documents', [])]}
             for doc in [document, *document['linked_documents']]:
                 saved = prior_docs.get(doc.get('final_url'), {})
                 if saved.get('translation') and saved.get('body') == doc.get('body') and saved.get('language') == doc.get('language'):
                     doc['translation'] = saved['translation']
-        source_key = _source_key(original)
-        reused = _matching_check(previous, article, run, subject, original, source_key)
-        if reused:
+        if previous:
             # Signal that no source translation tasks are needed for this job.
             yield None, subject
             assessment = dict(previous['verification'])
@@ -238,7 +248,7 @@ def _verification(result_id, fetcher, source_url):
         next_stage("persistence")
         assessment['requested_url'] = url
         assessment['source_key'] = source_key
-        if reused:
+        if previous:
             assessment['reused_from'] = previous['id']
         from .bilingual import enqueue_document, enqueue_prose
         with db.connect() as conn:
@@ -248,7 +258,7 @@ def _verification(result_id, fetcher, source_url):
         with db.connect() as conn:
             score_store._lock(conn)
             current = conn.execute('SELECT verification,score_status FROM search_results WHERE id=%s FOR UPDATE', (result_id,)).fetchone()
-            if (reused and previous['score_status'] != 'reviewed' and previous['risk_factor_review'] == themes
+            if (previous and previous['score_status'] != 'reviewed' and previous['risk_factor_review'] == themes
                     and previous['event_draft'].get('event') and previous['title_en'] == article['title_en']
                     and not article.get('decision_followup_urls') and current['score_status'] != 'reviewed'):
                 enqueue_prose(conn, previous['event_draft'], subject, run['id'])
