@@ -83,7 +83,7 @@ def test_gemma_precedes_google_backup_and_preserves_currency(monkeypatch, genera
 
 def test_repair_protects_original_amount_and_rechecks_result(generate):
     generate.side_effect = [
-        {"russian": "Сумма составила 100 000 долларов."},
+        {"russian": "Сумма составила 101 000 долларов."},
         {"russian": "Сумма составила ZXQVALUE0ZXQ долларов."},
     ]
     assert russian.translate("The total was $100,000.") == "Сумма составила 100,000 долларов."
@@ -131,3 +131,22 @@ def test_compound_interest_and_currency_code_protection(generate):
         russian._checked(source, output.replace('14.0%', '14.0'), {})
     protected, literals = russian.protect_literals('Profit reached VND 1,445 billion.', {})
     assert 'VND' not in protected and 'VND' in literals.values()
+
+
+def test_russian_number_format_is_restored_before_retry(generate):
+    generate.return_value = {"russian": "Долг вырос на +2,1% до 17\u202f650,50 млрд VND."}
+    assert russian.translate("Debt rose +2.1% to VND 17,650.50 billion.") == (
+        "Долг вырос на +2.1% до 17,650.50 млрд VND.")
+    generate.assert_called_once()
+
+
+@pytest.mark.parametrize(("source", "result"), [
+    ("Profit was 1.234.", "Прибыль составила 1,234."),
+    ("Debt rose +2.1%.", "Долг вырос на -2,1%."),
+    ("Profit was 17,600.", "Прибыль составила 17 601."),
+    ("Yield was 2.1%.", "Доходность составила 2,10%."),
+    ("Received 2.1 million euros.", "Получено 2,1 миллиарда евро."),
+])
+def test_format_repair_rejects_ambiguous_or_changed_values(source, result):
+    with pytest.raises(ValueError):
+        russian._checked(source, result, {})

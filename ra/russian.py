@@ -14,6 +14,13 @@ _NUMBERS = re.compile(r"[-+−]?\d+(?:[.,]\d+)*")
 _LITERALS = re.compile(r"ZXQ[A-Z]*\d+ZXQ|\b(?:USD|VND|BRL|EUR|TRY|IDR|RUB|KRW)\b|" + _IDENTIFIERS.pattern + "|" + _NUMBERS.pattern)
 _RUSSIAN = re.compile(r"[А-Яа-яЁё]")
 
+FINANCIAL_INSTRUCTIONS = (
+    "Keep tickers and quarter codes in Latin script. Keep currency codes verbatim, including VND. "
+    "Use Russian word order for dates and amounts, but retain the original digits and punctuation inside "
+    "each number (17,600 billion VND = 17,600 млрд VND). Explicitly state the currency of a loss or gain. "
+    "For a return measured over a period, use за период; over ten years means за десять лет. "
+    "Render compounded annual returns as годовых с учётом капитализации. ")
+
 
 # Market data sometimes arrives with HTML table cells concatenated into one line.
 _TABLE_WORDS = {
@@ -58,6 +65,8 @@ def _checked(source, result, names):
         raise ValueError("Missing Russian translation")
     if Counter(re.findall(r"ZXQ[A-Z]*\d+ZXQ", source)) != Counter(re.findall(r"ZXQ[A-Z]*\d+ZXQ", result)):
         raise ValueError("Translation changed a protected value")
+    if Counter(_NUMBERS.findall(source)) != Counter(_NUMBERS.findall(result)):
+        result = _restore_number_format(source, result)
     for pattern in (_NUMBERS, _IDENTIFIERS):
         if Counter(pattern.findall(source)) != Counter(pattern.findall(result)):
             raise ValueError("Translation changed a number or identifier")
@@ -81,6 +90,25 @@ def _checked(source, result, names):
         if len(re.findall(unit, source, re.I)) != len(re.findall(unit, result, re.I)):
             raise ValueError("Translation changed a magnitude or percentage")
     return translation_names.restore(result.strip(), names)
+
+
+def _restore_number_format(source, result):
+    # Only restore unambiguous English financial literals. A lone comma before three digits is ambiguous.
+    forms = {}
+    originals = set(_NUMBERS.findall(source))
+    for value in originals:
+        if not re.fullmatch(r"[-+−]?(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d+)", value):
+            continue
+        if "," not in value and len(value.split(".")[1]) == 3:
+            continue
+        form = value.replace(",", " ").replace(".", ",")
+        if form not in originals:
+            forms[form] = value
+    if not forms:
+        return result
+    # Match whole numbers, outside identifiers, URLs and dates. Recheck every original counter afterwards.
+    token = r"(?<![\w/.,+−-])[-+−]?\d+(?:[ \u00a0\u202f]\d{3}\b)*(?:[.,]\d+)*(?![\w/]|[.,]\d)"
+    return re.sub(token, lambda m: forms.get(" ".join(m[0].split()), m[0]), result)
 
 
 @lru_cache(maxsize=2048)
@@ -135,7 +163,7 @@ def _gemma_passage(source, masked):
     instruction = (
         "Translate the complete passage into Russian. Preserve credit meaning, negation, units and uncertainty. "
         "Copy identifiers, URLs, numbers (including signs and separators), names and ZXQ placeholders exactly. "
-        "Return an empty string if unable to translate the whole passage faithfully.")
+        + FINANCIAL_INSTRUCTIONS + "Return an empty string if unable to translate the whole passage faithfully.")
     schema = keywords.object_schema({"russian": {"type": "string"}})
     result = keywords.model_json(instruction, source, schema, model=local_models.GEMMA)
     try:
@@ -145,9 +173,13 @@ def _gemma_passage(source, masked):
         protected, literals = protect_literals(source, masked)
         repair = (f"Translate the entire passage into Russian. Previous output failed: {rejection}. "
                   "Return the translation without surrounding quotes. Render headings, labels and country names "
-                  "in Russian. Transcribe unprotected Latin-script names into Cyrillic, including standalone "
-                  "brands and company names. Preserve every ZXQ marker verbatim once. Keep the currency, scale, "
-                  "time convention, credit meaning, and uncertainty. Never add new numbers or examples.")
+                  "in Russian. Transcribe standalone brand names into Cyrillic. Copy every ZXQ marker verbatim "
+                  "once. Keep the scale, credit meaning and uncertainty. Never add new numbers or examples. "
+                  + FINANCIAL_INSTRUCTIONS)
+        if "currency" in str(rejection):
+            repair += (" The previous translation lost or changed a currency. Use the ISO code explicitly "
+                       "for each source currency, including currencies in hyphenated adjectives: "
+                       + ", ".join(sorted(_currencies(source))))
         result = keywords.model_json(repair, protected, schema, model=local_models.GEMMA)
         candidate = result["russian"]
         if not isinstance(candidate, str) or not candidate.strip():

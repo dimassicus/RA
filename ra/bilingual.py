@@ -146,7 +146,8 @@ def warm_short_passages(rows):
     try:
         answer = russian.keywords.model_json(
             "Translate each independent English passage into Russian under its own key. "
-            "Preserve all names, numbers, identifiers, currencies, units and negations. Never move text between keys.",
+            "Preserve all names, numbers, identifiers, currencies, units and negations. Never move text between keys. "
+            + russian.FINANCIAL_INSTRUCTIONS,
             items, russian.keywords.object_schema({label: {"type": "string"} for label in items}),
             model=russian.local_models.GEMMA)
     except (OSError, RuntimeError, ValueError, KeyError, TypeError, IndexError):
