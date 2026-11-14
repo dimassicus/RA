@@ -36,7 +36,15 @@ def _checked(source, result, names):
     # In English headlines "won" can be a verb, even without any financial amount.
     if changed_currencies - {"KRW"} or ("KRW" in changed_currencies and re.search(r"KRW|₩", source + result)):
         raise ValueError("Translation changed a currency")
-    for unit in (*SCALES.values(), r"%|\bpercent(?:ages?)?\b|\bпроцент\w*"):
+    # Russian проценты can also mean interest. Count percentage units on amounts.
+    percent = r"%|\bpercent(?:ages?)?\b"
+    if re.search(r"\binterest\b", source, re.I):
+        percent += r"|(?<=\d)\s*процент\w*\b"
+    else:
+        percent += r"|\bпроцент\w*"
+    million = SCALES['million'] + r"|(?<=\d)m\b|\bmln\b|(?<=\d)\s*(?:mi|εκ)\b"
+    billion = SCALES['billion'] + r"|(?<=\d)b\b|\bbln\b|(?<=\d)\s*bi\b"
+    for unit in (million, billion, percent):
         if len(re.findall(unit, source, re.I)) != len(re.findall(unit, result, re.I)):
             raise ValueError("Translation changed a magnitude or percentage")
     return translation_names.restore(result.strip(), names)
@@ -46,7 +54,10 @@ def _checked(source, result, names):
 def _passage(source, names):
     # Failures raise so that a retry after model installation can succeed.
     masked = dict(names)
-    if not re.search(r"[A-Za-z]", source) or source in masked or _IDENTIFIERS.fullmatch(source):
+    unprotected = source
+    for marker in masked:
+        unprotected = unprotected.replace(marker, "")
+    if not re.search(r"[A-Za-z]", unprotected) or _IDENTIFIERS.fullmatch(source):
         return translation_names.restore(source, masked)
     try:
         return _gemma_passage(source, masked)

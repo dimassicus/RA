@@ -105,3 +105,12 @@ def test_currency_prefix_and_plural_percentages(generate):
 def test_truncated_issuer_name_preserves_only_verified_prefix(generate):
     assert russian.translate("ACME INDUSTRIES ...", "Acme Industries Limited") == "ACME INDUSTRIES ..."
     generate.assert_not_called()
+
+
+def test_interest_amount_abbreviations_and_publisher_names(generate):
+    assert russian._checked("Euro2day: interest on EUR 3.1m", "Euro2day: проценты на сумму 3.1 млн евро", {})
+    assert russian._checked("Interest rate of 5 percent", "Процентная ставка 5 процентов", {})
+    with pytest.raises(ValueError, match="magnitude"):
+        russian._checked("Interest rate of 5 percent", "Проценты по ставке 5", {})
+    assert russian.translate("## Acme", "Acme") == "## Acme"
+    generate.assert_not_called()
