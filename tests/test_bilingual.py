@@ -22,7 +22,7 @@ def test_both_views_and_export_share_one_scored_record(database, monkeypatch, sc
                     summary: 'Компания пропустила платёж.',
                     brief: 'Компания сообщила кредиторам о пропущенном платеже.'}
     calls = []
-    def translator(text, subject):
+    def translator(text, subject, **kwargs):
         calls.append(text)
         return translations.get(text, 'Переведено для теста')
     monkeypatch.setattr(bilingual.russian, 'checked_translation', translator)
@@ -119,7 +119,7 @@ def test_moscow_cutoff_restores_only_eligible_work_and_archives_stay_read_only(d
         assert 'Ожидает перевода' in i18n.ru('New detail')
     assert not database.execute("SELECT 1 FROM result_translations WHERE source='Archive-only miss'").fetchone()
     calls = []
-    monkeypatch.setattr(bilingual.russian, 'checked_translation', lambda text, subject: calls.append(text) or 'Перевод')
+    monkeypatch.setattr(bilingual.russian, 'checked_translation', lambda text, subject, **kw: calls.append(text) or 'Перевод')
     while bilingual.process_one():
         pass
     assert {'New filing', 'Shared summary', 'New detail'} <= set(calls)
@@ -131,12 +131,12 @@ def test_repeated_invalid_russian_stops_but_service_outage_can_retry(database, m
     subject = {'name': 'Acme'}
     run_id = db.create_run('one_off', [subject])
     bilingual.enqueue(database, 'An item for review', run_id=run_id)
-    def fail(*args):
+    def fail(*args, **kw):
         raise OSError("offline")
     monkeypatch.setattr(bilingual.russian, 'checked_translation', fail)
     assert bilingual.process_one()
     assert database.execute('SELECT russian_rejections FROM result_translations').fetchone()['russian_rejections'] == 0
-    def reject(*args):
+    def reject(*args, **kw):
         raise ValueError("Translation changed a currency")
     monkeypatch.setattr(bilingual.russian, 'checked_translation', reject)
     for _ in range(3):
@@ -153,8 +153,28 @@ def test_display_worker_waits_for_paused_run(database, monkeypatch):
     run_id = db.create_run('selected', [{'name': 'Acme'}])
     bilingual.enqueue(database, 'A pending translation', run_id=run_id)
     database.execute("UPDATE search_runs SET paused=TRUE WHERE id=%s", (run_id,))
-    monkeypatch.setattr(bilingual.russian, 'checked_translation', lambda *args: 'Готово')
+    monkeypatch.setattr(bilingual.russian, 'checked_translation', lambda *args, **kw: 'Готово')
     assert not bilingual.process_one()
     database.execute("UPDATE search_runs SET paused=FALSE WHERE id=%s", (run_id,))
     assert bilingual.process_one()
     assert database.execute("SELECT russian FROM result_translations").fetchone()['russian'] == 'Готово'
+
+
+def test_short_batch_validates_each_key_and_reuses_passages_after_restart(database, monkeypatch):
+    run_id = db.create_run('selected', [{'name':'Issuer'}])
+    for source in ('Debt rose 5%', 'Revenue fell 7%'):
+        bilingual.enqueue(database, source, run_id=run_id)
+    calls = []
+    def generate(prompt, data, schema, **kwargs):
+        calls.append(data)
+        if isinstance(data, dict):
+            return {k: ('Долг вырос на 5%' if v.startswith('Debt') else 'Выручка упала на 9%') for k,v in data.items()}
+        assert data == 'Revenue fell 7%'
+        return {'russian':'Выручка упала на 7%'}
+    monkeypatch.setattr(bilingual.russian.keywords,'model_json',generate)
+    assert bilingual.process_one(batch_size=8)
+    bilingual.russian._passage.cache_clear()
+    bilingual.enqueue(database, 'Debt rose 5%\nRevenue fell 7%', run_id=run_id)
+    assert bilingual.process_one(batch_size=8)
+    assert database.execute("SELECT russian FROM result_translations WHERE source LIKE %s", ('%\n%',)).fetchone()['russian'] == 'Долг вырос на 5%\nВыручка упала на 7%'
+    assert len(calls)==2

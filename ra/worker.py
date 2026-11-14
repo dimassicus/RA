@@ -94,7 +94,7 @@ def _work_loop():
             if db.run_paused(run_id):
                 continue
             # The verification and event workers consume the durable queues after discovery.
-            process_run(run_id)
+            process_run(run_id, prefetch=True)
         except Exception as exc:
             with db.connect() as conn:
                 conn.execute(
@@ -184,21 +184,21 @@ def _save_leads(run_id, subject, subject_key, articles, settings, company_progre
     return count
 
 
-def process_run(run_id: int, searcher=search_company, topic_searcher=None, roster_check=governance_roster.check):
+def process_run(run_id: int, searcher=search_company, topic_searcher=None, roster_check=governance_roster.check, *, prefetch=False):
     # A paused iterator keeps the current company's collected leads and exact next query.
     # The database company checkpoints also support recovery after a server restart.
     if db.run_paused(run_id):
         return
     steps = _suspended.pop(run_id, None)
     if steps is None:
-        steps = _discover(run_id, searcher, topic_searcher, roster_check)
+        steps = _discover(run_id, searcher, topic_searcher, roster_check, prefetch)
     for _ in steps:
         if db.run_paused(run_id):
             _suspended[run_id] = steps
             return
 
 
-def _discover(run_id, searcher, topic_searcher, roster_check):
+def _discover(run_id, searcher, topic_searcher, roster_check, prefetch):
     run = db.get_run(run_id)
     if run is None or run["status"] not in ("queued", "running"):
         return
@@ -350,6 +350,9 @@ def _discover(run_id, searcher, topic_searcher, roster_check):
                 conn.execute("""UPDATE search_runs SET error_count=(SELECT count(*) FROM search_errors WHERE run_id=%s)
                     + (SELECT count(DISTINCT subject_key) FROM rss_recovery WHERE run_id=%s AND status<>'recovered')
                     WHERE id=%s""",(run_id,run_id,run_id))
+        if prefetch and batch_rss and saved_count:
+            from .verification_store import prefetch_company
+            prefetch_company(run_id, subject_key)
         yield
         time.sleep(0.25)
     # Publish completion and the source queue before RSS recovery or drafting can take the run.

@@ -1,7 +1,9 @@
 """Durable display translations, independent of source verification and scoring."""
 import hashlib
+import json
 import logging
 import threading
+import time
 from functools import lru_cache
 
 from . import db, russian, translation_names
@@ -104,18 +106,88 @@ def restore_run_queue(conn):
             enqueue_document(conn, doc, subject, run['id'])
 
 
-def process_one():
-    from .article_translation import passages
-    from .translation import translate_text
+def passage_key(source, names):
+    return key(json.dumps([source, names], ensure_ascii=False), "ru-display-v1")
+
+
+def saved_passage(source, names):
+    digest = passage_key(source, names)
+    with db.connect() as conn:
+        row = conn.execute("SELECT russian FROM russian_display_passages WHERE key=%s", (digest,)).fetchone()
+    if row:
+        return row["russian"]
+    result = russian._passage(source, names)
+    with db.connect() as conn:
+        conn.execute("INSERT INTO russian_display_passages VALUES (%s,%s) ON CONFLICT DO NOTHING", (digest, result))
+    return result
+
+
+def warm_short_passages(rows):
+    # Only send single short passages to Gemma. Validate each keyed response independently.
+    candidates = {}
+    for row in rows:
+        source = row["english"]
+        if row["russian"] or not source or len(source) > 160 or "\n" in source or source.strip() != source:
+            continue
+        masked, names = translation_names.mask(source, row['subject'])
+        if not masked.isascii() or "..." in masked or "ZXQ" in masked or not any(c.isalpha() for c in masked):
+            continue
+        digest = passage_key(masked, tuple(names.items()))
+        candidates[digest] = masked
+    if len(candidates) < 2:
+        return
+    with db.connect() as conn:
+        for hit in conn.execute("SELECT key FROM russian_display_passages WHERE key=ANY(%s)", (list(candidates),)):
+            candidates.pop(hit['key'])
+    if len(candidates) < 2:
+        return
+    items = {f"text_{i}": value for i, value in enumerate(candidates.values())}
+    try:
+        answer = russian.keywords.model_json(
+            "Translate each independent English passage into Russian under its own key. "
+            "Preserve all names, numbers, identifiers, currencies, units and negations. Never move text between keys.",
+            items, russian.keywords.object_schema({label: {"type": "string"} for label in items}),
+            model=russian.local_models.GEMMA)
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError, IndexError):
+        return
+    with db.connect() as conn:
+        for (digest, source), label in zip(candidates.items(), items):
+            try:
+                localized = russian._checked(source, answer[label], {})
+            except (ValueError, KeyError, TypeError, IndexError):
+                continue
+            conn.execute("INSERT INTO russian_display_passages VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                         (digest, localized))
+
+
+def process_one(*, batch_size=1):
     # Lease before inference. A killed worker releases its job when the lease expires.
     with db.connect() as conn:
-        row = conn.execute("""UPDATE result_translations SET retry_at=now()+interval '15 minutes'
-            WHERE key=(SELECT key FROM result_translations WHERE run_id IN (
+        rows = conn.execute("""UPDATE result_translations SET retry_at=now()+interval '15 minutes'
+            WHERE key IN (SELECT key FROM result_translations WHERE run_id IN (
                        SELECT s.id FROM search_runs s JOIN display_translation_runs eligible USING (id) WHERE NOT s.paused)
                        AND (english='' OR russian='') AND russian_rejections<3 AND retry_at<=now()
-                       ORDER BY retry_at,key LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *""").fetchone()
-    if not row:
+                       ORDER BY retry_at,key LIMIT %s FOR UPDATE SKIP LOCKED) RETURNING *""", (batch_size,)).fetchall()
+    if not rows:
         return False
+    started = time.monotonic()
+    if batch_size > 1:
+        warm_short_passages(rows)
+    for row in rows:
+        if batch_size > 1 and db.run_paused(row["run_id"]):
+            with db.connect() as conn:
+                conn.execute("UPDATE result_translations SET retry_at=now() WHERE key=%s AND retry_at=%s",
+                             (row["key"], row["retry_at"]))
+            continue
+        process_row(row)
+    log.info("display_batch runs=%s rows=%s seconds=%.3f", sorted({r["run_id"] for r in rows}), len(rows),
+             time.monotonic() - started)
+    return True
+
+
+def process_row(row):
+    from .article_translation import passages
+    from .translation import translate_text
     english, localized = row['english'], row['russian']
     if not english:
         chunks = [translate_text(part, row['language'], row['subject'])[0]
@@ -125,7 +197,7 @@ def process_one():
     rejections, error = row['russian_rejections'], row['russian_error']
     if not localized and english:
         try:
-            localized = russian.checked_translation(english, row['subject'])
+            localized = russian.checked_translation(english, row['subject'], translate_passage=saved_passage)
             rejections, error = 0, ''
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             rejections += 1
@@ -140,13 +212,12 @@ def process_one():
             conn.execute("""UPDATE result_translations SET english=%s,russian=%s,russian_rejections=%s,russian_error=%s
                 WHERE key=%s AND retry_at=%s AND english=%s AND russian=%s""",
                 (english, localized, rejections, error, row['key'], row['retry_at'], row['english'], row['russian']))
-    return True
 
 
 def _loop():
     while True:
         try:
-            if process_one():
+            if process_one(batch_size=8):
                 continue
         except Exception:
             log.exception('Display translation failed; queued for retry')

@@ -111,7 +111,7 @@ def group_replacements(parts, replacements, language):
     return grouped, review
 
 
-def review_parts(parts, language):
+def review_parts(parts, language, after_batch=None):
     slots = local_models.REVIEW_SLOTS
     for index in range(0, len(parts), slots):
         group = parts[index:index + slots]
@@ -119,6 +119,8 @@ def review_parts(parts, language):
                                                 p.get('review', {}).get('reason', '')) for p in group])
         for part, review in zip(group, reviews, strict=True):
             part['review'] = review
+        if after_batch:
+            after_batch()
         if any(review.get('status') == 'unavailable' for review in reviews):
             break
 
@@ -172,7 +174,8 @@ def prepare_steps(document, subject=None, *, checkpoint=None):
     if checkpoint:
         checkpoint(result)
     yield local_models.QWEN
-    review_parts([p for p in parts if not faithful(p) and p.get('english')], language)
+    save_reviews = (lambda: checkpoint(result)) if checkpoint else None
+    review_parts([p for p in parts if not faithful(p) and p.get('english')], language, save_reviews)
     # Give rejected local candidates one independent translation and a fresh Qwen review.
     rejected = [p for p in parts if p.get('provider') != 'Google public translation'
                 and p.get('review', {}).get('status') in ('material_error', 'uncertain')]
@@ -191,7 +194,7 @@ def prepare_steps(document, subject=None, *, checkpoint=None):
         if checkpoint:
             checkpoint(result)
         yield local_models.QWEN
-    review_parts(replacements, language)
+    review_parts(replacements, language, save_reviews)
     checked = sum(faithful(p) for p in parts)
     scope = 'Source excerpt' if document.get('excerpt') else 'Full-article'
     result.update(status='faithful' if checked == len(parts) else 'needs_review',

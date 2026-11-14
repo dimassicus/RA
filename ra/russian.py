@@ -113,7 +113,7 @@ def _gemma_passage(source, masked):
         return _checked(source, restored, masked)
 
 
-def checked_translation(text, subject=None):
+def checked_translation(text, subject=None, *, translate_passage=None):
     """Translate every passage or raise the failure so the queue can distinguish rejection from outage."""
     output = []
     for line in re.split(r"(\s*\n\s*)", text):
@@ -130,7 +130,7 @@ def checked_translation(text, subject=None):
                 parts.append(source)
                 continue
             masked, names = translation_names.mask(source, subject)
-            parts.append(_passage(masked, tuple(names.items())))
+            parts.append((translate_passage or _passage)(masked, tuple(names.items())))
         output.append(" ".join(parts))
     return "".join(output)
 

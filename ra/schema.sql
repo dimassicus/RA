@@ -358,3 +358,10 @@ CREATE TABLE IF NOT EXISTS rss_search_windows (
     PRIMARY KEY (run_id, subject_key, query, edition, start_at, end_at)
 );
 CREATE INDEX IF NOT EXISTS rss_search_windows_lookup ON rss_search_windows (subject_key,end_at);
+
+ALTER TABLE article_documents ADD COLUMN IF NOT EXISTS prefetched_result_id bigint;
+
+CREATE TABLE IF NOT EXISTS russian_display_passages (
+    key text PRIMARY KEY,
+    russian text NOT NULL
+);

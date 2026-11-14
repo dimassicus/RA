@@ -264,7 +264,7 @@ def test_batch_rss_covers_only_gaps_and_perplexity_keeps_full_window(database, m
     monkeypatch.setattr(disclosures, 'collect', lambda *a, **kw: ([], []))
     monkeypatch.setattr(idx_filings, 'collect', lambda *a, **kw: ([], []))
     monkeypatch.setattr(search.news_apis, 'configured_providers', lambda: [])
-    monkeypatch.setattr(search, 'planned_feeds', lambda subject, window, focus: [(q, '', window) for q in feeds])
+    monkeypatch.setattr(search, 'planned_feeds', lambda subject, window, focus, **kw: [(q, '', window) for q in feeds])
     monkeypatch.setattr(perplexity, 'collect', lambda subject, span, *a, **kw: (paid.append(span) or [], []))
     def run(lo, hi):
         rid = db.create_run('all', [subject], window_start=lo, window_end=hi)
@@ -305,3 +305,40 @@ def test_context_feed_filters_provider_overflow_at_exact_boundary():
             rss_covered={(key,query,edition):[saved]},rss_done=done)
     assert done==[(key,query,edition,(saved[1]+rss_windows.TICK,end))]
     assert [row['url'] for row,_ in hits]==['https://news.test/1']
+
+
+def test_grouped_feeds_keep_original_gaps_and_replay_capped_feed(monkeypatch):
+    from ra import disclosures, idx_filings, search_settings
+    from datetime import datetime, timezone
+    from urllib.parse import parse_qs, urlsplit
+    end = datetime.now(timezone.utc)
+    bounds = end - timedelta(hours=1), end
+    pair = ['"Issuer" ("default")', '"Issuer" ("late payment")']
+    candidates = [(q, '', bounds) for q in pair]
+    languages = {(q, ''): 'en' for q in pair}
+    other = '"Issuer" ("impago")'
+    assert len(search.grouped_feeds([*candidates, (other, '', bounds), (pair[0], '', (end,end))],
+                                    {**languages,(other,''):'es'})) == 3
+
+    def plan(subject, span, focus, **options):
+        options['languages'].update(languages)
+        return candidates
+    calls = []
+    def read(url):
+        query = parse_qs(urlsplit(url).query)['q'][0]
+        calls.append(query)
+        if len(calls) == 1:
+            return b'<rss><channel>' + b'<item/>' * 100 + b'</channel></rss>'
+        if 'late payment' in query:
+            raise rss_gate.Deferred('cooldown')
+        return b'<rss/>'
+    monkeypatch.setattr(search,'planned_feeds',plan)
+    monkeypatch.setattr(disclosures,'collect',lambda *a,**kw:([],[]))
+    monkeypatch.setattr(idx_filings,'collect',lambda *a,**kw:([],[]))
+    monkeypatch.setattr(search.news_apis,'configured_providers',lambda:[])
+    done, deferred = [], []
+    search.search_company({'id':12,'name':'Issuer','country_registration':''},fetcher=read,provider_window=bounds,
+                          rss_covered={},rss_done=done,on_deferred=lambda *args:deferred.append(args),
+                          settings={**search_settings.for_run({}),'use_perplexity':False,'use_google':False})
+    assert len(calls)==3 and '"default" OR "late payment"' in calls[0]
+    assert done == [('12',pair[0],'',bounds)] and deferred == [(pair[1],'',bounds)]

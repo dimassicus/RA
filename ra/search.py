@@ -118,7 +118,7 @@ def search_queries(subject: dict) -> list[str]:
     return queries[:3]
 
 
-def governance_searches(subject):
+def governance_searches(subject, languages=None):
     """Short queries per language avoid the feed silently dropping long OR lists."""
     country = subject.get("country_registration", "")
     lang = LOCALES.get(normalized(country), ("en",))[0].split("-")[0]
@@ -135,6 +135,7 @@ def governance_searches(subject):
     factors = risk_factors.active("company")
     for code, edition in editions:
         # Prefer a reviewed local-script alias when the register uses another alphabet.
+        first = len(plans)
         script = {"el": r"[Α-ω]", "ar": r"[ء-ي]", "ru": r"[А-я]"}.get(code)
         anchor = next((n for n in names if script and re.search(script, n)), names[0])
         if code == lang:
@@ -162,6 +163,8 @@ def governance_searches(subject):
             if terms:
                 expression = " OR ".join(f'"{term}"' for term in terms)
                 plans.append((f'"{anchor}" ({expression})', edition))
+        if languages is not None:
+            languages.update(dict.fromkeys(plans[first:], code))
     # Official notices often name the issuer without using a governance keyword.
     region = LOCALES.get(normalized(country), ("", ""))[1]
     domains = {
@@ -201,7 +204,7 @@ def query_groups(expressions, limit=8, max_chars=320):
         yield "(" + " OR ".join(batch) + ")"
 
 
-def adverse_searches(subject):
+def adverse_searches(subject, languages=None):
     """Company/related-person adverse searches, independent of governance-change switches."""
     from .exposure import topic_editions
     from .model_store import country_languages, EXCLUDED_LANGUAGES
@@ -226,6 +229,7 @@ def adverse_searches(subject):
     anchors = list(query_groups([*companies, *people], limit=6))
     plans = []
     for code, edition in dict.fromkeys(editions):
+        first = len(plans)
         terms = keywords.adverse_search_terms(code)
         # A quoted shorter phrase already retrieves its longer literal expansions.
         # Keep every phrase in the catalog, while avoiding redundant feed requests.
@@ -238,10 +242,12 @@ def adverse_searches(subject):
         # Title queries find unnamed executives/owners, always with company context.
         for roles in query_groups([quote(term) for term in keywords.person_title_terms(code)]):
             plans.extend((f"{anchor} {roles}", edition) for anchor in query_groups(companies, limit=6))
+        if languages is not None:
+            languages.update(dict.fromkeys(plans[first:], code))
     return list(dict.fromkeys(plans))
 
 
-def company_search_plan(subject):
+def company_search_plan(subject, languages=None):
     country = subject.get("country_registration", "")
     editions = [country]
     if LOCALES.get(normalized(country), ("en",))[0].split("-")[0] != "ru":
@@ -249,7 +255,7 @@ def company_search_plan(subject):
     if LOCALES.get(normalized(country), ("en",))[0].split("-")[0] != "en":
         editions.append("")
     return list(dict.fromkeys([(q, edition) for q in search_queries(subject) for edition in editions]
-                             + governance_searches(subject) + adverse_searches(subject)))
+                             + governance_searches(subject, languages) + adverse_searches(subject, languages)))
 
 
 def feed_url(query: str, country: str, *, window=None, rolling=False) -> tuple[str, str]:
@@ -409,7 +415,7 @@ def heringer_official_notices(fetcher=fetch_json_post, year: int | None = None, 
     return articles
 
 
-def planned_feeds(subject, window, adverse_focus=False):
+def planned_feeds(subject, window, adverse_focus=False, *, languages=None):
     # Split broad name searches: one capped RSS feed cannot cover months of news.
     name_queries = set(search_queries(subject))
     windows = [window]
@@ -421,7 +427,7 @@ def planned_feeds(subject, window, adverse_focus=False):
             stop = min(start + step, end)
             windows.append((start, stop))
             start = stop
-    plan = company_search_plan(subject)
+    plan = company_search_plan(subject) if languages is None else company_search_plan(subject, languages)
     if adverse_focus:
         filing_query = search_queries(subject)[0] + ' ("exchange inquiry" OR "unusual trading" OR "material disclosure" OR "audit committee change")'
         plan = [(filing_query, subject.get("country_registration", "")), *plan]
@@ -439,13 +445,38 @@ def search_company(subject, fetcher=fetch_feed, official_fetcher=fetch_json_post
             return finished.value
 
 
-def _company_feed(fetcher, query, edition, bounds, subject, rolling=False):
+def grouped_feeds(queries, languages):
+    """Combine literal alternatives under the same issuer anchor, language, edition and gap."""
+    requests, open_groups = [], {}
+    for query, edition, bounds in queries:
+        code = languages.get((query, edition))
+        match = re.fullmatch(r'(.+) \(("[^"]+"(?: OR "[^"]+")*)\)', query) if code else None
+        if not match:
+            requests.append([query, edition, bounds, [query]])
+            continue
+        anchor, terms = match[1], match[2]
+        key = anchor, code, edition, bounds
+        group = open_groups.get(key)
+        combined = group[0][:-1] + " OR " + terms + ")" if group else ""
+        if group and len(combined) <= 360 and combined[len(anchor):].count(" OR ") < 16:
+            group[0] = combined
+            group[3].append(query)
+        else:
+            group = [query, edition, bounds, [query]]
+            requests.append(group)
+            open_groups[key] = group
+    return requests
+
+
+def _company_feed(fetcher, query, edition, bounds, subject, rolling=False, *, grouped=False):
     url, language = feed_url(query, edition, window=bounds, rolling=rolling)
     if fetcher is fetch_feed:
         probe = feed_url('"' + provider_name(subject) + '"', edition, window=bounds)[0]
         raw = fetcher(url, probe=probe)
     else:
         raw = fetcher(url)
+    if grouped and len(raw) <= 2_000_000 and len(ElementTree.fromstring(raw).findall("./channel/item")) >= 100:
+        return None  # A full combined feed can hide results from its individual queries.
     return parse_feed(raw, query, language, limit=100, window=bounds)
 
 
@@ -517,39 +548,55 @@ def search_company_steps(subject, fetcher=fetch_feed, official_fetcher=fetch_jso
     from . import google_discovery, perplexity, search_settings
     settings = settings or search_settings.for_run({})
     adverse_focus = settings.get("adverse_only", False)
-    queries = planned_feeds(subject, span if rss_covered is not None else window, adverse_focus)
-    if rss_covered is not None:
+    languages = {}
+    if rss_covered is None:
+        queries = planned_feeds(subject, window, adverse_focus)
+    else:
+        plan = planned_feeds(subject, span, adverse_focus, languages=languages)
         key = str(subject['id'])
-        queries = [(q, edition, gap) for q, edition, bounds in queries
+        queries = [(q, edition, gap) for q, edition, bounds in plan
                    for gap in rss_windows.gaps(bounds, rss_covered.get((key, q, edition), ()))]
-    # Keep a single feed in flight across the next checkpoint; consume in plan order.
+    requests = grouped_feeds(queries, languages)
+
+    def read(request):
+        query, edition, bounds, members = request
+        return _company_feed(fetcher, query, edition, bounds, subject, rss_covered is not None,
+                             grouped=len(members) > 1)
+
     with (ThreadPoolExecutor(max_workers=2) if fetcher is fetch_feed else nullcontext()) as pool:
         pending = {}
-        for index, (query, edition, bounds) in enumerate(queries):
+        for index, (query, edition, bounds, members) in enumerate(requests):
             yield
             if progress:
-                progress(f"Searching company news · query {index + 1} of {len(queries)}", index, len(queries))
+                progress(f"Searching company news · query {index + 1} of {len(requests)}", index, len(requests))
             try:
                 if pool:
-                    for i in range(index, min(index + 2, len(queries))):
+                    for i in range(index, min(index + 2, len(requests))):
                         if i not in pending:
-                            pending[i] = pool.submit(_company_feed, fetcher, *queries[i], subject, rss_covered is not None)
+                            pending[i] = pool.submit(read, requests[i])
                     hits = pending.pop(index).result()
                 else:
-                    hits = _company_feed(fetcher, query, edition, bounds, subject, rss_covered is not None)
+                    hits = read(requests[index])
+                if hits is None:
+                    requests.extend([member, edition, bounds, [member]] for member in members)
+                    continue
                 if rss_done is not None:
-                    rss_done.append((str(subject['id']), query, edition, bounds))
+                    rss_done.extend((str(subject['id']), member, edition, bounds) for member in members)
                 for article in hits:
                     if article["url"] not in seen_urls:
                         seen_urls.add(article["url"])
                         articles.append(article)
             except rss_gate.Deferred as exc:
                 if on_deferred:
-                    on_deferred(query, edition, bounds)
+                    for member in members:
+                        on_deferred(member, edition, bounds)
                 elif str(exc) not in errors:
                     errors.append(str(exc))
             except Exception as exc:
-                errors.append(f"{query}: {type(exc).__name__}: {exc}")
+                if len(members) > 1:
+                    requests.extend([member, edition, bounds, [member]] for member in members)
+                else:
+                    errors.append(f"{query}: {type(exc).__name__}: {exc}")
     from .article_content import canonical_url
     yield
     extra, gaps = (perplexity.collect(subject, span, articles, progress, adverse_focus=adverse_focus)

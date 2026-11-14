@@ -30,7 +30,7 @@ def test_pause_between_queries_and_resume_same_leads(database, monkeypatch, scop
     monkeypatch.setattr(worker, 'enqueue', queue.append)
     monkeypatch.setattr(worker, '_suspended', {})
     monkeypatch.setattr(worker, 'plan_subjects', lambda subjects, _: subjects)
-    monkeypatch.setattr(search, 'planned_feeds', lambda subject, window, focus: [('first', '', window), ('second', '', window)])
+    monkeypatch.setattr(search, 'planned_feeds', lambda subject, window, focus, **kw: [('first', '', window), ('second', '', window)])
     monkeypatch.setattr(disclosures, 'collect', lambda *args, **kwargs: ([], []))
     monkeypatch.setattr(search.news_apis, 'configured_providers', lambda: [])
     monkeypatch.setattr(search, 'has_uk_presence', lambda _: False)

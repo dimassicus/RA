@@ -1,6 +1,7 @@
 """Cached source evidence, a durable user-initiated queue and grouping corrections."""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import logging
@@ -119,6 +120,108 @@ def _matching_check(previous, article, run, subject, document, key):
             and 'Recovered publisher text' not in check.get('reason',''))
 
 
+def _retrieve_document(article, url, fetcher, *, prefetch=False):
+    cache_hit = False
+    with db.connect() as conn:
+        cached = conn.execute('SELECT * FROM article_documents WHERE url=%s', (url,)).fetchone()
+        cached_publisher = cached['document'].get('final_url') if cached else None
+        candidates = _previous_checks(conn, article, url, cached_publisher)
+    lifetime = timedelta(days=7) if cached and cached['document']['status'] == 'available' else timedelta(hours=24)
+    hint = {"title": article["title"], "publisher": article["publisher"],
+            "published_at": article["published_at"].isoformat() if article["published_at"] else ""}
+    if article.get("filing_attachments"):
+        hint["filing_attachments"] = article["filing_attachments"]
+    upgrade = (cached
+               and cached['document'].get('reader_version') in ('public-source-v4', 'public-source-v5', 'public-source-v6', 'public-source-v8')
+               and cached['document']['status'] == 'available'
+               and urlsplit(url).hostname not in ('kap.org.tr', 'www.kap.org.tr')
+               and (cached['document'].get('reader_version') in ('public-source-v6', 'public-source-v8')
+                    or not url.startswith(('https://dpm.vn/cong-bo-thong-tin/',
+                                           'https://dpm.vn/bao-cao-tai-chinh/'))))
+    if (cached and (not candidates or cached.get("prefetched_result_id") == article["id"])
+            and cached['document'].get('source_hint') == hint
+            and (cached['document'].get('reader_version') == READER_VERSION or upgrade)
+            and datetime.now(timezone.utc) - cached['fetched_at'] < lifetime):
+        cache_hit = True
+        document = cached['document']
+        old_language = document.get('language')
+        revisit_language = (old_language in ('uz', 'kk', '') and document.get('body')
+                            and detect_language(document['body'][:4000]) != old_language)
+        if upgrade or revisit_language:
+            # Retain checked text; v7 changes KAP, v6 issuer attachments, v5 validation/language.
+            document = {**document, 'reader_version': READER_VERSION}
+            try:
+                if document.get('method', '').startswith('PDF text'):
+                    validate_pdf_text(document['body'])
+            except ValueError as exc:
+                document.update(status='unavailable', reason=str(exc))
+                document.pop('translation', None)
+            else:
+                document['language'] = detect_language(document['body'][:4000])
+                if document.get('translation', {}).get('language') != document['language']:
+                    document.pop('translation', None)
+            with db.connect() as conn:
+                conn.execute('UPDATE article_documents SET document=%s '
+                             'WHERE url=%s AND document=%s AND fetched_at=%s',
+                             (Jsonb(document), url, Jsonb(cached['document']), cached['fetched_at']))
+    else:
+        fetched = retrieve(url, hint) if fetcher is retrieve else fetcher(url)
+        document = {**fetched, "reader_version": READER_VERSION, "source_hint": hint}
+        if cached:
+            old = cached['document']
+            by_url = {d.get('final_url'): d for d in [old, *old.get('linked_documents', [])]}
+            for doc in [document, *document.get('linked_documents', [])]:
+                saved = by_url.get(doc.get('final_url'), {})
+                if (doc.get('status') == 'available' and doc.get('body') and saved.get('translation')
+                        and all(doc.get(k) == saved.get(k) for k in ('body', 'sha256', 'language'))):
+                    doc['translation'] = saved['translation']
+        with db.connect() as conn:
+            conn.execute('INSERT INTO article_documents (url,document,prefetched_result_id) VALUES (%s,%s,%s) ON CONFLICT (url) '
+                         'DO UPDATE SET document=EXCLUDED.document,fetched_at=now(),prefetched_result_id=EXCLUDED.prefetched_result_id',
+                         (url, Jsonb(document), article['id'] if prefetch else None))
+    return document, cached_publisher, candidates, cache_hit
+
+
+# Two publisher reads can overlap discovery. Serialize requests to the same entry host.
+_prefetch_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ra-publisher")
+_publisher_locks = [threading.Lock() for _ in range(32)]
+_prefetch_tasks = {}
+_prefetch_lock = threading.Lock()
+
+
+def prefetch_company(run_id, subject_key):
+    with db.connect() as conn:
+        rows = conn.execute("SELECT * FROM search_results WHERE run_id=%s AND subject_key=%s ORDER BY id",
+                            (run_id, subject_key)).fetchall()
+
+    def fetch(article):
+        url = canonical_url(article["url"])
+        lock = _publisher_locks[hash(urlsplit(url).hostname) % len(_publisher_locks)]
+        try:
+            with lock:
+                if db.run_paused(run_id):
+                    return
+                started = time.monotonic()
+                _, _, _, cached = _retrieve_document(article, url, retrieve, prefetch=True)
+                logger.info("publisher_prefetch run=%s result=%s cached=%s seconds=%.3f",
+                            run_id, article["id"], cached, time.monotonic() - started)
+        except Exception:
+            logger.exception("Publisher prefetch failed for lead %s", article["id"])
+
+    def finished(key, task):
+        with _prefetch_lock:
+            if _prefetch_tasks.get(key) is task:
+                _prefetch_tasks.pop(key)
+
+    for article in rows:
+        key = article["id"]
+        with _prefetch_lock:
+            if key in _prefetch_tasks:
+                continue
+            task = _prefetch_tasks[key] = _prefetch_pool.submit(fetch, article)
+        task.add_done_callback(lambda future, key=key: finished(key, future))
+
+
 def _verification(result_id, fetcher, source_url):
     started = stage_started = time.perf_counter()
     stage, seconds = "retrieval_cache", {}
@@ -136,61 +239,7 @@ def _verification(result_id, fetcher, source_url):
             raise ValueError('Wait for the search to finish')
         run = db.get_run(article['run_id'])
         url = canonical_url(source_url or article['url'])
-        with db.connect() as conn:
-            cached = conn.execute('SELECT * FROM article_documents WHERE url=%s', (url,)).fetchone()
-            cached_publisher = cached['document'].get('final_url') if cached else None
-            candidates = _previous_checks(conn, article, url, cached_publisher)
-        lifetime = timedelta(days=7) if cached and cached['document']['status'] == 'available' else timedelta(hours=24)
-        hint = {"title": article["title"], "publisher": article["publisher"],
-                "published_at": article["published_at"].isoformat() if article["published_at"] else ""}
-        if article.get("filing_attachments"):
-            hint["filing_attachments"] = article["filing_attachments"]
-        upgrade = (cached
-                   and cached['document'].get('reader_version') in ('public-source-v4', 'public-source-v5', 'public-source-v6', 'public-source-v8')
-                   and cached['document']['status'] == 'available'
-                   and urlsplit(url).hostname not in ('kap.org.tr', 'www.kap.org.tr')
-                   and (cached['document'].get('reader_version') in ('public-source-v6', 'public-source-v8')
-                        or not url.startswith(('https://dpm.vn/cong-bo-thong-tin/',
-                                               'https://dpm.vn/bao-cao-tai-chinh/'))))
-        if (not candidates and cached and cached['document'].get('source_hint') == hint
-                and (cached['document'].get('reader_version') == READER_VERSION or upgrade)
-                and datetime.now(timezone.utc) - cached['fetched_at'] < lifetime):
-            cache_hit = True
-            document = cached['document']
-            old_language = document.get('language')
-            revisit_language = (old_language in ('uz', 'kk', '') and document.get('body')
-                                and detect_language(document['body'][:4000]) != old_language)
-            if upgrade or revisit_language:
-                # Retain checked text; v7 changes KAP, v6 issuer attachments, v5 validation/language.
-                document = {**document, 'reader_version': READER_VERSION}
-                try:
-                    if document.get('method', '').startswith('PDF text'):
-                        validate_pdf_text(document['body'])
-                except ValueError as exc:
-                    document.update(status='unavailable', reason=str(exc))
-                    document.pop('translation', None)
-                else:
-                    document['language'] = detect_language(document['body'][:4000])
-                    if document.get('translation', {}).get('language') != document['language']:
-                        document.pop('translation', None)
-                with db.connect() as conn:
-                    conn.execute('UPDATE article_documents SET document=%s '
-                                 'WHERE url=%s AND document=%s AND fetched_at=%s',
-                                 (Jsonb(document), url, Jsonb(cached['document']), cached['fetched_at']))
-        else:
-            fetched = retrieve(url, hint) if fetcher is retrieve else fetcher(url)
-            document = {**fetched, "reader_version": READER_VERSION, "source_hint": hint}
-            if cached:
-                old = cached['document']
-                by_url = {d.get('final_url'): d for d in [old, *old.get('linked_documents', [])]}
-                for doc in [document, *document.get('linked_documents', [])]:
-                    saved = by_url.get(doc.get('final_url'), {})
-                    if (doc.get('status') == 'available' and doc.get('body') and saved.get('translation')
-                            and all(doc.get(k) == saved.get(k) for k in ('body', 'sha256', 'language'))):
-                        doc['translation'] = saved['translation']
-            with db.connect() as conn:
-                conn.execute('INSERT INTO article_documents (url,document) VALUES (%s,%s) ON CONFLICT (url) '
-                             'DO UPDATE SET document=EXCLUDED.document,fetched_at=now()', (url, Jsonb(document)))
+        document, cached_publisher, candidates, cache_hit = _retrieve_document(article, url, fetcher)
         next_stage("translation_review")
         subject = db.evidence_subject(article, run)
         publisher = document.get('final_url')
@@ -511,6 +560,10 @@ def process_jobs(run_id):
                 check_pause()
                 key = job['result_id']
                 try:
+                    with _prefetch_lock:
+                        pending_fetch = _prefetch_tasks.get(key)
+                    if pending_fetch:
+                        pending_fetch.result()
                     flow = _verification(key, retrieve, job['source_url'])
                     parent, subject = next(flow)
                     flows[key] = flow

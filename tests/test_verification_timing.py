@@ -341,3 +341,22 @@ def test_repeat_watchlist_rechecks_content_and_reuses_unchanged_work(database, m
     different_profile, = collect([dict(lead, title=renamed['title'])])
     assert 'reused_from' not in different_profile['verification']
     assert len(calls['verify']) == before + 1
+
+
+def test_prefetch_refreshes_each_runs_evidence_and_verification_consumes_it(database, monkeypatch):
+    from ra import db
+    _, run, article = seed(database)
+    monkeypatch.setattr(verification_store.risk_factors, "records", lambda: [])
+    calls = []
+    def fetch(url, hint):
+        calls.append(url)
+        return dict(status='available',language='en',body='Issuer filing.',sha256='abc',final_url=url,method='HTML')
+    monkeypatch.setattr(verification_store,'retrieve',fetch)
+    verification_store.verify_article(article['id'], fetcher=fetch)
+    _, other, later = seed(database)
+    later = database.execute('UPDATE search_results SET published_at=%s WHERE id=%s RETURNING *',
+                             (article['published_at'],later['id'])).fetchone()
+    verification_store._retrieve_document(later, later['url'], fetch, prefetch=True)
+    assert len(calls)==2
+    result = verification_store.verify_article(later['id'],fetcher=fetch)
+    assert result['reused_from']==article['id'] and len(calls)==2
