@@ -20,18 +20,6 @@ def test_portuguese_resignation_and_waiver_with_local_reviewer(source, candidate
     assert result['model'] == qa.QWEN and result['reasoning'] == 'off'
 
 
-@pytest.mark.parametrize('output', ['Company repays debt - ZXQPUBLERZXQ', 'Company repays debt'])
-def test_corrupted_or_dropped_protection_markers_trigger_fallback(monkeypatch, output):
-    from types import SimpleNamespace
-    tokenizer = SimpleNamespace(encode=lambda text, **kw: [text], decode_pieces=lambda pieces: pieces[0])
-    translator = SimpleNamespace(translate_batch=lambda *a, **kw: [SimpleNamespace(hypotheses=[[output]])])
-    monkeypatch.setattr(translation, '_model', lambda *a: (tokenizer, translator, ''))
-    monkeypatch.setattr(qa, 'gemma_translation', lambda *a, **kw: ('', 'offline test'))
-    monkeypatch.setattr(qa, 'fallback', lambda *a, **kw: ('Company repays debt - Brand', 'fallback'))
-    assert translation.translate_text('Empresa paga dívida - Brand', 'pt', publisher='Brand') == (
-        'Company repays debt - Brand', 'fallback')
-
-
 def test_intact_markers_restore_original_names(monkeypatch):
     from types import SimpleNamespace
     tokenizer = SimpleNamespace(encode=lambda text, **kw: [text], decode_pieces=lambda pieces: pieces[0])
@@ -45,7 +33,6 @@ def test_intact_markers_restore_original_names(monkeypatch):
 def offline_tests(monkeypatch):
     def unavailable(*args):
         raise qa.ProviderError("offline test")
-    monkeypatch.setattr(qa.online_translation, "translate", unavailable)
     monkeypatch.setattr(qa.online_translation, "translate_public", unavailable)
 
 
@@ -130,15 +117,15 @@ def test_missing_model_requires_approval_before_any_network(monkeypatch, tmp_pat
 
 def test_missing_local_models_use_online_for_any_language(monkeypatch):
     monkeypatch.setattr(qa, "gemma_translation", lambda *a, **kw: ("", "offline"))
-    monkeypatch.setattr(translation, "argos_translate", lambda *args, **kw: ("", "no model"))
+    monkeypatch.setattr(translation, "argos_translate", lambda *args, **kw: pytest.fail("Unexpected Argos call"))
     calls = []
     def online(text, source, target):
         calls.append((text, source, target))
         return "Company repays debt"
-    monkeypatch.setattr(qa.online_translation, "translate", online)
+    monkeypatch.setattr(qa.online_translation, "translate_public", online)
     for lang in ("uz", "sw-KE"):
         assert translation.translate_text("Headline - Brand", lang, publisher="Brand") == (
-            "Company repays debt - Brand", "MyMemory online")
+            "Company repays debt - Brand", "Google public translation")
     assert calls == [("Headline", "uz", "en"), ("Headline", "sw", "en")]
 
 
@@ -212,3 +199,10 @@ def test_public_backup_after_model_rejects_output_preserves_brand(monkeypatch):
     assert qa.fallback("Tanggapan surat - Brand", "id", "Brand", "No Argos") == (
         "Response to the letter - Brand", "Google public translation")
     assert calls == [("Tanggapan surat", "id", "en")]
+
+
+def test_google_backup_withholds_changed_issuer(monkeypatch):
+    monkeypatch.setattr(qa, "gemma_translation", lambda *a, **kw: ("", "offline"))
+    monkeypatch.setattr(qa.online_translation, "translate_public", lambda *a: "Another company repaid its loan")
+    candidate, reason = translation.translate_text("Acme pagou a dívida", "pt", "Acme")
+    assert not candidate and "protected company name" in reason

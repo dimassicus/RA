@@ -26,20 +26,17 @@ def test_public_translation_checks_response_and_never_uses_credentials(monkeypat
     online.translate_public.cache_clear()
 
 
-def test_requires_matching_source_and_target_even_when_provider_offers_fuzzy_result(monkeypatch):
-    match = {"segment": "different debt", "translation": "wrong amount", "target": "en-GB"}
-    response = {"responseStatus": 200, "matches": [match]}
-    monkeypatch.setattr(online, "fetch_json", lambda url: response)
-    online.translate.cache_clear()
+
+def test_google_backup_checks_every_chunk(monkeypatch):
+    calls = []
+    def translate(text, source, target):
+        calls.append(text)
+        if "unavailable" in text:
+            raise online.ProviderError("offline")
+        return text.upper()
+    monkeypatch.setattr(online, "translate_public", translate)
+    text = "source words. " * 70
+    assert online.google_passage(text, "pt", "en") == text.strip().upper()
+    assert len(calls) > 1 and all(len(chunk) <= 500 for chunk in calls)
     with pytest.raises(online.ProviderError):
-        online.translate("actual debt", "uz", "en")
-    match.update(segment="actual debt", target="ru")
-    with pytest.raises(online.ProviderError):
-        online.translate("actual debt", "uz", "en")
-    match.update(target="en-GB", translation="Tom &amp; Co repaid")
-    assert online.translate("actual debt", "uz", "en") == "Tom & Co repaid"
-    response["quotaFinished"] = True
-    with pytest.raises(online.ProviderError):
-        online.translate("another debt", "uz", "en")
-    with pytest.raises(online.ProviderError):
-        online.translate("я" * 251, "ru", "en")
+        online.google_passage(text + "unavailable", "pt", "en")

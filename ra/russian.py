@@ -5,7 +5,7 @@ import re
 
 from scripts.translation_review.checks import SCALES, currency_set
 
-from . import keywords, local_models, model_store, translation, translation_names
+from . import keywords, local_models, online_translation, translation_names
 from .article_translation import passages
 
 # Keep URLs, filing codes, figures, and their signs verbatim in display copies.
@@ -44,6 +44,10 @@ def _checked(source, result, names):
         percent += r"|\bпроцент\w*"
     million = SCALES['million'] + r"|(?<=\d)m\b|\bmln\b|(?<=\d)\s*(?:mi|εκ)\b"
     billion = SCALES['billion'] + r"|(?<=\d)b\b|\bbln\b|(?<=\d)\s*bi\b"
+    # A currency symbol disambiguates a spaced financial suffix from metres.
+    money = r"(?:[$€£₽¥₫]\s*\d[\d.,]*\s+)"
+    million += "|" + money + r"m\b"
+    billion += "|" + money + r"b\b"
     for unit in (million, billion, percent):
         if len(re.findall(unit, source, re.I)) != len(re.findall(unit, result, re.I)):
             raise ValueError("Translation changed a magnitude or percentage")
@@ -61,27 +65,12 @@ def _passage(source, names):
         return translation_names.restore(source, masked)
     try:
         return _gemma_passage(source, masked)
-    except (OSError, RuntimeError, ValueError, KeyError, IndexError, TypeError):
-        # Preserve the original failure if the offline pair cannot supply a checked copy.
+    except (OSError, RuntimeError, ValueError, KeyError, IndexError, TypeError) as local_error:
         try:
-            model = translation._model("en", "ru")
-            if model is None and model_store.ensure_model("en", "ru")[0]:
-                translation._model.cache_clear()
-                model = translation._model("en", "ru")
-            if model is not None:
-                tokenizer, translator, prefix = model
-                tokens = tokenizer.encode(source, out_type=str)
-                result, = translator.translate_batch(
-                    [tokens], target_prefix=[[prefix]] if prefix else None, replace_unknowns=True,
-                    beam_size=4, max_input_length=0, max_decoding_length=2048)
-                pieces = result.hypotheses[0]
-                if len(pieces) >= 2048:
-                    raise ValueError("Incomplete offline translation")
-                candidate = tokenizer.decode_pieces(pieces).removeprefix(prefix)
-                return _checked(source, candidate, masked)
-        except (OSError, ImportError, RuntimeError, ValueError):
-            pass
-        raise
+            candidate = online_translation.google_passage(source, "en", "ru")
+        except online_translation.ProviderError:
+            raise local_error
+        return _checked(source, candidate, masked)
 
 
 def _gemma_passage(source, masked):

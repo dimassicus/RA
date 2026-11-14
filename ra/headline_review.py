@@ -128,29 +128,20 @@ def gemma_translation(source, language, publisher, company_name="", *, article=F
         return "", f"{GEMMA}: {reason}"
 
 
-def fallback(source, language, publisher, argos_status, company_name="", *, article=False):
-    """Use online backups after local translation fails."""
+def fallback(source, language, publisher, local_status, company_name="", *, article=False):
+    """Use Google Translate after local translation fails."""
     suffix = " - " + publisher
     body = source[:-len(suffix)] if publisher and source.endswith(suffix) else source
     if not body.strip() or len(body) > 4000:
-        return "", f"{argos_status}; local fallback needs review"
+        return "", f"{local_status}; local fallback needs review"
     masked, names = translation_names.mask(body, company_name)
-    reasons = [argos_status]
     try:
-        english = online_translation.translate(masked, language.split("-")[0].lower(), "en")
-        return translation_names.restore(english, names) + (suffix if body != source else ""), "MyMemory online"
-    except (ProviderError, ValueError) as exc:
-        reasons.append(str(exc))
-    try:
-        from .article_translation import passages
-        parts = passages(masked, limit=500)
-        english = " ".join(online_translation.translate_public(part.strip(), language.split("-")[0], "en")
-                           for part in parts if part.strip())
-        if english.strip():
+        english = online_translation.google_passage(masked, language.split("-")[0].lower(), "en")
+        if english:
             return translation_names.restore(english, names) + (suffix if body != source else ""), "Google public translation"
     except (ProviderError, ValueError) as exc:
-        reasons.append(f"Google public translation: {exc}")
-    return "", "; ".join(reasons) + "; translation needs review"
+        return "", f"{local_status}; Google public translation: {exc}; translation needs review"
+    return "", f"{local_status}; translation needs review"
 
 
 def review_note(article):

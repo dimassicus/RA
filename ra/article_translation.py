@@ -41,7 +41,7 @@ def bounded_source(document, subject, decision=False, *, per_document=True):
 
 
 def passages(body, *, limit=900, subject=None):
-    """Keep every character, with bounded passages for Argos and Qwen's context budget."""
+    """Keep every character, with bounded passages for translation and Qwen review."""
     parts = []
     matcher = translation_names.pattern(translation_names.names(subject))
     while body:
@@ -173,18 +173,14 @@ def prepare_steps(document, subject=None, *, checkpoint=None):
         checkpoint(result)
     yield local_models.QWEN
     review_parts([p for p in parts if not faithful(p) and p.get('english')], language)
-    # A rejected Argos output must not be retried forever with the same translation engine.
-    rejected = [p for p in parts if p.get('provider', '').startswith('Argos')
+    # Give rejected local candidates one independent translation and a fresh Qwen review.
+    rejected = [p for p in parts if p.get('provider') != 'Google public translation'
                 and p.get('review', {}).get('status') in ('material_error', 'uncertain')]
-    if rejected:
-        if checkpoint:
-            checkpoint(result)
-        yield local_models.GEMMA
+    if rejected and checkpoint:
+        checkpoint(result)
     replacements = []
     for part in rejected:
-        english, provider = headline_review.gemma_translation(part['source'], language, '', article=True, **identity)
-        if not english:
-            english, provider = headline_review.fallback(part['source'], language, '', provider, article=True, **identity)
+        english, provider = headline_review.fallback(part['source'], language, '', part['provider'], article=True, **identity)
         if english:
             part['rejected_translation'] = {k: part[k] for k in ('english', 'provider', 'review')}
             part.update(english=english, provider=provider, review={})

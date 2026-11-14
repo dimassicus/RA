@@ -1,12 +1,11 @@
-"""Online translation for individual public headlines and monitoring terms."""
+"""Online translation for bounded passages and monitoring terms."""
 from functools import lru_cache
-from html import unescape
 import json
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 
-from .news_apis import ProviderError, fetch_json
+from .news_apis import ProviderError
 
 
 @lru_cache(maxsize=2048)
@@ -34,23 +33,7 @@ def translate_public(text, source, target):
         raise ProviderError("Public translation unavailable or invalid response") from exc
 
 
-@lru_cache(maxsize=2048)
-def translate(text, source, target):
-    if not text.strip() or len(text.encode("utf-8")) > 500:
-        raise ProviderError("text outside MyMemory request limits")
-    query = urlencode({"q": text, "langpair": f"{source}|{target}", "mt": 1})
-    data = fetch_json("https://api.mymemory.translated.net/get?" + query)
-    if str(data.get("responseStatus")) != "200" or data.get("quotaFinished"):
-        raise ProviderError("MyMemory unavailable or quota reached")
-
-    # Fuzzy translation-memory hits can describe a different amount or company.
-    matches = data.get("matches")
-    if not isinstance(matches, list):
-        raise ProviderError("invalid MyMemory matches")
-    for match in matches:
-        if not isinstance(match, dict) or unescape(str(match.get("segment", ""))).strip() != text.strip():
-            continue
-        result = match.get("translation")
-        if isinstance(result, str) and result.strip() and str(match.get("target", "")).split("-")[0].lower() == target:
-            return unescape(result.strip())
-    raise ProviderError("MyMemory returned no exact source match")
+def google_passage(text, source, target):
+    from .article_translation import passages
+    return " ".join(translate_public(part.strip(), source, target)
+                    for part in passages(text, limit=500) if part.strip())

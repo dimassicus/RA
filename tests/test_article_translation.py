@@ -17,12 +17,11 @@ def approved(*args, **kwargs):
 @pytest.fixture
 def local(monkeypatch):
     monkeypatch.setattr(at.local_models, 'reviewer_requests', lambda: nullcontext(None))
-    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: ('', 'offline test'))
     monkeypatch.setattr(headline_review, 'readiness', lambda: {'ready': True})
     monkeypatch.setattr(headline_review, 'audit', approved)
     monkeypatch.setattr(headline_review, 'fallback', lambda *a, **kw: ('', 'Offline test'))
-    monkeypatch.setattr(translation, 'argos_translate', lambda *a, **kw: (
-        'Acme Manufacturing reports net losses of 40 million dollars.', 'Argos test'))
+    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: (
+        'Acme Manufacturing reports net losses of 40 million dollars.', headline_review.GEMMA))
 
 
 @pytest.mark.parametrize('language', ['ar', 'az', 'el', 'es', 'ru', 'tr', 'uz', 'vi', 'fr', 'pt-BR', 'PT_PT', 'sw'])
@@ -46,7 +45,7 @@ def test_official_board_decision_requires_reviewed_english_for_every_language(lo
     check = verify(source, SUBJECT, article)
     assert check['status'] == 'needs_review' and not check['evidence']
     assert source_texts(source, check, SUBJECT)[0]['kind'] == 'original language, translation unverified'
-    monkeypatch.setattr(translation, 'argos_translate', lambda *args, **kw: (ISSUER_DECISION, 'test'))
+    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *args, **kw: (ISSUER_DECISION, 'test'))
     prepared = at.prepare(source, SUBJECT)
     check = verify(prepared, SUBJECT, article)
     assert check['status'] == 'supported' and check['score'] == -1
@@ -65,7 +64,7 @@ def test_official_board_decision_requires_reviewed_english_for_every_language(lo
     'Rival Holdings files for bankruptcy. Acme Manufacturing updates its website.',
 ])
 def test_faithful_translation_is_not_company_impact(local, monkeypatch, english):
-    monkeypatch.setattr(translation, 'argos_translate', lambda *a, **kw: (english, 'Argos test'))
+    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: (english, 'Google public translation'))
     result = verify(at.prepare(document('Source passage.', language='ar')), SUBJECT, ARTICLE)
     assert result['status'] != 'supported'
     assert not score_article({**ARTICLE, 'verification': result}, SUBJECT, NOW)['score_included']
@@ -96,7 +95,7 @@ def test_complete_coverage_cache_binding_and_invalidation(local, monkeypatch):
     assert ''.join(p['source'] for p in prepared['translation']['parts']) == body
     assert all(len(p['source']) <= 900 for p in prepared['translation']['parts'])
     monkeypatch.setattr(headline_review, 'audit', lambda *a, **kw: pytest.fail('Approved cache should be reused'))
-    monkeypatch.setattr(translation, 'argos_translate', lambda *a, **kw: pytest.fail('Approved cache should be reused'))
+    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: pytest.fail('Approved cache should be reused'))
     assert at.prepare(prepared) == prepared
     for mutation in ('body', 'missing', 'language', 'reviewer', 'reasoning', 'empty', 'version'):
         changed = deepcopy(prepared)
@@ -112,7 +111,7 @@ def test_complete_coverage_cache_binding_and_invalidation(local, monkeypatch):
 
 def test_offline_review_only_unknown_and_native_languages_fail_safely(local, monkeypatch):
     monkeypatch.setattr(headline_review, 'readiness', lambda: {'ready': False, 'message': 'Start LM Studio'})
-    monkeypatch.setattr(translation, 'argos_translate', lambda *a, **kw: pytest.fail('No model work expected'))
+    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: pytest.fail('No model work expected'))
     for lang in ('en', 'EN-US'):
         source = document('Acme Manufacturing files for bankruptcy.', language=lang)
         assert at.prepare(source) == source
@@ -127,10 +126,6 @@ def test_offline_review_only_unknown_and_native_languages_fail_safely(local, mon
 
 def test_first_pass_then_backups_before_reviews(local, monkeypatch):
     calls = []
-    def argos(text, lang, *args, **kwargs):
-        assert kwargs == {'complete': True}
-        calls.append('argos')
-        return '', 'No pair'
     def gemma(*args, **kwargs):
         calls.append('gemma')
         return '', 'Gemma unavailable'
@@ -139,12 +134,11 @@ def test_first_pass_then_backups_before_reviews(local, monkeypatch):
         assert kwargs == {'article': True} and not publisher
         calls.append('fallback')
         return 'Acme Manufacturing reports net losses of 40 million dollars.', 'Gemma test'
-    monkeypatch.setattr(translation, 'argos_translate', argos)
     monkeypatch.setattr(headline_review, 'fallback', fallback)
     monkeypatch.setattr(headline_review, 'audit', lambda *a, **kw: (calls.append('review') or approved()))
     prepared = at.prepare(document('Source words. ' * 150, language='uz'))
     count = len(prepared['translation']['parts'])
-    assert calls == ['gemma', 'argos', 'fallback'] * count + ['review'] * count
+    assert calls == ['gemma', 'fallback'] * count + ['review'] * count
 
 
 def test_argos_complete_mode_never_silently_truncates(monkeypatch):
@@ -164,11 +158,11 @@ def test_argos_complete_mode_never_silently_truncates(monkeypatch):
     assert len(calls) == 1
 
 
-def rejected_argos_then_fallback(monkeypatch, verdict='faithful'):
+def rejected_gemma_then_fallback(monkeypatch, verdict='faithful'):
     calls = []
-    monkeypatch.setattr(translation, 'argos_translate', lambda source, *a, **kw: ('Bad translation.', 'Argos offline model'))
+    monkeypatch.setattr(headline_review, 'gemma_translation', lambda source, *a, **kw: ('Bad translation.', headline_review.GEMMA))
     monkeypatch.setattr(headline_review, 'fallback', lambda *a, **kw: (
-        'Acme Manufacturing reports net losses of 40 million dollars.', 'Gemma fallback'))
+        'Acme Manufacturing reports net losses of 40 million dollars.', 'Google public translation'))
     def audit(source, language, candidate, **kwargs):
         calls.append((source, candidate))
         return {**approved(), 'status': 'material_error' if candidate == 'Bad translation.' else verdict}
@@ -177,7 +171,7 @@ def rejected_argos_then_fallback(monkeypatch, verdict='faithful'):
 
 
 def test_fallback_review_groups_complete_text_and_preserves_original_evidence(local, monkeypatch):
-    calls = rejected_argos_then_fallback(monkeypatch)
+    calls = rejected_gemma_then_fallback(monkeypatch)
     body = 'Sentence with original source facts. ' * 65
     initial_count = len(at.passages(body))
     prepared = at.prepare(document(body, language='es'))
@@ -188,13 +182,13 @@ def test_fallback_review_groups_complete_text_and_preserves_original_evidence(lo
     assert all(p['english'] == 'Bad translation.' for p in group['rejected_translations'])
     assert at.original_passages(prepared, 'Acme Manufacturing reports net losses of 40 million dollars.') == [body]
     monkeypatch.setattr(headline_review, 'audit', lambda *a, **kw: pytest.fail('Grouped faithful cache must be reused'))
-    monkeypatch.setattr(translation, 'argos_translate', lambda *a, **kw: pytest.fail('Grouped faithful cache must be reused'))
+    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: pytest.fail('Grouped faithful cache must be reused'))
     assert at.prepare(prepared) == prepared
 
 
 @pytest.mark.parametrize('verdict', ['material_error', 'inconclusive', 'unavailable'])
 def test_failed_group_stays_whole_and_blocks_until_reviewed_whole(local, monkeypatch, verdict):
-    calls = rejected_argos_then_fallback(monkeypatch, verdict)
+    calls = rejected_gemma_then_fallback(monkeypatch, verdict)
     body = 'Sentence with original source facts. ' * 65
     prepared = at.prepare(document(body, language='es'))
     assert len(calls) == len(at.passages(body)) + 1
@@ -202,7 +196,7 @@ def test_failed_group_stays_whole_and_blocks_until_reviewed_whole(local, monkeyp
     with pytest.raises(ValueError):
         at.checked_text(prepared)
     retry_calls = []
-    monkeypatch.setattr(translation, 'argos_translate', lambda source, *a, **kw: ('', 'Passage too long'))
+    monkeypatch.setattr(headline_review, 'gemma_translation', lambda source, *a, **kw: ('', 'Passage too long'))
     monkeypatch.setattr(headline_review, 'audit', lambda source, *a, **kw: (retry_calls.append(source) or approved()))
     retried = at.prepare(prepared)
     assert retry_calls == [body]
@@ -212,7 +206,7 @@ def test_failed_group_stays_whole_and_blocks_until_reviewed_whole(local, monkeyp
 
 @pytest.mark.parametrize('mutation', ['body', 'hash', 'language'])
 def test_group_cache_is_invalidated_by_source_or_language_changes(local, monkeypatch, mutation):
-    calls = rejected_argos_then_fallback(monkeypatch)
+    calls = rejected_gemma_then_fallback(monkeypatch)
     prepared = at.prepare(document('Sentence with original source facts. ' * 65, language='es'))
     calls.clear()
     if mutation == 'body': prepared['body'] += ' Additional denial.'
@@ -245,10 +239,10 @@ def test_fallback_grouping_respects_faithful_gaps_provider_and_actual_byte_budge
     assert all(len(p['source']) <= 3000 for p in grouped)
 
 
-def test_rejected_argos_uses_separate_fallback_and_fresh_review(local, monkeypatch):
-    monkeypatch.setattr(translation, 'argos_translate', lambda *a, **kw: ('The company reported net damages.', 'Argos offline model'))
+def test_rejected_gemma_uses_separate_fallback_and_fresh_review(local, monkeypatch):
+    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: ('The company reported net damages.', headline_review.GEMMA))
     english = 'Acme Manufacturing declared a net loss of 40 million dollars.'
-    monkeypatch.setattr(headline_review, 'fallback', lambda *a, **kw: (english, headline_review.GEMMA))
+    monkeypatch.setattr(headline_review, 'fallback', lambda *a, **kw: (english, 'Google public translation'))
     calls = []
     def review(source, language, candidate, **kwargs):
         calls.append(candidate)

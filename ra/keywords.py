@@ -326,31 +326,14 @@ def translate_batch(rows, code, *, factors=False):
 def _translation_steps(rows, code, *, factors=False):
     from .headline_review import GEMMA, QWEN
     terms = [r["english"] for r in rows]
-    from .translation import installed_keyword_translations
     language = language_name(code)
     phrases = "family" in rows[0]
     label = "related phrase" if phrases else "risk-factor" if factors else "keyword"
     context = f"{len(rows)} {label} translations · {language}"
     _report(f"Finding candidates for {context}")
     feedback = translation_feedback(rows, code, factors)
-    try:
-        proposed = installed_keyword_translations(terms, code)
-    except (RuntimeError, OSError, ValueError):
-        proposed = {}
-    # A previous Gemma correction can go straight to independent Qwen review.
-    proposed.update({term: review["correction"] for term, review in feedback.items()
-                     if review.get("reviewer") == GEMMA and review.get("correction")})
-    russian = {row["english"]: row.get("translations", {}).get("ru") for row in rows}
-    for term in terms:
-        if not proposed.get(term):
-            try:
-                proposed[term] = online_translation.translate(term, "en", code)
-            except ProviderError:
-                try:
-                    pivot = russian.get(term) if code in ("ba", "tt") else None
-                    proposed[term] = online_translation.translate_public(pivot or term, "ru" if pivot else "en", code)
-                except ProviderError:
-                    continue  # Local generation below can still supply the missing phrase.
+    proposed = {term: review["correction"] for term, review in feedback.items()
+                if review.get("reviewer") == GEMMA and review.get("correction")}
     subject = "risk factor description" if factors else "keyword"
     constraints = (" Preserve the event, direction, strict thresholds, time windows and parentheses."
                    if factors else "")
@@ -362,13 +345,8 @@ def _translation_steps(rows, code, *, factors=False):
         meanings = {r["english"]: f'Translate this specific wording in the context of {r["family"]}.'
                     for r in rows}
     for attempt in range(3):
-        reviewer = QWEN
         needed = [term for term in terms if term not in accepted and (attempt or not proposed.get(term))]
-        if attempt == 2:
-            # Reviewer corrections require the other model's independent approval.
-            proposed.update({term: feedback.get(term, {}).get("correction", "") for term in needed})
-            reviewer = GEMMA
-        elif needed:
+        if needed:
             _report(f"Generating {len(needed)} {label} translations · {language}")
             prompt = (f"Translate each English credit-monitoring {subject} into {language} ({code}). "
                       "Use natural financial-news wording. Return an empty string if uncertain." + constraints)
@@ -376,9 +354,21 @@ def _translation_steps(rows, code, *, factors=False):
             if attempt or feedback:
                 prompt += " Correct the specific review errors; do not repeat rejected wording."
                 data = {term: {"previous": proposed.get(term, ""), "review": feedback.get(term, {})} for term in needed}
-            yield GEMMA
-            proposed.update(model_json(prompt, {"terms": data, "intended_meanings": meanings},
-                                       object_schema({term: {"type": "string"} for term in needed}), model=GEMMA))
+            generated = {}
+            if attempt < 2:
+                yield GEMMA
+                try:
+                    generated = model_json(prompt, {"terms": data, "intended_meanings": meanings},
+                                           object_schema({term: {"type": "string"} for term in needed}), model=GEMMA)
+                except (OSError, ValueError, KeyError, TypeError):
+                    pass
+            for term in needed:
+                proposed[term] = generated.get(term) if isinstance(generated, dict) else ""
+                if not proposed[term]:
+                    try:
+                        proposed[term] = online_translation.google_passage(term, "en", code)
+                    except (ProviderError, ValueError):
+                        proposed[term] = ""
         candidates = {term: proposed[term].strip() for term in terms if term not in accepted
                       and isinstance(proposed.get(term), str) and 0 < len(proposed[term].strip()) <= (500 if factors else 120)
                       and (not factors or not percentage_values(term) or percentage_values(term) == percentage_values(proposed[term]))}
@@ -389,10 +379,10 @@ def _translation_steps(rows, code, *, factors=False):
         record_translation_attempts(rows, code, factors, feedback)
         if candidates:
             _report(f"Checking {len(candidates)} {label} translations · {language}")
-            yield reviewer
-            checked = review_translations(candidates, code, factors, meanings, feedback=feedback, model=reviewer)
+            yield QWEN
+            checked = review_translations(candidates, code, factors, meanings, feedback=feedback, model=QWEN)
             for term in candidates:
-                feedback[term]["reviewer"] = reviewer
+                feedback[term]["reviewer"] = QWEN
             record_translation_attempts(rows, code, factors, feedback)
             approved = {term: phrase for term, phrase in candidates.items() if checked.get(term) is True}
             # Commit approved wording before a later generation/review can time out.

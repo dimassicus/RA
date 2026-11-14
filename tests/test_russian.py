@@ -9,8 +9,9 @@ from ra import russian
 @pytest.fixture
 def generate(monkeypatch):
     russian._passage.cache_clear()
-    monkeypatch.setattr(russian.translation, "_model", lambda source, target: None)
-    monkeypatch.setattr(russian.model_store, "ensure_model", lambda source, target: (False, "offline"))
+    def offline(*args):
+        raise russian.online_translation.ProviderError("offline test")
+    monkeypatch.setattr(russian.online_translation, "translate_public", offline)
     model = Mock()
     monkeypatch.setattr(russian.keywords, "model_json", model)
     yield model
@@ -69,21 +70,15 @@ def test_unavailable_model_does_not_poison_retry(generate):
     assert russian.translate("Costs declined.") == "Стоимость снизилась."
 
 
-def test_gemma_precedes_offline_fallback_and_preserves_currency(monkeypatch, generate):
-    tokenizer, translator = Mock(), Mock()
-    monkeypatch.setattr(russian.translation, "_model", lambda *_: (tokenizer, translator, ""))
-    tokenizer.encode.side_effect = lambda source, **kwargs: [source]
-    tokenizer.decode_pieces.side_effect = lambda pieces: pieces[0]
-    translator.translate_batch.side_effect = [
-        [Mock(hypotheses=[["Долг: 4 млн USD"]])],
-        [Mock(hypotheses=[["Долг: 6 млн EUR"]])],
-    ]
-    generate.side_effect = [OSError("unavailable"), {"russian":"Долг: 6 млн USD"}]
+def test_gemma_precedes_google_backup_and_preserves_currency(monkeypatch, generate):
+    google = Mock(side_effect=["Долг: 4 млн USD", "Долг: 6 млн EUR"])
+    monkeypatch.setattr(russian.online_translation, "translate_public", google)
+    generate.side_effect = [OSError(), OSError(), {"russian": "Долг: 6 млн USD"}]
     assert russian.translate("Debt: USD 4 million") == "Долг: 4 млн USD"
-    generate.assert_called_once()
+    google.assert_called_once_with("Debt: USD 4 million", "en", "ru")
+    assert russian.translate("Debt: USD 6 million") == ""
     assert russian.translate("Debt: USD 6 million") == "Долг: 6 млн USD"
-    assert generate.call_count == 2
-    assert translator.translate_batch.call_count == 1
+    assert google.call_count == 2
 
 
 def test_repair_protects_original_amount_and_rechecks_result(generate):
@@ -109,6 +104,9 @@ def test_truncated_issuer_name_preserves_only_verified_prefix(generate):
 
 def test_interest_amount_abbreviations_and_publisher_names(generate):
     assert russian._checked("Euro2day: interest on EUR 3.1m", "Euro2day: проценты на сумму 3.1 млн евро", {})
+    assert russian._checked("Loss of $35.59 m", "Убыток в 35.59 млн долларов", {})
+    with pytest.raises(ValueError, match="magnitude"):
+        russian._checked("Loss of $35.59 m", "Убыток в 35.59 долларов", {})
     assert russian._checked("Interest rate of 5 percent", "Процентная ставка 5 процентов", {})
     with pytest.raises(ValueError, match="magnitude"):
         russian._checked("Interest rate of 5 percent", "Проценты по ставке 5", {})

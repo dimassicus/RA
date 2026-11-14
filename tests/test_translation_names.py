@@ -19,7 +19,6 @@ def test_names_round_trip_without_altering_unrelated_words():
 
 def test_fallback_rejects_name_loss_then_restores_public_translation(monkeypatch):
     monkeypatch.setattr(translation, 'argos_translate', lambda *args, **kw: ('Broad Ocean profit fell', 'unsafe'))
-    monkeypatch.setattr(headline_review.online_translation, 'translate', lambda *args: 'Broad Ocean profit fell')
     monkeypatch.setattr(headline_review, 'local_request', lambda *args, **kw: {
         'model': headline_review.GEMMA, 'choices': [{'finish_reason':'stop',
         'message':{'content':'{"supported":true,"english":"Broad Ocean profit fell"}'}}]})
@@ -39,8 +38,7 @@ def test_legacy_article_review_does_not_authorize_a_changed_name(monkeypatch):
     with pytest.raises(ValueError, match='Company name'):
         articles.checked_text(doc, SUBJECT)
     monkeypatch.setattr(headline_review,'readiness',lambda:{'ready':True})
-    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: ('', 'offline test'))
-    monkeypatch.setattr(translation,'argos_translate',lambda *a,**kw: ('Lautan Luas posted a loss.', 'test'))
+    monkeypatch.setattr(headline_review,'gemma_translation',lambda *a,**kw: ('Lautan Luas posted a loss.', 'test'))
     monkeypatch.setattr(headline_review,'audit',lambda *a,**kw:part['review'])
     assert articles.checked_text(articles.prepare(doc,SUBJECT),SUBJECT) == 'Lautan Luas posted a loss.'
     assert articles.passages('Words Lautan Luas fell',limit=15,subject=SUBJECT) == ['Words ', 'Lautan Luas ', 'fell']

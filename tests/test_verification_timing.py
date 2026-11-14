@@ -76,7 +76,7 @@ def cache_v4(database, article, **changes):
 @pytest.mark.parametrize('reader_version', ['public-source-v4', 'public-source-v5', 'public-source-v6'])
 def test_cache_upgrade_keeps_complete_translation_and_original_age(database, monkeypatch, reader_version):
     from psycopg.types.json import Jsonb
-    from ra import article_translation, headline_review, translation
+    from ra import article_translation, headline_review
     _, _, article = seed(database)
     document, fetched_at = cache_v4(database, article, reader_version=reader_version)
     part = {"source": document['body'], "english": "Acme Manufacturing reports net losses of 40 million dollars.",
@@ -89,7 +89,7 @@ def test_cache_upgrade_keeps_complete_translation_and_original_age(database, mon
     monkeypatch.setattr(verification_store, "detect_language", lambda body: detected.append(body) or "vi")
     monkeypatch.setattr(verification_store.risk_factors, "records", lambda: [])
     for module, name in [(headline_review, 'readiness'), (headline_review, 'audit'), (headline_review, 'fallback'),
-                         (translation, 'argos_translate')]:
+                         (headline_review, 'gemma_translation')]:
         monkeypatch.setattr(module, name, lambda *args, **kwargs: pytest.fail("Reviewed translation must be reused"))
     result = verification_store.verify_article(article['id'], fetcher=lambda url: pytest.fail("Fresh v4 source should not refetch"))
     saved = database.execute("SELECT document,fetched_at FROM article_documents WHERE url=%s", (article['url'],)).fetchone()
@@ -154,7 +154,7 @@ def test_reader_upgrade_does_not_reuse_ineligible_cache(database, monkeypatch, i
 @pytest.mark.parametrize("changed", [None, 'body', 'sha256', 'language'])
 def test_refetch_carries_review_only_for_identical_source(database, monkeypatch, changed):
     from psycopg.types.json import Jsonb
-    from ra import article_translation, headline_review, translation
+    from ra import article_translation, headline_review
     _, _, article = seed(database)
     document, _ = cache_v4(database, article)
     part = {"source": document['body'], "english": "Acme Manufacturing reports net losses of 40 million dollars.",
@@ -170,7 +170,7 @@ def test_refetch_carries_review_only_for_identical_source(database, monkeypatch,
     fetches, readiness = [], []
     monkeypatch.setattr(verification_store.risk_factors, "records", lambda: [])
     monkeypatch.setattr(headline_review, 'readiness', lambda: readiness.append(True) or {'ready': False, 'message': 'Offline test'})
-    for module, name in [(headline_review, 'audit'), (headline_review, 'fallback'), (translation, 'argos_translate')]:
+    for module, name in [(headline_review, 'audit'), (headline_review, 'fallback'), (headline_review, 'gemma_translation')]:
         monkeypatch.setattr(module, name, lambda *args, **kwargs: pytest.fail("Unexpected model call"))
     prepare = article_translation.prepare
     def checked_prepare(source, subject):
@@ -232,7 +232,7 @@ def test_source_budget_and_drafts_use_run_policy(database, monkeypatch, per_docu
 
 def test_queue_batches_primary_sources_and_attachments_across_leads(database, monkeypatch):
     from itertools import groupby
-    from ra import article_translation, headline_review, local_models, translation
+    from ra import article_translation, headline_review, local_models
     issuer, run, article = seed(database)
     for i in range(6):
         database.execute("""INSERT INTO search_results (run_id,company_id,subject_key,subject_name,title,url,query,language,published_at)
@@ -245,11 +245,14 @@ def test_queue_batches_primary_sources_and_attachments_across_leads(database, mo
         return dict(source(url, 'first '+url),linked_documents=[source(url+'/pdf','replacement '+url)])
     monkeypatch.setattr(verification_store,'retrieve',retrieve)
     monkeypatch.setattr(headline_review,'readiness',lambda:{'ready':True})
-    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: ('', 'offline test'))
-    monkeypatch.setattr(translation,'argos_translate',lambda body,*a,**kw: (('reject','Argos test') if body.startswith('replacement') else ('','missing')))
-    def fallback(body,*args,**kwargs):
+    def generate(body,*args,**kwargs):
         events.append('Gemma')
-        return 'Acme Manufacturing supplied a statement.', 'Gemma test'
+        text = 'reject' if body.startswith('replacement') else 'Acme Manufacturing supplied a statement.'
+        return text, local_models.GEMMA
+    monkeypatch.setattr(headline_review,'gemma_translation',generate)
+    def fallback(body,*args,**kwargs):
+        events.append('Google')
+        return 'Acme Manufacturing supplied a statement.', 'Google public translation'
     def audit(src,lang,en,**kwargs):
         events.append('Qwen')
         return dict(model=local_models.QWEN,reasoning='off',issues=[],status='material_error' if en=='reject' else 'faithful')
@@ -258,7 +261,8 @@ def test_queue_batches_primary_sources_and_attachments_across_leads(database, mo
     monkeypatch.setattr(verification_store.risk_factors,'records',lambda:[])
     assert verification_store.enqueue_run(run,limit_per_company=None)==7
     verification_store.process_jobs(run)
-    assert [name for name,_ in groupby(events)]==['Gemma','Qwen','Gemma','Qwen']
+    assert [name for name,_ in groupby(e for e in events if e != 'Google')]==['Gemma','Qwen']
+    assert events.count('Google') == 7
     assert verification_store.job_summary(run)['completed']==7
     assert not database.execute("SELECT 1 FROM verification_jobs WHERE translation_checkpoint<>'{}'").fetchone()
 

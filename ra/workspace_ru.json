@@ -130,7 +130,7 @@
   "Restore": "Восстановить",
   "Languages": "Языки",
   "Translation model coverage": "Доступность моделей перевода",
-  "Languages are added from each watchlist country, including countries with several local languages. RA detects each headline’s language. When Argos cannot translate it, RA tries MyMemory online, then local Gemma, then Google public translation. Qwen reviews translated headlines.": "Список языков определяется странами наблюдаемых компаний и может включать несколько языков для одной страны. RA распознаёт язык каждого заголовка. Если Argos не может его перевести, RA по очереди обращается к MyMemory, локальной Gemma и общедоступному сервису Google Переводчика. Qwen проверяет переведённые заголовки.",
+  "RA detects the source language. Gemma translates first. If a translation fails, RA sends the passage to Google Translate. Qwen reviews translated headlines and article evidence.": "RA определяет язык оригинала. Первый перевод выполняет Gemma. Если перевод не удался, RA отправляет фрагмент в Google Переводчик. Qwen проверяет переведённые заголовки и текст, используемый как доказательство.",
   "Language": "Язык",
   "Translation to English": "Перевод на английский",
   "Activity": "Активность",
@@ -196,7 +196,7 @@
   "characters. Shorten the description before saving; pasted text is kept in full.": "символов. Сократите описание перед сохранением. Вставленный текст сохраняется в поле целиком.",
   "Add and translate": "Добавить и перевести",
   "list": "— список",
-  "Keywords and risk factors share the same languages, drawn from active companies’ registration countries and operating-country search editions. Missing Argos pairs use free MyMemory, public Google Translate and local models. Local models review candidates before use. Gemma and Qwen independently check each other’s corrections. Both lists share one queue, prioritizing search languages and smaller gaps.": "Ключевые слова и факторы риска переводятся на одни и те же языки с учётом стран регистрации активных компаний и языков поиска в странах их присутствия. Если нужной пары в Argos нет, используются бесплатная MyMemory, общедоступный Google Переводчик и локальные модели. Перед использованием локальные модели проверяют варианты перевода. Gemma и Qwen независимо проверяют исправления друг друга. Очередь общая для обоих списков. В первую очередь обрабатываются языки поиска и небольшие группы недостающих переводов.",
+  "Gemma translates keywords and risk factors into watchlist languages. Google Translate supplies backup candidates. Qwen checks each candidate before use.": "Gemma переводит ключевые слова и факторы риска на языки списка наблюдения. Google Переводчик предлагает резервные варианты. Qwen проверяет каждый вариант перед использованием.",
   "Checking translation progress…": "Проверяем ход перевода…",
   "Live progress updates leave your edits untouched. Save any edits before reloading this page to see newly saved wording in the list below.": "Обновление статуса не затрагивает ваши правки. Сохраните изменения перед перезагрузкой страницы, чтобы увидеть новые переводы в списке.",
   "Save all": "Сохранить всё",
@@ -277,9 +277,6 @@
   "discovery pending": "ожидается поиск источников",
   "Summary pending": "Ожидается сводка",
   "Summary needs retry": "Нужно повторить подготовку сводки",
-  "Argos installed": "Модель Argos установлена",
-  "Argos available to install": "Модель Argos доступна для установки",
-  "MyMemory online, then local Qwen / Gemma": "Онлайн-перевод MyMemory, затем локальные Qwen и Gemma",
   "Watchlist": "Список наблюдения",
   "Selected": "Выбранная компания",
   "Selected company": "Выбранная компания",
@@ -513,5 +510,6 @@
   "Its search history and saved scores will be kept. You can restore it from Removed companies.": "История поисков и сохранённые оценки останутся доступны. Компанию можно восстановить в разделе «Удалённые компании».",
   "Yes, remove company": "Да, убрать компанию",
   "One company alias per line": "По одному варианту названия в строке",
-  "Use names of this legal entity, not owners, subsidiaries or product brands. Enter up to 8 names, one per line. Pasted semicolons become line breaks when saved. Commas remain part of a name. Put the preferred news name first. News APIs search alternative aliases, the short name and legal name, then page through results within request limits. Enforcement searches use all reviewed aliases. Short names need country or industry evidence in the headline.": "Указывайте названия этого юридического лица. Максимум 8 названий, по одному в строке. При сохранении точки с запятой заменяются переносами строк. Запятые остаются частью названия. Предпочтительное название для поиска новостей укажите первым. Новостные API проверяют варианты названия, краткое и юридическое названия в пределах лимита запросов. Поиск сообщений о расследованиях и задержаниях использует все проверенные варианты названия. Для коротких названий в заголовке требуется контекст страны или отрасли."
+  "Use names of this legal entity, not owners, subsidiaries or product brands. Enter up to 8 names, one per line. Pasted semicolons become line breaks when saved. Commas remain part of a name. Put the preferred news name first. News APIs search alternative aliases, the short name and legal name, then page through results within request limits. Enforcement searches use all reviewed aliases. Short names need country or industry evidence in the headline.": "Указывайте названия этого юридического лица. Максимум 8 названий, по одному в строке. При сохранении точки с запятой заменяются переносами строк. Запятые остаются частью названия. Предпочтительное название для поиска новостей укажите первым. Новостные API проверяют варианты названия, краткое и юридическое названия в пределах лимита запросов. Поиск сообщений о расследованиях и задержаниях использует все проверенные варианты названия. Для коротких названий в заголовке требуется контекст страны или отрасли.",
+  "Gemma with Google Translate backup": "Gemma с резервным переводом через Google Переводчик"
 }

@@ -185,15 +185,11 @@ def country_languages(country: str) -> list[str]:
 
 
 def schedule_countries(countries: list[str]) -> None:
-    """Warm local language models in the background when the watchlist grows."""
+    """Backfill eligible headlines after the watchlist changes."""
     if not countries:
         return
-    codes = {code for country in countries for code in country_languages(country)}
-    needed = sorted(code for code in codes if not installed(code))
 
-    def install() -> None:
-        for code in needed:
-            ensure_model(code)
+    def run_backfill() -> None:
         if _backfill_lock.acquire(blocking=False):
             try:
                 from .translation import backfill
@@ -201,16 +197,10 @@ def schedule_countries(countries: list[str]) -> None:
             finally:
                 _backfill_lock.release()
 
-    threading.Thread(target=install, daemon=True, name="ra-model-prefetch").start()
+    threading.Thread(target=run_backfill, daemon=True, name="ra-translation-backfill").start()
 
 
 def coverage(countries: list[str]) -> list[dict]:
-    """Read-only summary of expected and installed language pairs."""
-    index = json.loads(CACHE.read_text()) if CACHE.exists() else []
-    offered = {item.get("from_code") for item in index if item.get("to_code") == "en"}
-    output = []
-    for country in sorted(set(countries)):
-        for code in country_languages(country):
-            state = "Argos installed" if installed(code) else "Argos available to install" if code in offered else "MyMemory online, then local Qwen / Gemma"
-            output.append({"country": country, "language": code, "status": state})
-    return output
+    """List expected watchlist languages and their configured translation route."""
+    return [{"country": country, "language": code, "status": "Gemma with Google Translate backup"}
+            for country in sorted(set(countries)) for code in country_languages(country)]

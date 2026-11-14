@@ -20,7 +20,7 @@
   </form>
 </section>
 <section class="panel list-panel"><h2>{{ _('Risk factor list' if factors else 'Keyword list') }}</h2>
-  <p>{{ _('Keywords and risk factors share the same languages, drawn from active companies’ registration countries and operating-country search editions. Missing Argos pairs use free MyMemory, public Google Translate and local models. Local models review candidates before use. Gemma and Qwen independently check each other’s corrections. Both lists share one queue, prioritizing search languages and smaller gaps.') }}</p>
+  <p>{{ _('Gemma translates keywords and risk factors into watchlist languages. Google Translate supplies backup candidates. Qwen checks each candidate before use.') }}</p>
   <p id="translation-progress" role="status" aria-live="polite" data-url="{{ url_for('translation_status', factors='1' if factors else '0') }}">{{ _('Checking translation progress…') }}</p>
   <p>{{ _('Live progress updates leave your edits untouched. Save any edits before reloading this page to see newly saved wording in the list below.') }}</p>
   <script src="{{ url_for('static', filename='translation-progress.js') }}" defer></script>

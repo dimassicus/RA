@@ -172,7 +172,6 @@ def test_keyword_page_exposes_phrases_and_title_scope(database):
 
 
 def test_reviewed_phrase_translations_reach_company_and_person_searches(database, monkeypatch):
-    from ra import translation
     from ra.app import create_app
     from ra.local_models import GEMMA, QWEN
 
@@ -186,12 +185,11 @@ def test_reviewed_phrase_translations_reach_company_and_person_searches(database
     candidates = {"falsified accounts": "contas falsificadas", "fabricated revenue": "receita inventada",
                   "main shareholder": "acionista principal", "managing director": "diretor-geral"}
     batch = [p for p in phrases if p["english"] in candidates]
-    monkeypatch.setattr(translation, "installed_keyword_translations", lambda terms, code: dict(candidates))
     reviewers = []
     def model(prompt, data, schema, *, model):
         if "terms" in data:
             assert model == GEMMA
-            return {"fabricated revenue": "candidate rejected again"}
+            return candidates if isinstance(data["terms"], list) else {"fabricated revenue": "candidate rejected again"}
         reviewers.append(model)
         assert "accounting fraud" in data["intended_meanings"]["falsified accounts"]
         return {term: {"approved": term != "fabricated revenue", "reason": "", "correction": ""}

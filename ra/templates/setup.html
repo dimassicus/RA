@@ -42,7 +42,7 @@
 </section>
 {% if model_coverage %}<section class="panel list-panel" id="languages">
   <div class="section-heading"><div><span class="step">{{ _('Languages') }}</span><h2>{{ _('Translation model coverage') }}</h2></div></div>
-  <p>{{ _('Languages are added from each watchlist country, including countries with several local languages. RA detects each headline’s language. When Argos cannot translate it, RA tries MyMemory online, then local Gemma, then Google public translation. Qwen reviews translated headlines.') }}</p>
+  <p>{{ _('RA detects the source language. Gemma translates first. If a translation fails, RA sends the passage to Google Translate. Qwen reviews translated headlines and article evidence.') }}</p>
   <div class="table-scroll"><table><thead><tr><th>{{ _('Country') }}</th><th>{{ _('Language') }}</th><th>{{ _('Translation to English') }}</th></tr></thead><tbody>
   {% for item in model_coverage %}<tr><td>{{ _(item.country) }}</td><td>{{ item.language }}</td><td>{{ _(item.status) }}</td></tr>{% endfor %}
   </tbody></table></div>

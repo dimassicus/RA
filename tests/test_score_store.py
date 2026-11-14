@@ -317,7 +317,7 @@ def test_theme_cache_survives_new_run_and_invalidates_changed_factors(database, 
 
 
 def test_multilingual_source_cache_retries_and_analyst_decisions(database, monkeypatch):
-    from ra import headline_review, translation, verification_store
+    from ra import headline_review, verification_store
     company, run_id, article = seed(database)
     source = {'status': 'available', 'language': 'vi', 'body': 'Original company financial statement.',
               'sha256': 'original-body-hash', 'final_url': article['url'], 'method': 'test document'}
@@ -327,8 +327,7 @@ def test_multilingual_source_cache_retries_and_analyst_decisions(database, monke
     assert verification_store.job_summary(run_id)['source_retryable'] == 1
     assert verification_store.retry_failed_run(run_id) == 1
     monkeypatch.setattr(headline_review, 'readiness', lambda: {'ready': True})
-    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: ('', 'offline test'))
-    monkeypatch.setattr(translation, 'argos_translate', lambda *a, **kw: (
+    monkeypatch.setattr(headline_review, 'gemma_translation', lambda *a, **kw: (
         'Acme Manufacturing reports net losses of 40 million dollars.', 'Argos test'))
     calls = []
     def audit(*args, **kwargs):
@@ -685,13 +684,9 @@ def test_setup_routes_retry_only_requested_stage_and_preserve_original_search(da
 
 
 def test_keyword_edit_translate_and_disable_in_review(database, monkeypatch):
-    from ra import keywords, translation
+    from ra import keywords
     monkeypatch.setattr(keywords, "_rules", keywords._rules)
     monkeypatch.setattr(keywords, "schedule", lambda: None)
-    monkeypatch.setattr(translation, "installed_keyword_translations", lambda terms, code: {})
-    def offline(*args):
-        raise keywords.ProviderError("offline test")
-    monkeypatch.setattr(keywords.online_translation, "translate", offline)
     term = "covenant breach"
     def model(prompt, data, schema, **kwargs):
         if "english" in schema["properties"]:
@@ -772,14 +767,13 @@ def test_registry_failure_preserves_last_good_comparison_and_retries(database):
 
 
 def test_risk_factor_editing_translation_and_retry(database, monkeypatch):
-    from ra import keywords, risk_factors, translation
+    from ra import keywords, risk_factors
     monkeypatch.setattr(risk_factors, "_rows", risk_factors._rows)
     scheduled = []
     monkeypatch.setattr(keywords, "schedule", lambda: scheduled.append(True))
     monkeypatch.setattr(risk_factors, "languages", lambda: ["pt"])
     text = "Currency falls more than 10% in seven days"
     good = "A moeda cai mais de 10% em sete dias"
-    monkeypatch.setattr(translation, "installed_keyword_translations", lambda terms, code: {text:good.replace("10%", "5%")})
     def model(prompt, data, schema, **kwargs):
         if "english" in schema["properties"]:
             return {"english": True}
@@ -789,7 +783,7 @@ def test_risk_factor_editing_translation_and_retry(database, monkeypatch):
             return {text: {"approved": data["translations"][text] == good, "reason": "", "correction": ""}}
         from ra.headline_review import GEMMA
         assert kwargs == {"model": GEMMA}
-        return {text:good}
+        return {text: good if isinstance(data["terms"], dict) else good.replace("10%", "5%")}
     monkeypatch.setattr(keywords, "model_json", model)
     client = create_app().test_client()
     with client.session_transaction() as session:
@@ -850,7 +844,7 @@ def test_risk_descriptions_reject_overlength_without_clipping(database, monkeypa
 
 
 def test_edit_one_risk_translation_from_list(database, monkeypatch):
-    from ra import keywords, risk_factors, translation
+    from ra import keywords, risk_factors
     english = "Market drops more than 5%"
     original = "Queda do mercado superior a 5%"
     corrected = "O mercado recua mais de 5%"
@@ -878,8 +872,7 @@ def test_edit_one_risk_translation_from_list(database, monkeypatch):
     assert risk_factors.records()[0]["translations"]["pt"] == original
     assert "Translation saved" in submit()
     assert "factor or translation changed" in submit()
-    monkeypatch.setattr(translation, "installed_keyword_translations", lambda terms, code: {english: original})
-    monkeypatch.setattr(keywords, "model_json", lambda *args, **kwargs: {english: {"approved": True, "reason": "", "correction": ""}})
+    monkeypatch.setattr(keywords, "model_json", lambda prompt, data, schema, **kwargs: {english: original} if "terms" in data else {english: {"approved": True, "reason": "", "correction": ""}})
     keywords.translate_batch([row], "pt", factors=True)
     saved, = risk_factors.records()
     assert saved["translations"] == {"pt": corrected, "el": "old Greek"} and saved["search_cues"] == {"el": ["Greek cue"]}
