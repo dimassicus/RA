@@ -549,7 +549,9 @@ def search_company_steps(subject, fetcher=fetch_feed, official_fetcher=fetch_jso
     settings = settings or search_settings.for_run({})
     adverse_focus = settings.get("adverse_only", False)
     languages = {}
-    if rss_covered is None:
+    if not settings.get("use_google_news_rss", True):
+        queries = []
+    elif rss_covered is None:
         queries = planned_feeds(subject, window, adverse_focus)
     else:
         plan = planned_feeds(subject, span, adverse_focus, languages=languages)

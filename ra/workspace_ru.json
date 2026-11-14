@@ -242,6 +242,8 @@
   "Search industry exposure news and assess industry risk factors.": "Искать новости о событиях в отраслях компании и оценивать отраслевые риски.",
   "Use Perplexity API": "Использовать API Perplexity",
   "Search for company news, filings and court decisions using Perplexity.": "Искать через Perplexity новости о компании, официальные документы и судебные решения.",
+  "Use Google News RSS": "Использовать RSS Google Новостей",
+  "Search Google News RSS for company, country and industry news. This also controls the company intake news preview.": "Искать новости о компаниях, странах и отраслях в RSS Google Новостей. Эта настройка также управляет показом новостей при добавлении компании.",
   "Use Google API": "Использовать API Google",
   "Use Gemini with Google Search for evidence gaps after Perplexity, or for company discovery when Perplexity is off.": "Использовать Gemini и Google Поиск для уточнения сведений после поиска в Perplexity. Если Perplexity отключён, использовать их для основного поиска по компании.",
   "Focus discovery on adverse events and material filings": "Искать прежде всего негативные события и существенные раскрытия",

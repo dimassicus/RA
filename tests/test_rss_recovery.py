@@ -266,11 +266,19 @@ def test_batch_rss_covers_only_gaps_and_perplexity_keeps_full_window(database, m
     monkeypatch.setattr(search.news_apis, 'configured_providers', lambda: [])
     monkeypatch.setattr(search, 'planned_feeds', lambda subject, window, focus, **kw: [(q, '', window) for q in feeds])
     monkeypatch.setattr(perplexity, 'collect', lambda subject, span, *a, **kw: (paid.append(span) or [], []))
-    def run(lo, hi):
+    def run(lo, hi, rss=True):
         rid = db.create_run('all', [subject], window_start=lo, window_end=hi)
-        database.execute("""UPDATE search_runs SET search_settings='{"use_perplexity":true,"use_google":false}' WHERE id=%s""",(rid,))
-        worker.process_run(rid, topic_searcher=lambda *a, **kw: [], roster_check=lambda *a: None)
+        settings = dict(use_perplexity=True, use_google=False, use_google_news_rss=rss)
+        database.execute("UPDATE search_runs SET search_settings=%s WHERE id=%s", (db.Jsonb(settings), rid))
+        def topic_search(*args, **kwargs):
+            assert rss, 'Shared RSS queried while disabled'
+            return []
+        worker.process_run(rid, topic_searcher=topic_search, roster_check=lambda *a: None)
         return rid
+    skipped = run(start, end, rss=False)
+    assert not calls and paid == [(start, end)]
+    assert not database.execute('SELECT 1 FROM rss_search_windows WHERE run_id=%s', (skipped,)).fetchone()
+    assert not database.execute('SELECT 1 FROM rss_recovery WHERE run_id=%s', (skipped,)).fetchone()
     run(start, prior_end)
     assert len(calls) == 2
     feeds.append('new alias')
@@ -280,7 +288,7 @@ def test_batch_rss_covers_only_gaps_and_perplexity_keeps_full_window(database, m
         'SELECT * FROM rss_search_windows WHERE run_id=%s', (rid,))}
     assert intervals == {'worked': (prior_end + rss_windows.TICK, end), 'retry': (start,end), 'new alias': (start,end)}
     run(start, end)
-    assert len(calls) == 5 and paid == [(start,prior_end),(start,end),(start,end)]
+    assert len(calls) == 5 and paid == [(start,end),(start,prior_end),(start,end),(start,end)]
     # Prior coverage in the middle leaves both historical holes available.
     assert list(rss_windows.gaps((start,end),[(start+timedelta(days=1),prior_end)])) == [
         (start,start+timedelta(days=1)-rss_windows.TICK),(prior_end+rss_windows.TICK,end)]

@@ -217,16 +217,17 @@ def research_company(data: dict, json_fetcher=fetch_json, feed_fetcher=search.fe
 
     # Discovery is useful for smaller companies without LEIs, but never verifies identity.
     settings = search_settings.read()
-    news_query = f'"{data["short_name"] or data["name"]}"'
-    url, language = search.feed_url(news_query, data["country_registration"])
-    try:
-        for item in search.parse_feed(feed_fetcher(url), news_query, language, limit=4):
-            if settings["adverse_only"] and not search_settings.adverse_lead(item, data):
-                continue
-            findings["news"].append({"title": item["title"], "url": item["url"],
-                                     "publisher": item["publisher"]})
-    except Exception as exc:
-        findings["errors"].append(f"Google News: {type(exc).__name__}: {exc}")
+    if settings["use_google_news_rss"]:
+        news_query = f'"{data["short_name"] or data["name"]}"'
+        url, language = search.feed_url(news_query, data["country_registration"])
+        try:
+            for item in search.parse_feed(feed_fetcher(url), news_query, language, limit=4):
+                if settings["adverse_only"] and not search_settings.adverse_lead(item, data):
+                    continue
+                findings["news"].append({"title": item["title"], "url": item["url"],
+                                         "publisher": item["publisher"]})
+        except Exception as exc:
+            findings["errors"].append(f"Google News: {type(exc).__name__}: {exc}")
     for saved in db.list_companies(None):
         if country_code(saved["country_registration"]) != country:
             continue

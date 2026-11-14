@@ -244,7 +244,7 @@ def _discover(run_id, searcher, topic_searcher, roster_check, prefetch):
                                 window=(window_start,window_end), on_deferred=defer, probe=probe,
                                 rss_covered=rss_covered, rss_done=topic_done if batch_rss else None)
     def check(branch, topic):
-        if not search_settings.scope_enabled(branch, settings):
+        if not settings["use_google_news_rss"] or not search_settings.scope_enabled(branch, settings):
             return [], ""
         topic_done.clear()
         return db.run_topic_check(run_id, topic_searcher, editions, branch, topic, include_factors=include_factors,

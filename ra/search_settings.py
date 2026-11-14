@@ -6,12 +6,12 @@ from .aliases import ambiguous, company_names, contains, headline_identity, norm
 from .relevance import headline
 
 DEFAULTS = {"include_country": True, "include_industry": True, "adverse_only": False,
-            "use_perplexity": True, "use_google": True}
+            "use_perplexity": True, "use_google": True, "use_google_news_rss": True}
 
 
 def read():
     with db.connect() as conn:
-        row = conn.execute("SELECT include_country,include_industry,adverse_only,use_perplexity,use_google FROM search_preferences WHERE id=TRUE").fetchone()
+        row = conn.execute("SELECT include_country,include_industry,adverse_only,use_perplexity,use_google,use_google_news_rss FROM search_preferences WHERE id=TRUE").fetchone()
     return dict(row) if row else dict(DEFAULTS)
 
 
@@ -19,10 +19,11 @@ def save(values):
     if set(values) != set(DEFAULTS) or any(type(value) is not bool for value in values.values()):
         raise ValueError("Choose On or Off for each search setting.")
     with db.connect() as conn:
-        conn.execute("INSERT INTO search_preferences (id,include_country,include_industry,adverse_only,use_perplexity,use_google) "
-                     "VALUES (TRUE,%s,%s,%s,%s,%s) ON CONFLICT (id) DO UPDATE SET "
+        conn.execute("INSERT INTO search_preferences (id,include_country,include_industry,adverse_only,use_perplexity,use_google,use_google_news_rss) "
+                     "VALUES (TRUE,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO UPDATE SET "
                      "include_country=EXCLUDED.include_country,include_industry=EXCLUDED.include_industry,"
-                     "adverse_only=EXCLUDED.adverse_only,use_perplexity=EXCLUDED.use_perplexity,use_google=EXCLUDED.use_google",
+                     "adverse_only=EXCLUDED.adverse_only,use_perplexity=EXCLUDED.use_perplexity,use_google=EXCLUDED.use_google,"
+                     "use_google_news_rss=EXCLUDED.use_google_news_rss",
                      tuple(values[key] for key in DEFAULTS))
 
 
